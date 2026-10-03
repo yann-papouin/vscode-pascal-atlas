@@ -28,44 +28,18 @@ const {
   BuildTerminalSession,
   appendMsbuildProperties,
   buildOutputCategory,
-  compatiblePlatform,
-  debugOutputConfiguration,
-  debugMsbuildProperties,
   formalBuildEnvironment,
   formatBuildDuration,
   parseBuildDiagnosticLine,
   parseCommandLine,
-  peMetadataFromBuffer,
   resolvedBuildSelection
 } = require('../src/buildDebugSupport');
 Module._load = originalLoad;
 
-test('debug run parameters preserve quoted arguments', () => {
+test('Run parameters preserve quoted arguments', () => {
   assert.deepEqual(parseCommandLine('--mode test "C:\\Program Files\\Demo data" /flag'), [
     '--mode', 'test', 'C:\\Program Files\\Demo data', '/flag'
   ]);
-});
-
-test('launch debugging captures stdout and reveals the Debug Console by default', () => {
-  const externalConfiguration = { get: (_key, fallback) => fallback };
-  assert.deepEqual(debugOutputConfiguration(externalConfiguration, 'launch'), {
-    captureOutput: false,
-    externalConsole: true,
-    internalConsoleOptions: 'neverOpen'
-  });
-  const debugConsoleConfiguration = {
-    get: (key, fallback) => key === 'debugger.programConsole' ? 'debugConsole' : fallback
-  };
-  assert.deepEqual(debugOutputConfiguration(debugConsoleConfiguration, 'launch'), {
-    captureOutput: true,
-    externalConsole: false,
-    internalConsoleOptions: 'openOnSessionStart'
-  });
-  assert.deepEqual(debugOutputConfiguration(debugConsoleConfiguration, 'attach'), {
-    captureOutput: false,
-    externalConsole: false,
-    internalConsoleOptions: 'neverOpen'
-  });
 });
 
 test('build completion duration is concise and stable', () => {
@@ -178,37 +152,6 @@ test('status bar build selection resolves auto to the Delphi project defaults', 
   }
 });
 
-test('debug build requests detailed map and source-level debug information', () => {
-  const args = [];
-  appendMsbuildProperties(args, debugMsbuildProperties());
-  assert.deepEqual(args, [
-    '/p:DCC_MapFile=3',
-    '/p:DCC_Optimize=false',
-    '/p:DCC_GenerateStackFrames=true',
-    '/p:DCC_DebugInfoInExe=true',
-    '/p:DCC_LocalDebugSymbols=true',
-    '/p:DCC_SymbolReferenceInfo=2'
-  ]);
-});
-
-test('debug platform falls back to a platform supported by every group project', () => {
-  assert.equal(compatiblePlatform([{ targetedPlatforms: 1 }, { targetedPlatforms: 1 }], 'Win64'), 'Win32');
-  assert.equal(compatiblePlatform([{ targetedPlatforms: 3 }, { targetedPlatforms: 3 }], 'Win64'), 'Win64');
-  assert.equal(compatiblePlatform([{ targetedPlatforms: 0 }], 'Win64'), 'Win64');
-});
-
-test('embedded Delphi TD32 PE section counts as debug information', () => {
-  const buffer = Buffer.alloc(1024);
-  buffer.writeUInt16LE(0x5A4D, 0);
-  buffer.writeUInt32LE(0x80, 0x3C);
-  buffer.write('PE\0\0', 0x80, 'ascii');
-  buffer.writeUInt16LE(0x014C, 0x84);
-  buffer.writeUInt16LE(1, 0x86);
-  buffer.writeUInt16LE(0xE0, 0x94);
-  buffer.write('.debug\0\0', 0x178, 'ascii');
-  assert.deepEqual(peMetadataFromBuffer(buffer), { machine: 'Win32', sections: ['.debug'] });
-});
-
 test('manifest keeps project commands out of the native Explorer and exposes them on the project tree', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'buildDebugSupport.js'), 'utf8');
@@ -229,9 +172,7 @@ test('manifest keeps project commands out of the native Explorer and exposes the
     [
       'pascalUnion.build.buildPackage',
       'pascalUnion.build.compilePackage',
-      'pascalUnion.build.cleanPackage',
-      'pascalUnion.debug.debugPackage',
-      'pascalUnion.debug.attachPackage'
+      'pascalUnion.build.cleanPackage'
     ]
   );
   assert.deepEqual(
@@ -241,8 +182,6 @@ test('manifest keeps project commands out of the native Explorer and exposes the
       'pascalUnion.build.compileGroup',
       'pascalUnion.build.cleanGroup',
       'pascalUnion.run.group',
-      'pascalUnion.debug.buildAndDebugGroup',
-      'pascalUnion.debug.selectStartupProject',
       'pascalUnion.build.selectConfiguration',
       'pascalUnion.build.selectPlatform'
     ]
@@ -252,11 +191,7 @@ test('manifest keeps project commands out of the native Explorer and exposes the
     [...packageMenus, ...projectMenus].every(item => item.group.startsWith('1_pascalUnion@')),
     'project tree commands must share an early dedicated separator group'
   );
-  assert.ok(manifest.contributes.configuration.properties['pascalUnion.debugger.autoInstall']);
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.debugger.generateDetailedMap'].default, true);
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.debugger.stopAtEntry'].default, true);
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.debugger.programConsole'].default, 'external');
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.debugger.revealOutputOnStart'].default, true);
+  assert.equal(Object.keys(manifest.contributes.configuration.properties).some(key => key.startsWith('pascalUnion.debugger.')), false);
   assert.ok(manifest.contributes.configuration.properties['pascalUnion.build.terminalSummary']);
   assert.equal(manifest.contributes.configuration.properties['pascalUnion.build.output.showErrors'].default, true);
   assert.equal(manifest.contributes.configuration.properties['pascalUnion.build.output.showWarnings'].default, true);
@@ -360,7 +295,6 @@ test('manifest keeps project commands out of the native Explorer and exposes the
   assert.equal(manifest.contributes.configuration.properties['pascalUnion.build.showStatusBar'].default, true);
   assert.ok(manifest.contributes.configuration.properties['pascalUnion.projectNavigator.enabled']);
   assert.ok(manifest.contributes.configuration.properties['pascalUnion.projectNavigator.contextMenus.enabled']);
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.debugger.shortcutMode'].default, 'visualStudio');
   assert.equal(manifest.contributes.configuration.properties['pascalUnion.run.buildBeforeRun'].default, 'ifOutdated');
   assert.equal(manifest.contributes.configuration.properties['pascalUnion.run.console'], undefined);
   assert.ok(manifest.contributes.debuggers.some(item => item.type === 'pascal-union-run'));
@@ -368,13 +302,12 @@ test('manifest keeps project commands out of the native Explorer and exposes the
     item.command === 'pascalUnion.run.stop' && item.enablement === 'pascalUnion.runInProgress'));
   assert.equal(manifest.contributes.commands.find(item =>
     item.command === 'pascalUnion.run.group').enablement, '!pascalUnion.executionBusy');
-  assert.equal(manifest.contributes.commands.find(item =>
-    item.command === 'pascalUnion.debug.buildAndDebugGroup').enablement, '!pascalUnion.executionBusy');
+  assert.equal(manifest.contributes.commands.some(item => item.command.startsWith('pascalUnion.debug.')), false);
   assert.ok(manifest.contributes.keybindings.some(item =>
     item.command === 'pascalUnion.run.stop' && item.key === 'shift+f5'));
   assert.match(source, /this\.statusItems\.stop\.command\s*=\s*this\.runInProgress[\s\S]*?'pascalUnion\.run\.stop'[\s\S]*?'workbench\.action\.debug\.stop'/);
-  assert.match(source, /if \(executionActive\) \{[\s\S]*?statusItems\.run\.hide\(\)[\s\S]*?statusItems\.debug\.hide\(\)[\s\S]*?statusItems\.stop\.show\(\)/);
-  assert.equal(manifest.contributes.configurationDefaults['debug.showInStatusBar'], 'never');
+  assert.match(source, /if \(executionActive\) \{[\s\S]*?statusItems\.run\.hide\(\)[\s\S]*?statusItems\.stop\.show\(\)/);
+  assert.equal(manifest.contributes.configurationDefaults['debug.showInStatusBar'], undefined);
   assert.ok(manifest.contributes.menus['view/title'].some(item => item.command === 'pascalUnion.projectNavigator.actions'
     && item.group === '1_projectActions@1'));
   assert.equal(manifest.contributes.menus['view/title'].some(item => item.command === 'pascalUnion.projectNavigator.actions'
@@ -409,7 +342,6 @@ test('manifest keeps project commands out of the native Explorer and exposes the
     && item.when.includes('pascalUnion.classNavigator.aiGenerating')));
   assert.equal(manifest.contributes.configuration.properties['pascalUnion.classNavigator.aiSteps.batch.delayMs'], undefined);
   assert.equal(manifest.contributes.configuration.properties['pascalUnion.classNavigator.aiSteps.batch.maxConsecutiveErrors'], undefined);
-  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.debug.buildAndDebugGroup').title, 'Debug');
   assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.build.buildPackage').title, 'Build');
   assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.build.compilePackage').title, 'Compile');
   assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.build.cleanPackage').title, 'Clean');

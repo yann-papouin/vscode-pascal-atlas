@@ -1,3 +1,3 @@
 {
-  "pascalUnion.description": "A complete Delphi/Object Pascal workspace for VS Code: cross-project symbols and implementation-first navigation, class and project explorers, DCP/BPL interface recovery, integrated formatting and diagnostics, plus command-line build, run, and native debugging without launching RAD Studio."
+  "pascalUnion.description": "A complete Delphi/Object Pascal workspace for VS Code: cross-project symbols and implementation-first navigation, class and project explorers, DCP/BPL interface recovery, integrated formatting and diagnostics, plus command-line build and run without launching RAD Studio."
 }

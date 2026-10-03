@@ -287,7 +287,7 @@ const SECTIONS = [
         options: ['auto', 'Win32', 'Win64'], optionLabels: ['Project default', 'Win32', 'Win64']
       },
       { key: 'build.saveBeforeBuild', label: 'Save target project files before building', type: 'boolean' },
-      { key: 'build.showStatusBar', label: 'Show Build All, Run, Debug, platform, and configuration in the status bar', type: 'boolean' },
+      { key: 'build.showStatusBar', label: 'Show Build All, Run, platform, and configuration in the status bar', type: 'boolean' },
       {
         key: 'run.buildBeforeRun', label: 'Build before Run', type: 'select',
         options: ['always', 'ifOutdated', 'never'], optionLabels: ['Always build', 'When missing or outdated', 'Never build']
@@ -303,40 +303,6 @@ const SECTIONS = [
     ]
   },
   {
-    title: 'Delphi debugger',
-    description: 'Uses the independent MIT Delphi DAP debugger for startup projects and loaded BPL/DLL modules.',
-    settings: [
-      { key: 'debugger.enabled', label: 'Enable Delphi debugging integration', type: 'boolean' },
-      { key: 'debugger.autoInstall', label: 'Automatically install Delphi Debugger', type: 'boolean' },
-      {
-        key: 'debugger.buildBeforeDebug', label: 'Build before debugging', type: 'select',
-        options: ['always', 'ifOutdated', 'never'], optionLabels: ['Always build', 'When missing or outdated', 'Never build']
-      },
-      {
-        key: 'debugger.shortcutMode', label: 'Debug and Run shortcut layout', type: 'select',
-        options: ['visualStudio', 'radStudio'], optionLabels: ['Visual Studio / VS Code', 'RAD Studio']
-      },
-      { key: 'debugger.loadGroupModules', label: 'Load symbols for every package in the group', type: 'boolean' },
-      { key: 'debugger.validateSymbols', label: 'Validate symbol files before debugging', type: 'boolean' },
-      { key: 'debugger.generateDetailedMap', label: 'Generate detailed MAP files for debug builds (recommended)', type: 'boolean' },
-      { key: 'debugger.stopAtEntry', label: 'Stop at program entry', type: 'boolean' },
-      {
-        key: 'debugger.programConsole', label: 'Debuggee output destination', type: 'select',
-        options: ['external', 'debugConsole'], optionLabels: ['External Windows console', 'VS Code Debug Console']
-      },
-      { key: 'debugger.revealOutputOnStart', label: 'Open the Debug Console when debugging starts', type: 'boolean' },
-      {
-        key: 'debugger.stepIsolation', label: 'Thread isolation while stepping', type: 'select',
-        options: ['auto', 'none'], optionLabels: ['Automatic isolation', 'RAD Studio style']
-      },
-      { key: 'debugger.stepIsolationReleaseMs', label: 'Thread release delay', type: 'number', unit: 'ms', min: -1, max: 60000, step: 100 }
-    ],
-    actions: [
-      { command: 'pascalUnion.dependencies.check', label: 'Check and install debugger', icon: '✓' },
-      { command: 'pascalUnion.debug.selectStartupProject', label: 'Select project-group startup project', icon: '▶' }
-    ]
-  },
-  {
     title: 'Delphi navigator · Project mode',
     description: 'Shares one Explorer view between class navigation and a Project/Package tree.',
     settings: [
@@ -349,7 +315,7 @@ const SECTIONS = [
       { key: 'projectNavigator.showDpr', label: 'Show DPR under Project', type: 'boolean' },
       { key: 'projectNavigator.showDpk', label: 'Show DPK under Package', type: 'boolean' },
       { key: 'projectNavigator.showDproj', label: 'Show DPROJ under Package', type: 'boolean' },
-      { key: 'projectNavigator.contextMenus.enabled', label: 'Show Project/Package build and debug context menus', type: 'boolean' }
+      { key: 'projectNavigator.contextMenus.enabled', label: 'Show Project/Package build and run context menus', type: 'boolean' }
     ],
     actions: [
       { command: 'pascalUnion.navigator.toggleMode', label: 'Switch class navigation / project', icon: '⇄' },

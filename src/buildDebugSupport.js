@@ -13,15 +13,11 @@ const {
   statSignature
 } = require('./delphiProjectModel');
 const { evaluateProjectProperties, readProjectInfo } = require('./diagnosticCore');
-const { debuggerNeedsBundledUpgrade, installRequiredExtension } = require('./dependencySupport');
 const { ProjectNavigatorProvider } = require('./projectNavigator');
 
-const STARTUP_KEY = 'pascalUnion.debug.groupStartupProjects';
-const HOST_KEY = 'pascalUnion.debug.packageHosts';
+const STARTUP_KEY = 'pascalUnion.run.groupStartupProjects';
 const SELECTION_KEY = 'pascalUnion.build.selections';
 const DETAILS_KEY = 'pascalUnion.delphiProjectDetails.v1';
-const DEBUGGER_ID = 'mca-software.delphi-debugger';
-const LEGACY_DEBUGGER_ID = 'local.delphi-win64-debug';
 // CSI 2 J clears the visible viewport; CSI 3 J also drops xterm's scrollback.
 // Both are needed when a filter changes, otherwise hidden lines remain visible
 // after the user scrolls upward even though the current viewport was redrawn.
@@ -351,19 +347,6 @@ class BuildTerminalSession {
   }
 }
 
-function debugOutputConfiguration(configuration, request = 'launch') {
-  const programConsole = configuration.get('debugger.programConsole', 'external');
-  const captureOutput = request === 'launch' && programConsole === 'debugConsole';
-  const externalConsole = request === 'launch' && programConsole === 'external';
-  return {
-    captureOutput,
-    externalConsole,
-    internalConsoleOptions: captureOutput && configuration.get('debugger.revealOutputOnStart', true)
-      ? 'openOnSessionStart'
-      : 'neverOpen'
-  };
-}
-
 function formatBuildDuration(milliseconds) {
   const seconds = Math.max(0, Math.round(milliseconds / 100) / 10);
   return `${seconds.toFixed(1)}s`;
@@ -386,17 +369,6 @@ function resolvedBuildSelection(projectPath, selection = {}) {
   }
 }
 
-function debugMsbuildProperties() {
-  return {
-    DCC_MapFile: 3,
-    DCC_Optimize: false,
-    DCC_GenerateStackFrames: true,
-    DCC_DebugInfoInExe: true,
-    DCC_LocalDebugSymbols: true,
-    DCC_SymbolReferenceInfo: 2
-  };
-}
-
 function appendMsbuildProperties(args, properties = {}) {
   for (const [name, value] of Object.entries(properties || {})) {
     if (value === undefined || value === null || value === '') continue;
@@ -413,24 +385,6 @@ function formalBuildEnvironment(environment = {}) {
   return result;
 }
 
-function supportsPlatform(project, platform) {
-  const mask = Number(project?.targetedPlatforms || project?.properties?.targetedplatforms || 0);
-  if (!mask || !platform || platform === 'auto') return true;
-  if (platform === 'Win32') return Boolean(mask & 1);
-  if (platform === 'Win64') return Boolean(mask & 2);
-  return true;
-}
-
-function compatiblePlatform(projects, requested) {
-  if (!requested || requested === 'auto' || projects.every(project => supportsPlatform(project, requested))) {
-    return requested || 'auto';
-  }
-  for (const candidate of ['Win32', 'Win64']) {
-    if (projects.every(project => supportsPlatform(project, candidate))) return candidate;
-  }
-  return requested;
-}
-
 function isInside(parent, candidate) {
   const relative = path.relative(parent, candidate);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
@@ -438,46 +392,6 @@ function isInside(parent, candidate) {
 
 function artifactTimestamp(descriptor) {
   try { return fs.statSync(descriptor.output).mtimeMs; } catch { return 0; }
-}
-
-function peMetadataFromBuffer(buffer) {
-  if (buffer.length < 64 || buffer.readUInt16LE(0) !== 0x5A4D) return undefined;
-  const pe = buffer.readUInt32LE(0x3C);
-  if (pe + 24 > buffer.length || buffer.toString('ascii', pe, pe + 4) !== 'PE\0\0') return undefined;
-  const machineValue = buffer.readUInt16LE(pe + 4);
-  const machine = machineValue === 0x014C ? 'Win32'
-    : machineValue === 0x8664 ? 'Win64'
-      : `0x${machineValue.toString(16)}`;
-  const sectionCount = buffer.readUInt16LE(pe + 6);
-  const optionalHeaderSize = buffer.readUInt16LE(pe + 20);
-  const sectionTable = pe + 24 + optionalHeaderSize;
-  const sections = [];
-  for (let index = 0; index < sectionCount; index += 1) {
-    const offset = sectionTable + index * 40;
-    if (offset + 40 > buffer.length) break;
-    sections.push(buffer.subarray(offset, offset + 8).toString('ascii').replace(/\0.*$/, ''));
-  }
-  return { machine, sections };
-}
-
-function readPeMetadata(filePath) {
-  try {
-    const buffer = Buffer.alloc(65536);
-    const handle = fs.openSync(filePath, 'r');
-    const count = fs.readSync(handle, buffer, 0, buffer.length, 0);
-    fs.closeSync(handle);
-    return peMetadataFromBuffer(buffer.subarray(0, count));
-  } catch {
-    return undefined;
-  }
-}
-
-function peMachine(filePath) {
-  return readPeMetadata(filePath)?.machine;
-}
-
-function hasEmbeddedTd32(filePath) {
-  return readPeMetadata(filePath)?.sections.some(section => section.toLowerCase() === '.debug') || false;
 }
 
 class BuildDebugSupport {
@@ -497,7 +411,6 @@ class BuildDebugSupport {
       build: vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 39),
       run: vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 38),
       stop: vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 38),
-      debug: vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 37),
       platform: vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 36),
       configuration: vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 35)
     };
@@ -506,8 +419,6 @@ class BuildDebugSupport {
     this.statusItems.run.name = 'Pascal Union Run';
     this.statusItems.run.command = 'pascalUnion.run.group';
     this.statusItems.stop.name = 'Pascal Union Stop';
-    this.statusItems.debug.name = 'Pascal Union Debug';
-    this.statusItems.debug.command = 'pascalUnion.debug.buildAndDebugGroup';
     this.statusItems.platform.name = 'Pascal Union Platform';
     this.statusItems.platform.command = 'pascalUnion.build.selectPlatform';
     this.statusItems.configuration.name = 'Pascal Union Build Configuration';
@@ -515,7 +426,6 @@ class BuildDebugSupport {
     this.buildInProgress = false;
     this.runInProgress = false;
     this.runLaunchInProgress = false;
-    this.debugLaunchInProgress = false;
     this.activeRunAdapter = undefined;
     this.activeRunSession = undefined;
     this.lastBuildResult = undefined;
@@ -554,9 +464,6 @@ class BuildDebugSupport {
       vscode.tasks.registerTaskProvider('pascal-union', {
         provideTasks: () => this.provideTasks(),
         resolveTask: () => undefined
-      }),
-      vscode.debug.registerDebugConfigurationProvider('delphi', {
-        provideDebugConfigurations: folder => this.provideDebugConfigurations(folder)
       }),
       vscode.debug.onDidStartDebugSession(session => {
         if (session.type === 'pascal-union-run') this.activeRunSession = session;
@@ -653,19 +560,6 @@ class BuildDebugSupport {
       : `Run the startup project in ${groupLabel} without attaching the debugger`;
     const debugActive = Boolean(vscode.debug.activeDebugSession
       && vscode.debug.activeDebugSession.type !== 'pascal-union-run');
-    this.statusItems.debug.command = debugActive
-      ? 'workbench.action.debug.stop'
-      : 'pascalUnion.debug.buildAndDebugGroup';
-    this.statusItems.debug.text = debugActive
-      ? '$(debug-stop) Stop'
-      : this.debugLaunchInProgress
-        ? '$(sync~spin) Starting'
-        : '$(debug-start) Debug';
-    this.statusItems.debug.tooltip = debugActive
-      ? 'Delphi debugging is running; click to stop (Shift+F5)'
-      : this.debugLaunchInProgress
-        ? 'Preparing Delphi debug session'
-        : `Start ${groupLabel} with the Delphi debugger`;
     const executionActive = this.runInProgress || debugActive;
     this.statusItems.stop.text = '$(debug-stop) Stop';
     this.statusItems.stop.command = this.runInProgress
@@ -680,19 +574,17 @@ class BuildDebugSupport {
     this.statusItems.configuration.tooltip = `Build configuration: ${resolved.configuration} (click to change)`;
     void vscode.commands.executeCommand('setContext', 'pascalUnion.runInProgress', this.runInProgress);
     void vscode.commands.executeCommand('setContext', 'pascalUnion.executionBusy', Boolean(
-      runActive || this.debugLaunchInProgress || vscode.debug.activeDebugSession
+      runActive || vscode.debug.activeDebugSession
     ));
     this.statusItems.build.show();
     this.statusItems.platform.show();
     this.statusItems.configuration.show();
     if (executionActive) {
       this.statusItems.run.hide();
-      this.statusItems.debug.hide();
       this.statusItems.stop.show();
     } else {
       this.statusItems.stop.hide();
       this.statusItems.run.show();
-      this.statusItems.debug.show();
     }
   }
 
@@ -713,10 +605,7 @@ class BuildDebugSupport {
     command('pascalUnion.build.toggleErrorsChecked', () => this.toggleBuildOutput('errors'));
     command('pascalUnion.build.toggleWarningsChecked', () => this.toggleBuildOutput('warnings'));
     command('pascalUnion.build.toggleOtherChecked', () => this.toggleBuildOutput('other'));
-    command('pascalUnion.debug.selectStartupProject', uri => this.selectStartupProjectForUri(uri, true));
-    command('pascalUnion.debug.debugPackage', uri => this.startDebugCommand(() => this.debugPackage(uri)));
-    command('pascalUnion.debug.attachPackage', uri => this.startDebugCommand(() => this.attachPackage(uri)));
-    command('pascalUnion.debug.buildAndDebugGroup', uri => this.startDebugCommand(() => this.buildAndDebugGroup(uri)));
+    command('pascalUnion.run.selectStartupProject', uri => this.selectStartupProjectForUri(uri, true));
     command('pascalUnion.run.group', uri => this.startRunCommand(uri));
     command('pascalUnion.run.stop', () => this.stopRun());
     command('pascalUnion.projectNavigator.actions', uri => this.showProjectActions(uri));
@@ -725,7 +614,6 @@ class BuildDebugSupport {
 
   executionBusyMessage() {
     if (this.runInProgress || this.runLaunchInProgress) return 'A Run process is starting or already running. Stop it first.';
-    if (this.debugLaunchInProgress) return 'A Debug session is already being prepared.';
     if (vscode.debug.activeDebugSession) return 'A Debug session is already running. Stop it first.';
     return '';
   }
@@ -739,19 +627,6 @@ class BuildDebugSupport {
       await this.runGroup(uri);
     } finally {
       this.runLaunchInProgress = false;
-      this.refreshStatusBar();
-    }
-  }
-
-  async startDebugCommand(action) {
-    const busy = this.executionBusyMessage();
-    if (busy) return void vscode.window.showInformationMessage(`Pascal Union：${busy}`);
-    this.debugLaunchInProgress = true;
-    this.refreshStatusBar();
-    try {
-      await action();
-    } finally {
-      this.debugLaunchInProgress = false;
       this.refreshStatusBar();
     }
   }
@@ -897,7 +772,6 @@ class BuildDebugSupport {
       { label: '$(run-all) Compile All', description: group.name, action: () => this.runGroupCommand('Make', group) },
       { label: '$(trash) Clean All', description: group.name, action: () => this.runGroupCommand('Clean', group) },
       { label: '$(run) Run', description: group.name, action: () => vscode.commands.executeCommand('pascalUnion.run.group', group) },
-      { label: '$(debug-start) Debug', description: group.name, action: () => vscode.commands.executeCommand('pascalUnion.debug.buildAndDebugGroup', group) },
       { label: '$(list-selection) Select Startup Project', description: group.name, action: () => this.selectStartupProject(group, true) },
       { label: '$(settings-gear) Select Build Configuration', description: group.name, action: () => this.selectBuildValue(vscode.Uri.file(group.groupDir), 'configuration') },
       { label: '$(symbol-enum) Select Build Platform', description: group.name, action: () => this.selectBuildValue(vscode.Uri.file(group.groupDir), 'platform') }
@@ -1244,26 +1118,6 @@ class BuildDebugSupport {
     }
   }
 
-  async ensureDebugger() {
-    const installedDebugger = vscode.extensions.getExtension(DEBUGGER_ID);
-    if (installedDebugger && !debuggerNeedsBundledUpgrade(installedDebugger)) return true;
-    if (!vscode.workspace.getConfiguration('pascalUnion').get('debugger.autoInstall', true)) {
-      void vscode.window.showErrorMessage('The Delphi Debugger extension is missing. Run "Check and Install Required Extensions" first.');
-      return false;
-    }
-    try {
-      await installRequiredExtension(
-        { id: DEBUGGER_ID, name: 'Delphi Debugger' },
-        this.output,
-        this.context.globalStorageUri.fsPath
-      );
-      void vscode.window.showInformationMessage('Delphi Debugger was installed or upgraded. Reload the window before debugging.');
-    } catch (error) {
-      void vscode.window.showErrorMessage(`Delphi Debugger installation failed: ${error.message}`);
-    }
-    return false;
-  }
-
   async detailedProject(projectPath, overrides = {}) {
     const tools = await this.tools();
     const minimal = this.model.project(projectPath);
@@ -1292,7 +1146,10 @@ class BuildDebugSupport {
       const existing = candidates.find(project => normalizeKey(project.projectPath) === normalizeKey(saved[key] || ''));
       if (existing) return existing;
     }
-    const picked = await vscode.window.showQuickPick(candidates.map(project => ({ label: project.name, description: project.projectPath, project })), { placeHolder: 'Select the startup project for this Project Group' });
+    const picked = await vscode.window.showQuickPick(
+      candidates.map(project => ({ label: project.name, description: project.projectPath, project })),
+      { placeHolder: 'Select the startup project for this Project Group' }
+    );
     if (!picked) return undefined;
     saved[key] = picked.project.projectPath;
     await this.context.workspaceState.update(STARTUP_KEY, saved);
@@ -1302,116 +1159,6 @@ class BuildDebugSupport {
   async selectStartupProjectForUri(uri, force) {
     const group = this.groupFromTarget(uri) || await this.pickGroup(uri?.fsPath || '');
     if (group) await this.selectStartupProject(group, force);
-  }
-
-  async packageHost(descriptor) {
-    if (descriptor.debugHost && fs.existsSync(descriptor.debugHost)) return descriptor.debugHost;
-    const saved = this.context.workspaceState.get(HOST_KEY, {});
-    const key = normalizeKey(descriptor.projectPath);
-    if (saved[key] && fs.existsSync(saved[key])) return saved[key];
-    const picked = await vscode.window.showOpenDialog({ canSelectMany: false, canSelectFiles: true, canSelectFolders: false, filters: { 'Windows executable': ['exe'] }, title: `Select a host program for ${descriptor.name}` });
-    if (!picked?.[0]) return undefined;
-    saved[key] = picked[0].fsPath;
-    await this.context.workspaceState.update(HOST_KEY, saved);
-    return picked[0].fsPath;
-  }
-
-  moduleFor(descriptor) {
-    return {
-      name: path.basename(descriptor.output),
-      ...(fs.existsSync(descriptor.mapFile) ? { map: descriptor.mapFile } : {}),
-      ...(fs.existsSync(descriptor.rsmFile) ? { rsm: descriptor.rsmFile } : {}),
-      ...(descriptor.dcpFile && fs.existsSync(descriptor.dcpFile) ? { dcp: descriptor.dcpFile } : {})
-    };
-  }
-
-  sourcePaths(descriptors) {
-    return uniquePaths(descriptors.flatMap(project => [
-      project.projectDir,
-      ...(project.references || []).map(path.dirname),
-      ...(project.searchPaths || [])
-    ])).filter(item => fs.existsSync(item));
-  }
-
-  debugConfiguration(program, descriptor, descriptors, modules, request = 'launch') {
-    const configuration = vscode.workspace.getConfiguration('pascalUnion');
-    const sourcePaths = this.sourcePaths(descriptors);
-    return {
-      type: 'delphi',
-      request,
-      name: `Pascal Union: ${descriptor.name}`,
-      program,
-      mapFile: request === 'launch' && descriptor.kind !== 'package' && fs.existsSync(descriptor.mapFile) ? descriptor.mapFile : undefined,
-      rsmFile: request === 'launch' && descriptor.kind !== 'package' && fs.existsSync(descriptor.rsmFile) ? descriptor.rsmFile : undefined,
-      sourceRoot: sourcePaths[0] || descriptor.projectDir,
-      sourceSearchPaths: sourcePaths.slice(1),
-      modules,
-      args: parseCommandLine(descriptor.runParams),
-      delphiProjectFile: descriptor.projectPath,
-      stopAtEntry: configuration.get('debugger.stopAtEntry', true),
-      stepIsolation: configuration.get('debugger.stepIsolation', 'auto'),
-      stepIsolationReleaseMs: configuration.get('debugger.stepIsolationReleaseMs', 3000),
-      ...debugOutputConfiguration(configuration, request),
-      diagnosticsLocation: 'outputChannel'
-    };
-  }
-
-  async confirmSymbols(descriptor, modules, program = descriptor.output, moduleDescriptors = []) {
-    if (!vscode.workspace.getConfiguration('pascalUnion').get('debugger.validateSymbols', true)) return true;
-    const missing = [];
-    if (!fs.existsSync(descriptor.output)) missing.push(descriptor.output);
-    if (program && !fs.existsSync(program)) missing.push(program);
-    if (descriptor.kind === 'application'
-      && !fs.existsSync(descriptor.mapFile)
-      && !fs.existsSync(descriptor.rsmFile)
-      && !hasEmbeddedTd32(descriptor.output)) {
-      missing.push(`${descriptor.name}: MAP/RSM/embedded TD32`);
-    }
-    const outputTime = artifactTimestamp(descriptor);
-    for (const symbol of [descriptor.mapFile, descriptor.rsmFile, descriptor.dcpFile].filter(item => item && fs.existsSync(item))) {
-      try { if (outputTime && fs.statSync(symbol).mtimeMs + 1000 < outputTime) missing.push(`${path.basename(symbol)} is outdated`); } catch {}
-    }
-    if (String(descriptor.properties?.dcc_optimize || '').toLowerCase() === 'true') missing.push(`${descriptor.name} has compiler optimization enabled`);
-    const programMachine = program && peMachine(program);
-    const moduleMachine = peMachine(descriptor.output);
-    if (programMachine && moduleMachine && programMachine !== moduleMachine) {
-      missing.push(`Host is ${programMachine}; ${descriptor.name} is ${moduleMachine}`);
-    }
-    for (const module of modules) {
-      const moduleDescriptor = moduleDescriptors.find(item => path.basename(item.output).toLowerCase() === module.name.toLowerCase());
-      if (!module.map && !module.rsm && !module.dcp && !hasEmbeddedTd32(moduleDescriptor?.output || '')) {
-        missing.push(`${module.name}: MAP/RSM/DCP/embedded TD32`);
-      }
-    }
-    if (!missing.length) return true;
-    const choice = await vscode.window.showWarningMessage(
-      `Debug information is incomplete: ${missing.slice(0, 4).join('; ')}${missing.length > 4 ? '…' : ''}`,
-      { modal: true },
-      'Continue Debugging',
-      'Open Project'
-    );
-    if (choice === 'Open Project') await vscode.window.showTextDocument(vscode.Uri.file(descriptor.projectPath));
-    return choice === 'Continue Debugging';
-  }
-
-  shouldBuildBeforeDebug(descriptors) {
-    const mode = vscode.workspace.getConfiguration('pascalUnion').get('debugger.buildBeforeDebug', 'ifOutdated');
-    if (mode === 'always') return true;
-    if (mode === 'never') return false;
-    return descriptors.some(descriptor => {
-      const outputTime = artifactTimestamp(descriptor);
-      if (!outputTime) return true;
-      if (vscode.workspace.getConfiguration('pascalUnion').get('debugger.generateDetailedMap', true)) {
-        try {
-          if (!descriptor.mapFile || fs.statSync(descriptor.mapFile).mtimeMs + 1000 < outputTime) return true;
-        } catch {
-          return true;
-        }
-      }
-      return uniquePaths([descriptor.projectPath, descriptor.mainSource, ...(descriptor.references || [])]).some(filePath => {
-        try { return fs.statSync(filePath).mtimeMs > outputTime; } catch { return false; }
-      });
-    });
   }
 
   shouldBuildBeforeRun(descriptors) {
@@ -1507,145 +1254,6 @@ class BuildDebugSupport {
     this.output.appendLine(`Run ${descriptor.name}: process exited with code ${exitCode}.`);
   }
 
-  async debugPackage(uri) {
-    if (!vscode.workspace.getConfiguration('pascalUnion').get('debugger.enabled', true)) {
-      return void vscode.window.showWarningMessage('The Pascal Union Delphi debugger is disabled in settings.');
-    }
-    if (!await this.ensureDebugger()) return;
-    const project = this.projectFromTarget(uri) || await this.pickPackage(uri?.fsPath || '');
-    if (!project) return;
-    const requestedPlatform = this.selection(project.projectDir, project).platform;
-    const platform = compatiblePlatform([project], requestedPlatform);
-    if (platform !== requestedPlatform) {
-      void vscode.window.showInformationMessage(`Pascal Union: ${project.name} does not support ${requestedPlatform}; debugging will use ${platform}.`);
-    }
-    const debugOverrides = {
-      configuration: 'Debug',
-      platform,
-      msbuildProperties: vscode.workspace.getConfiguration('pascalUnion').get('debugger.generateDetailedMap', true)
-        ? debugMsbuildProperties()
-        : undefined
-    };
-    let descriptor = await this.detailedProject(project.projectPath, debugOverrides);
-    if (this.shouldBuildBeforeDebug([descriptor])) {
-      const exitCode = await this.enqueue(() => this.buildProject(project, 'Make', debugOverrides));
-      if (exitCode !== 0) return;
-      descriptor = await this.detailedProject(project.projectPath, debugOverrides);
-    }
-    const host = await this.packageHost(descriptor);
-    if (!host) return;
-    const descriptors = [descriptor];
-    const group = this.groupForProject(project.projectPath);
-    if (group) {
-      for (const projectPath of group.projectPaths) {
-        if (normalizeKey(projectPath) === normalizeKey(project.projectPath)) continue;
-        try { descriptors.push(await this.detailedProject(projectPath, { configuration: 'Debug', platform: descriptor.platform })); }
-        catch {}
-      }
-    }
-    const modules = descriptors
-      .filter(item => ['package', 'library'].includes(item.kind) && fs.existsSync(item.output))
-      .map(item => this.moduleFor(item));
-    if (!modules.some(module => module.name.toLowerCase() === path.basename(descriptor.output).toLowerCase())) {
-      modules.unshift(this.moduleFor(descriptor));
-    }
-    if (!await this.confirmSymbols(descriptor, modules, host, descriptors)) return;
-    const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(project.projectPath));
-    const started = await vscode.debug.startDebugging(folder, this.debugConfiguration(host, descriptor, descriptors, modules));
-    if (!started) void vscode.window.showErrorMessage('Pascal Union: Could not start the Delphi debug session. See the "Delphi Debugger" output.');
-  }
-
-  async attachPackage(uri) {
-    if (!vscode.workspace.getConfiguration('pascalUnion').get('debugger.enabled', true)) {
-      return void vscode.window.showWarningMessage('The Pascal Union Delphi debugger is disabled in settings.');
-    }
-    if (!await this.ensureDebugger()) return;
-    const project = this.projectFromTarget(uri) || await this.pickPackage(uri?.fsPath || '');
-    if (!project) return;
-    const descriptor = await this.detailedProject(project.projectPath, { configuration: 'Debug' });
-    const host = await this.packageHost(descriptor);
-    if (!host) return;
-    const modules = [this.moduleFor(descriptor)];
-    if (!await this.confirmSymbols(descriptor, modules, host, [descriptor])) return;
-    const config = this.debugConfiguration(host, descriptor, [descriptor], modules, 'attach');
-    config.processName = path.basename(host);
-    config.processId = '${command:delphi-win64.pickProcess}';
-    delete config.args;
-    const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(project.projectPath));
-    await vscode.debug.startDebugging(folder, config);
-  }
-
-  async buildAndDebugGroup(uri) {
-    if (!vscode.workspace.getConfiguration('pascalUnion').get('debugger.enabled', true)) {
-      return void vscode.window.showWarningMessage('The Pascal Union Delphi debugger is disabled in settings.');
-    }
-    if (!await this.ensureDebugger()) return;
-    const group = this.groupFromTarget(uri) || await this.pickGroup(uri?.fsPath || '');
-    if (!group) return;
-    const startup = await this.selectStartupProject(group, false);
-    if (!startup) return;
-    const projects = group.projectPaths.map(projectPath => this.model.project(projectPath) || minimalProjectDescriptor(projectPath));
-    const requestedPlatform = this.selection(group.groupDir).platform;
-    const platform = compatiblePlatform(projects, requestedPlatform);
-    if (platform !== requestedPlatform) {
-      void vscode.window.showInformationMessage(`Pascal Union: This project group does not support ${requestedPlatform}; debugging will use ${platform}.`);
-    }
-    const debugOverrides = {
-      configuration: 'Debug',
-      platform,
-      msbuildProperties: vscode.workspace.getConfiguration('pascalUnion').get('debugger.generateDetailedMap', true)
-        ? debugMsbuildProperties()
-        : undefined
-    };
-    let descriptors = [];
-    for (const projectPath of group.projectPaths) {
-      try { descriptors.push(await this.detailedProject(projectPath, debugOverrides)); }
-      catch (error) { this.output.appendLine(`Debug project description failed (${projectPath}): ${error.message}`); }
-    }
-    if (this.shouldBuildBeforeDebug(descriptors)) {
-      const exitCode = await this.enqueue(() => this.buildGroup(group, 'Build', debugOverrides));
-      if (exitCode !== 0) return;
-      descriptors = [];
-      for (const projectPath of group.projectPaths) {
-        try { descriptors.push(await this.detailedProject(projectPath, debugOverrides)); }
-        catch (error) { this.output.appendLine(`Debug project description failed (${projectPath}): ${error.message}`); }
-      }
-    }
-    const descriptor = descriptors.find(item => normalizeKey(item.projectPath) === normalizeKey(startup.projectPath));
-    if (!descriptor || !fs.existsSync(descriptor.output)) {
-      return void vscode.window.showErrorMessage(`Startup project output does not exist: ${descriptor?.output || startup.projectPath}`);
-    }
-    const modules = vscode.workspace.getConfiguration('pascalUnion').get('debugger.loadGroupModules', true)
-      ? descriptors.filter(item => ['package', 'library'].includes(item.kind) && fs.existsSync(item.output)).map(item => this.moduleFor(item))
-      : [];
-    if (!await this.confirmSymbols(descriptor, modules, descriptor.output, descriptors)) return;
-    const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(group.groupPath));
-    this.output.appendLine(`Starting Delphi debugger: ${descriptor.output} (${descriptor.configuration}/${descriptor.platform}), modules=${modules.length}, map=${fs.existsSync(descriptor.mapFile) ? descriptor.mapFile : 'missing'}, rsm=${fs.existsSync(descriptor.rsmFile) ? descriptor.rsmFile : 'missing'}.`);
-    const started = await vscode.debug.startDebugging(folder, this.debugConfiguration(descriptor.output, descriptor, descriptors, modules));
-    if (!started) void vscode.window.showErrorMessage('Pascal Union: Could not start the Delphi debug session. See the "Delphi Debugger" output.');
-  }
-
-  async provideDebugConfigurations(folder) {
-    const groups = [...this.model.groups.values()].filter(group => !folder || isInside(folder.uri.fsPath, group.groupPath));
-    const result = [];
-    for (const group of groups) {
-      const descriptors = [];
-      for (const projectPath of group.projectPaths) {
-        try { descriptors.push(await this.detailedProject(projectPath, { configuration: 'Debug' })); }
-        catch {}
-      }
-      const modules = descriptors
-        .filter(item => ['package', 'library'].includes(item.kind) && fs.existsSync(item.output))
-        .map(item => this.moduleFor(item));
-      for (const descriptor of descriptors.filter(item => item.kind === 'application')) {
-        const config = this.debugConfiguration(descriptor.output, descriptor, descriptors, modules);
-        config.name = `Pascal Union: ${group.name} / ${descriptor.name}`;
-        result.push(config);
-      }
-    }
-    return result;
-  }
-
   async provideTasks() {
     const tools = await this.tools().catch(() => undefined);
     if (!tools) return [];
@@ -1675,32 +1283,20 @@ class BuildDebugSupport {
     return tasks;
   }
 
-  legacyDebuggerConflict() {
-    return Boolean(vscode.extensions.getExtension(DEBUGGER_ID) && vscode.extensions.getExtension(LEGACY_DEBUGGER_ID));
-  }
 }
 
 module.exports = {
   BuildTerminalSession,
   BuildDebugSupport,
-  DEBUGGER_ID,
   DETAILS_KEY,
-  HOST_KEY,
-  LEGACY_DEBUGGER_ID,
   SELECTION_KEY,
   STARTUP_KEY,
   artifactTimestamp,
   appendMsbuildProperties,
-  compatiblePlatform,
-  debugOutputConfiguration,
-  debugMsbuildProperties,
   formalBuildEnvironment,
   formatBuildDuration,
   buildOutputCategory,
   parseBuildDiagnosticLine,
   resolvedBuildSelection,
-  hasEmbeddedTd32,
-  peMetadataFromBuffer,
-  peMachine,
   parseCommandLine
 };

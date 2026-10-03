@@ -6,7 +6,7 @@ const PAGE_GROUPS = Object.freeze([
   { id: 'symbols', title: 'Navigation & Symbols', sections: ['Symbol coloring', 'Navigation and interfaces', 'Class and routine navigator', 'AI routine steps', 'Completion and package symbols'] },
   { id: 'formatting', title: 'Formatting', sections: ['Code formatting', 'Formatting style'] },
   { id: 'projects', title: 'Projects & Files', sections: ['Delphi navigator · Project mode', 'Projects and search paths'] },
-  { id: 'build', title: 'Build & Debug', sections: ['Build and run', 'Delphi debugger'] },
+  { id: 'build', title: 'Build & Debug', sections: ['Build and run'] },
   { id: 'diagnostics', title: 'Diagnostics', sections: ['Background diagnostics'] }
 ]);
 

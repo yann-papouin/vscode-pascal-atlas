@@ -30,14 +30,11 @@ const WEBVIEW_CONTEXT_COMMANDS = [
   ['buildPackage', 'pascalUnion.build.buildPackage'],
   ['compilePackage', 'pascalUnion.build.compilePackage'],
   ['cleanPackage', 'pascalUnion.build.cleanPackage'],
-  ['debugPackage', 'pascalUnion.debug.debugPackage'],
-  ['attachPackage', 'pascalUnion.debug.attachPackage'],
   ['buildGroup', 'pascalUnion.build.buildGroup'],
   ['compileGroup', 'pascalUnion.build.compileGroup'],
   ['cleanGroup', 'pascalUnion.build.cleanGroup'],
   ['runGroup', 'pascalUnion.run.group'],
-  ['debugGroup', 'pascalUnion.debug.buildAndDebugGroup'],
-  ['selectStartupProject', 'pascalUnion.debug.selectStartupProject'],
+  ['selectStartupProject', 'pascalUnion.run.selectStartupProject'],
   ['selectConfiguration', 'pascalUnion.build.selectConfiguration'],
   ['selectPlatform', 'pascalUnion.build.selectPlatform']
 ];

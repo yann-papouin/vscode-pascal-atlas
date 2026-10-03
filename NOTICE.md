@@ -17,10 +17,6 @@ installation.
 Users are responsible for ensuring that they have permission to inspect any DCP/BPL files
 processed by the optional compiled-symbol feature.
 
-The bundled `mca-software.delphi-debugger` compatibility build is derived from
-`csm101/delphi-visual-studio-code-debugger` and remains available under its MIT License.
-Pascal Union's compatibility patch adds opt-in stdout/stderr capture for launched console
-programs; the original copyright and license are retained inside the bundled VSIX.
 
 The bundled Codicon font is from Microsoft's `microsoft/vscode-codicons` project and is
 used to give the Delphi navigator the same default icon language as Visual Studio Code.

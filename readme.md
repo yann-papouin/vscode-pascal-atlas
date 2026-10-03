@@ -4,9 +4,9 @@
 
 ## English
 
-A VS Code workspace suite for **Delphi / Object Pascal** that brings cross-project symbols, structural navigation, project-group management, build/run, native debugging, formatting, and diagnostics into one consistent experience.
+A VS Code workspace suite for **Delphi / Object Pascal** that brings cross-project symbols, structural navigation, project-group management, build/run, formatting, and diagnostics into one consistent experience.
 
-Pascal Union is designed for real Delphi workspaces made up of `.groupproj`, `.dproj`, `.dpk`, `.dpr`, and large collections of `.pas` files. It works alongside Vallenta Studio and fills important gaps around cross-package symbols, compiled-package interfaces, project navigation, and command-line build/debug workflows.
+Pascal Union is designed for real Delphi workspaces made up of `.groupproj`, `.dproj`, `.dpk`, `.dpr`, and large collections of `.pas` files. It works alongside Vallenta Studio and fills important gaps around cross-package symbols, compiled-package interfaces, project navigation, and command-line build/run workflows.
 
 ### Key features
 
@@ -47,7 +47,7 @@ The class navigator focuses on structure rather than ordinary fields and local v
 - Editor clicks and scrolling follow the active item and mark its source range in the line-number gutter.
 - Multiple `uses` blocks plus Unit `initialization` and `finalization` sections are independently navigable.
 
-Project and Package nodes use distinct icons. Package nodes offer Build, Compile, Clean, Debug, and Attach actions; Project nodes offer Build All, Compile All, Clean All, Run, and Debug. Group actions are also available from the view title's `...` menu, while file nodes open directly in the editor.
+Project and Package nodes use distinct icons. Package nodes offer Build, Compile, and Clean actions; Project nodes offer Build All, Compile All, Clean All, and Run. Group actions are also available from the view title's `...` menu, while file nodes open directly in the editor.
 
 #### AI routine steps
 
@@ -61,21 +61,17 @@ The navigator can call an installed OAI Compatible Copilot through the VS Code L
 
 AI analysis runs only when explicitly requested and can be disabled completely.
 
-#### Project-group build, run, and native debugging
+#### Project-group build and run
 
 Pascal Union uses the installed Delphi command-line toolchain directly. It does not start RAD Studio or run `bds.exe`.
 
-- Package commands: Build, Compile, Clean, Debug, and Attach to Package Host.
-- Project Group commands: Build All, Compile All, Clean All, Run, and Debug.
-- Selectable startup project, Debug/Release configuration, and Win32/Win64 platform.
-- Optional status-bar actions for Build All, Run, Debug, platform, and configuration.
+- Package commands: Build, Compile, and Clean.
+- Project Group commands: Build All, Compile All, Clean All, and Run.
+- Selectable startup project, Debug/Release configuration, and Win32/Win64 platform for Pascal Union Run and build commands.
+- Optional status-bar actions for Build All, Run, platform, and configuration.
 - Concise build summaries with aligned `[ERROR]` / `[WARN]` diagnostics, also published to Problems.
 - Run does not attach a debugger and redirects standard output, standard error, and the exit result to the VS Code Debug Console.
-- Visual Studio and RAD Studio debug keybinding layouts are both supported.
-
-Native debugging is provided by the MIT-licensed `mca-software.delphi-debugger`. Pascal Union builds a dynamic configuration from `.dproj/.groupproj`, collects EXE/BPL/DLL and MAP/RSM/DCP artifacts, and supplies source search paths. No handwritten `launch.json` or DDK is required.
-
-Breakpoints in BPL/DLL modules that have not loaded yet remain unverified and can activate after the module enters the process and its symbols become available.
+- Delphi debugging remains available through Vallenta Studio.
 
 #### Integrated Delphi Formatter
 
@@ -106,7 +102,7 @@ When the default syntax standard is enabled, its detailed options reflect the bu
 2. Open a Delphi workspace containing a `.groupproj`, `.dproj`, or `.dpk`.
 3. Pascal Union discovers the project group, synchronizes search paths, and analyzes the active Pascal file first.
 4. Use **Delphi Navigator** in Explorer for class navigation or switch it to Project view.
-5. Ctrl+Click to navigate, or right-click a Project/Package node to build, run, or debug.
+5. Ctrl+Click to navigate, or use the Project/Package context menu to build or run. Use Vallenta Studio for Delphi debugging.
 6. Open **Pascal Union → Features and Settings** from the Activity Bar to configure each feature page.
 
 ### Settings
@@ -123,7 +119,7 @@ Every major capability has an independent switch. The symbol palette can be rese
 - `ms-vscode.cpptools`, currently retained as a Vallenta/LSP companion;
 - a licensed local RAD Studio/Delphi toolchain for formatting, compiling, debugging, or compiled-package recovery.
 
-When dependency auto-installation is enabled, Pascal Union checks Vallenta Studio, C/C++, and Delphi Debugger. The separate **Pascal Formatter** and **Pascal** extensions are not required; enabling multiple Pascal language extensions may register duplicate completion or navigation providers.
+When dependency auto-installation is enabled, Pascal Union checks Vallenta Studio and C/C++. The separate **Pascal Formatter** and **Pascal** extensions are not required; enabling multiple Pascal language extensions may register duplicate completion or navigation providers.
 
 ### Privacy and independence
 

@@ -3,19 +3,8 @@
 const vscode = require('vscode');
 const fs = require('node:fs');
 const path = require('node:path');
-const os = require('node:os');
-const https = require('node:https');
-const { createHash } = require('node:crypto');
 const { findFormatterExecutable } = require('./formatter/formatterSupport');
 const { patchVallentaManifest } = require('./vallentaMenuSupport');
-
-const BUNDLED_DEBUGGER_VERSION = '0.7.2';
-const BUNDLED_DEBUGGER_ASSET = path.join(
-  __dirname,
-  '..',
-  'resources',
-  `mca-software.delphi-debugger-${BUNDLED_DEBUGGER_VERSION}.vsixdata`
-);
 
 const REQUIRED_EXTENSIONS = [
   {
@@ -27,20 +16,10 @@ const REQUIRED_EXTENSIONS = [
     id: 'ms-vscode.cpptools',
     name: 'Microsoft C/C++',
     reason: 'A debugging prerequisite declared by Vallenta Studio.'
-  },
-  {
-    id: 'mca-software.delphi-debugger',
-    name: 'Delphi Debugger',
-    reason: 'Provides native Delphi Win32/Win64 debugging for Pascal Union.'
   }
 ];
 
 const REDUNDANT_EXTENSIONS = [
-  {
-    id: 'local.delphi-win64-debug',
-    name: 'Delphi Debugger (legacy local installation)',
-    reason: 'Registers the same debug type as the Marketplace version, mca-software.delphi-debugger, so both cannot be enabled at once.'
-  },
   {
     id: 'local.pascal-on-type-formatter',
     name: 'Delphi Personal Formatter',
@@ -63,105 +42,8 @@ function extensionInstalled(id) {
   return vscode.extensions.all.some(extension => extension.id.toLowerCase() === wanted);
 }
 
-function versionParts(version) {
-  return String(version || '').split('.').map(part => Number.parseInt(part, 10) || 0);
-}
-
-function versionLessThan(actual, required) {
-  const left = versionParts(actual);
-  const right = versionParts(required);
-  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
-    if ((left[index] || 0) !== (right[index] || 0)) {
-      return (left[index] || 0) < (right[index] || 0);
-    }
-  }
-  return false;
-}
-
-function debuggerNeedsBundledUpgrade(extension = vscode.extensions.getExtension('mca-software.delphi-debugger')) {
-  return Boolean(extension && versionLessThan(extension.packageJSON?.version, BUNDLED_DEBUGGER_VERSION));
-}
-
-async function installBundledDebugger(output) {
-  if (!fs.existsSync(BUNDLED_DEBUGGER_ASSET)) return false;
-  const directory = path.join(os.tmpdir(), 'pascal-union-dependencies');
-  await fs.promises.mkdir(directory, { recursive: true });
-  const target = path.join(directory, `mca-software.delphi-debugger-${BUNDLED_DEBUGGER_VERSION}.vsix`);
-  await fs.promises.copyFile(BUNDLED_DEBUGGER_ASSET, target);
-  output.appendLine(`Installing bundled Delphi Debugger ${BUNDLED_DEBUGGER_VERSION} with selectable external-console or Debug Console output.`);
-  await vscode.commands.executeCommand(
-    'workbench.extensions.installExtension',
-    vscode.Uri.file(target),
-    { enable: true }
-  );
-  return true;
-}
-
-function httpsBuffer(url, redirects = 5) {
-  return new Promise((resolve, reject) => {
-    const request = https.get(url, { headers: { 'User-Agent': 'Pascal-Union' } }, response => {
-      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location && redirects > 0) {
-        response.resume();
-        return void httpsBuffer(new URL(response.headers.location, url).toString(), redirects - 1).then(resolve, reject);
-      }
-      if (response.statusCode !== 200) {
-        response.resume();
-        return reject(new Error(`HTTP ${response.statusCode} for ${url}`));
-      }
-      const chunks = [];
-      let size = 0;
-      response.on('data', chunk => {
-        size += chunk.length;
-        if (size > 32 * 1024 * 1024) request.destroy(new Error('Debugger download exceeded 32 MB.'));
-        else chunks.push(chunk);
-      });
-      response.on('end', () => resolve(Buffer.concat(chunks)));
-      response.on('error', reject);
-    });
-    request.setTimeout(30000, () => request.destroy(new Error('Debugger download timed out.')));
-    request.on('error', reject);
-  });
-}
-
-async function githubDebuggerAsset() {
-  const releases = JSON.parse((await httpsBuffer(
-    'https://api.github.com/repos/csm101/delphi-visual-studio-code-debugger/releases?per_page=10'
-  )).toString('utf8'));
-  for (const release of releases) {
-    const asset = (release.assets || []).find(item => /^mca-software\.delphi-debugger-.*\.vsix$/i.test(item.name));
-    if (asset) return asset;
-  }
-  throw new Error('No installable Delphi Debugger VSIX was found in GitHub Releases.');
-}
-
-async function installDebuggerFromGithub(output, storageRoot) {
-  const asset = await githubDebuggerAsset();
-  const data = await httpsBuffer(asset.browser_download_url);
-  if (asset.digest?.startsWith('sha256:')) {
-    const actual = createHash('sha256').update(data).digest('hex');
-    const expected = asset.digest.slice('sha256:'.length).toLowerCase();
-    if (actual !== expected) throw new Error('Delphi Debugger VSIX SHA-256 verification failed.');
-  }
-  const directory = path.join(storageRoot, 'dependencies');
-  await fs.promises.mkdir(directory, { recursive: true });
-  const target = path.join(directory, path.basename(asset.name));
-  await fs.promises.writeFile(target, data);
-  output.appendLine(`Installing Delphi Debugger from verified GitHub release asset: ${asset.browser_download_url}`);
-  await vscode.commands.executeCommand('workbench.extensions.installExtension', vscode.Uri.file(target), { enable: true });
-  return target;
-}
-
-async function installRequiredExtension(extension, output, storageRoot) {
-  if (extension.id.toLowerCase() === 'mca-software.delphi-debugger'
-    && await installBundledDebugger(output)) return;
-  try {
-    await vscode.commands.executeCommand('workbench.extensions.installExtension', extension.id, { enable: true });
-    return;
-  } catch (marketplaceError) {
-    if (extension.id.toLowerCase() !== 'mca-software.delphi-debugger') throw marketplaceError;
-    output.appendLine(`Marketplace install unavailable for ${extension.id}; trying its GitHub release VSIX.`);
-    await installDebuggerFromGithub(output, storageRoot);
-  }
+async function installRequiredExtension(extension) {
+  await vscode.commands.executeCommand('workbench.extensions.installExtension', extension.id, { enable: true });
 }
 
 async function checkDependencies(output, options = {}) {
@@ -176,31 +58,11 @@ async function checkDependencies(output, options = {}) {
     if (!autoInstall) continue;
     output.appendLine(`Installing required extension ${extension.id}: ${extension.reason}.`);
     try {
-      await installRequiredExtension(
-        extension,
-        output,
-        options.storageRoot || path.join(os.tmpdir(), 'pascal-union-dependencies')
-      );
+      await installRequiredExtension(extension);
       installed.push(extension);
     } catch (error) {
       failed.push({ extension, error });
       output.appendLine(`Required extension installation failed for ${extension.id}: ${error.message}`);
-    }
-  }
-
-  const debuggerExtension = vscode.extensions.getExtension('mca-software.delphi-debugger');
-  if (autoInstall && debuggerNeedsBundledUpgrade(debuggerExtension)) {
-    const extension = REQUIRED_EXTENSIONS.find(item => item.id.toLowerCase() === 'mca-software.delphi-debugger');
-    output.appendLine(
-      `Upgrading Delphi Debugger ${debuggerExtension.packageJSON?.version || 'unknown'} `
-      + `to bundled ${BUNDLED_DEBUGGER_VERSION} for selectable debuggee console output.`
-    );
-    try {
-      await installRequiredExtension(extension, output, options.storageRoot);
-      installed.push(extension);
-    } catch (error) {
-      failed.push({ extension, error });
-      output.appendLine(`Delphi Debugger bundled upgrade failed: ${error.message}`);
     }
   }
 
@@ -249,9 +111,9 @@ async function checkDependencies(output, options = {}) {
 function registerDependencySupport(context, output) {
   context.subscriptions.push(vscode.commands.registerCommand(
     'pascalUnion.dependencies.check',
-    () => checkDependencies(output, { notify: true, storageRoot: context.globalStorageUri.fsPath })
+    () => checkDependencies(output, { notify: true })
   ));
-  void checkDependencies(output, { storageRoot: context.globalStorageUri.fsPath }).catch(error => {
+  void checkDependencies(output).catch(error => {
     output.appendLine(`Dependency check failed: ${error.stack || error.message}`);
   });
   const hideEditorContextMenus = vscode.workspace.getConfiguration('pascalUnion.navigation')
@@ -275,15 +137,9 @@ function registerDependencySupport(context, output) {
 }
 
 module.exports = {
-  BUNDLED_DEBUGGER_ASSET,
-  BUNDLED_DEBUGGER_VERSION,
   REDUNDANT_EXTENSIONS,
   REQUIRED_EXTENSIONS,
   checkDependencies,
-  debuggerNeedsBundledUpgrade,
-  installBundledDebugger,
-  installDebuggerFromGithub,
   installRequiredExtension,
-  registerDependencySupport,
-  versionLessThan
+  registerDependencySupport
 };
