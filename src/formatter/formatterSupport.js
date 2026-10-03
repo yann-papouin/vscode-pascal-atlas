@@ -60,28 +60,28 @@ async function saveStyleProfile(output) {
     usingDefault
   );
   const uri = await vscode.window.showSaveDialog({
-    title: "保存 Pascal Union 自定义格式化规范",
+    title: "Save Pascal Union Formatting Profile",
     defaultUri: vscode.Uri.file(path.join(os.homedir(), "PascalUnionFormatterStyle.json")),
-    filters: { "Pascal Union 格式化规范": ["json"] },
-    saveLabel: "保存规范"
+    filters: { "Pascal Union Formatting Profile": ["json"] },
+    saveLabel: "Save Profile"
   });
   if (!uri) return;
   await fs.promises.writeFile(uri.fsPath, `${JSON.stringify(profile, null, 2)}\n`, "utf8");
   output.info(`Saved formatter style profile to ${uri.fsPath}.`);
   const message = usingDefault
-    ? "已将默认规范保存为可编辑的自定义规范文件。"
-    : "已保存当前自定义格式化规范。";
+    ? "The default profile was saved as an editable custom profile."
+    : "The current custom formatting profile was saved.";
   void vscode.window.showInformationMessage(message);
 }
 
 async function loadStyleProfile(output) {
   const uris = await vscode.window.showOpenDialog({
-    title: "加载 Pascal Union 自定义格式化规范",
+    title: "Load Pascal Union Formatting Profile",
     canSelectFiles: true,
     canSelectFolders: false,
     canSelectMany: false,
-    filters: { "Pascal Union 格式化规范": ["json"] },
-    openLabel: "加载规范"
+    filters: { "Pascal Union Formatting Profile": ["json"] },
+    openLabel: "Load Profile"
   });
   if (!uris?.length) return;
   const values = parseStyleProfile(await fs.promises.readFile(uris[0].fsPath, "utf8"));
@@ -94,7 +94,7 @@ async function loadStyleProfile(output) {
   }
   await configuration.update("style.useDefault", false, target);
   output.info(`Loaded formatter style profile from ${uris[0].fsPath}.`);
-  void vscode.window.showInformationMessage("已加载自定义格式化规范，并切换到自定义规范。");
+  void vscode.window.showInformationMessage("Custom formatting profile loaded and enabled.");
 }
 
 function isPascal(document) {
@@ -178,7 +178,7 @@ function runFormatter(executable, args, workingDirectory, cancellationToken) {
 async function formatDocument(context, document, cancellationToken, output) {
   const executable = findFormatterExecutable(document);
   if (!executable || !fs.existsSync(executable)) {
-    const message = "未找到 Embarcadero Formatter.exe，请配置 pascalUnion.formatter.executablePath。";
+    const message = "Embarcadero Formatter.exe was not found. Configure pascalUnion.formatter.executablePath.";
     output.error(message);
     void vscode.window.showErrorMessage(message, "Open Settings").then((choice) => {
       if (choice === "Open Settings") {
@@ -621,7 +621,7 @@ function registerFormatter(context) {
         await saveStyleProfile(output);
       } catch (error) {
         output.error(error);
-        void vscode.window.showErrorMessage(`保存格式化规范失败：${error.message ?? error}`);
+        void vscode.window.showErrorMessage(`Failed to save formatting profile: ${error.message ?? error}`);
       }
     }),
     vscode.commands.registerCommand("pascalUnion.formatter.style.load", async () => {
@@ -629,7 +629,7 @@ function registerFormatter(context) {
         await loadStyleProfile(output);
       } catch (error) {
         output.error(error);
-        void vscode.window.showErrorMessage(`加载格式化规范失败：${error.message ?? error}`);
+        void vscode.window.showErrorMessage(`Failed to load formatting profile: ${error.message ?? error}`);
       }
     }),
     vscode.languages.registerDocumentFormattingEditProvider(SELECTOR, {

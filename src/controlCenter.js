@@ -10,258 +10,258 @@ const { languageCode, localizedPages, sectionsWithPages } = require('./controlCe
 
 const SECTIONS = [
   {
-    title: '界面与语言',
-    description: '控制 Pascal Union 设置页面使用的界面语言。',
+    title: 'Interface language',
+    description: 'Controls the language used by Pascal Union settings pages.',
     settings: [
       {
-        key: 'ui.language', label: '配置语言', type: 'select', target: 'global', defaultValue: 'zh-CN',
-        options: ['zh-CN', 'en'], optionLabels: ['简体中文（默认）', '英文']
+        key: 'ui.language', label: 'Settings language', type: 'select', target: 'global', defaultValue: 'en',
+        options: ['en'], optionLabels: ['English']
       }
     ]
   },
   {
-    title: '总开关',
-    description: '统一控制辅助扩展；关闭后保留 Vallenta 自身能力。',
+    title: 'Master switch',
+    description: 'Controls all Pascal Union companion features. Vallenta remains available when this is disabled.',
     settings: [
-      { key: 'enabled', label: '启用 Pascal Union', type: 'boolean' }
+      { key: 'enabled', label: 'Enable Pascal Union', type: 'boolean' }
     ]
   },
   {
-    title: '依赖与兼容',
-    description: '确保 Vallenta Studio 与调试基础依赖齐全；旧 Formatter 和重复 Pascal 提供器不属于必要依赖。',
+    title: 'Dependencies and compatibility',
+    description: 'Keeps Vallenta Studio and debugging prerequisites available; legacy formatter and duplicate Pascal providers are not required.',
     settings: [
-      { key: 'dependencies.autoInstall', label: '自动安装缺失的必要扩展', type: 'boolean' }
+      { key: 'dependencies.autoInstall', label: 'Automatically install missing required extensions', type: 'boolean' }
     ],
     actions: [
-      { command: 'pascalUnion.dependencies.check', label: '立即检查扩展环境', icon: '✓' }
+      { command: 'pascalUnion.dependencies.check', label: 'Check extension environment', icon: '✓' }
     ]
   },
   {
-    title: '文件编码',
-    description: '新建 Delphi 文件默认 GB2312，其他文件默认 UTF-8；.pas 无法明确识别为 UTF-8/GB2312 时回退 GB2312。',
+    title: 'File encoding',
+    description: 'New Delphi files default to GB2312 and other files to UTF-8; ambiguous Pascal files fall back to GB2312.',
     settings: [
-      { key: 'encoding.enabled', label: '启用文件编码策略', type: 'boolean' },
+      { key: 'encoding.enabled', label: 'Enable file encoding policy', type: 'boolean' },
       {
-        key: 'encoding.delphiDefault', label: 'Delphi 新文件与识别失败时', type: 'select', target: 'global',
+        key: 'encoding.delphiDefault', label: 'New or ambiguous Delphi files', type: 'select', target: 'global',
         options: ['gb2312', 'gbk', 'utf8', 'utf8bom'],
-        optionLabels: ['GB2312（默认）', 'GBK', 'UTF-8', 'UTF-8 with BOM']
+        optionLabels: ['GB2312 (default)', 'GBK', 'UTF-8', 'UTF-8 with BOM']
       },
       {
-        key: 'encoding.otherDefault', label: '其他新文件与识别失败时', type: 'select', target: 'global',
+        key: 'encoding.otherDefault', label: 'New or ambiguous non-Delphi files', type: 'select', target: 'global',
         options: ['utf8', 'utf8bom', 'gb2312', 'gbk'],
-        optionLabels: ['UTF-8（默认）', 'UTF-8 with BOM', 'GB2312', 'GBK']
+        optionLabels: ['UTF-8 (default)', 'UTF-8 with BOM', 'GB2312', 'GBK']
       },
-      { key: 'encoding.detectExisting', label: '读取时自动识别并保留原编码', type: 'boolean' },
-      { key: 'encoding.respectDprojDeclaration', label: '优先采用 DPROJ 的 XML 编码声明', type: 'boolean' }
+      { key: 'encoding.detectExisting', label: 'Detect and preserve existing file encoding', type: 'boolean' },
+      { key: 'encoding.respectDprojDeclaration', label: 'Prefer the DPROJ XML encoding declaration', type: 'boolean' }
     ]
   },
   {
-    title: '符号着色',
-    description: '优先分析当前文件，并合并所有已加载工程、源码和包符号。',
+    title: 'Symbol coloring',
+    description: 'Analyzes the active file first and merges symbols from every loaded project, source tree, and package.',
     settings: [
-      { key: 'coloring.enabled', label: 'Pascal Union 符号着色', type: 'boolean' },
-      { key: 'coloring.typingDelayMs', label: '当前文件输入延迟', type: 'number', unit: 'ms', min: 0, max: 3000, step: 10 },
-      { key: 'coloring.inactiveEditorDelayMs', label: '非活动编辑器延迟', type: 'number', unit: 'ms', min: 0, max: 5000, step: 50 },
-      { key: 'coloring.persistedCache.enabled', label: '跨窗口保留最近文件着色', type: 'boolean' },
-      { key: 'coloring.colors.useDefault', label: '使用主题默认语义颜色', type: 'boolean', group: '颜色方案' },
-      { key: 'coloring.colors.unit', label: 'Unit 名称', type: 'color', colorRule: true, defaultValue: '#4EC9B0' },
-      { key: 'coloring.colors.type', label: '类型与接口', type: 'color', colorRule: true, defaultValue: '#4EC9B0' },
-      { key: 'coloring.colors.variable', label: '变量与字段', type: 'color', colorRule: true, defaultValue: '#9CDCFE' },
-      { key: 'coloring.colors.constant', label: '常量', type: 'color', colorRule: true, defaultValue: '#4FC1FF' },
-      { key: 'coloring.colors.enumMember', label: '枚举成员', type: 'color', colorRule: true, defaultValue: '#4FC1FF' },
-      { key: 'coloring.colors.property', label: '属性', type: 'color', colorRule: true, defaultValue: '#9CDCFE' },
-      { key: 'coloring.colors.method', label: '函数与过程', type: 'color', colorRule: true, defaultValue: '#DCDCAA' }
+      { key: 'coloring.enabled', label: 'Pascal Union symbol coloring', type: 'boolean' },
+      { key: 'coloring.typingDelayMs', label: 'Active-file typing delay', type: 'number', unit: 'ms', min: 0, max: 3000, step: 10 },
+      { key: 'coloring.inactiveEditorDelayMs', label: 'Inactive-editor delay', type: 'number', unit: 'ms', min: 0, max: 5000, step: 50 },
+      { key: 'coloring.persistedCache.enabled', label: 'Preserve recent file coloring across windows', type: 'boolean' },
+      { key: 'coloring.colors.useDefault', label: 'Use theme semantic colors', type: 'boolean', group: 'Color palette' },
+      { key: 'coloring.colors.unit', label: 'Unit names', type: 'color', colorRule: true, defaultValue: '#4EC9B0' },
+      { key: 'coloring.colors.type', label: 'Types and interfaces', type: 'color', colorRule: true, defaultValue: '#4EC9B0' },
+      { key: 'coloring.colors.variable', label: 'Variables and fields', type: 'color', colorRule: true, defaultValue: '#9CDCFE' },
+      { key: 'coloring.colors.constant', label: 'Constants', type: 'color', colorRule: true, defaultValue: '#4FC1FF' },
+      { key: 'coloring.colors.enumMember', label: 'Enum members', type: 'color', colorRule: true, defaultValue: '#4FC1FF' },
+      { key: 'coloring.colors.property', label: 'Properties', type: 'color', colorRule: true, defaultValue: '#9CDCFE' },
+      { key: 'coloring.colors.method', label: 'Functions and procedures', type: 'color', colorRule: true, defaultValue: '#DCDCAA' }
     ],
     actions: [
-      { command: 'pascalUnion.coloring.colors.reset', label: '一键恢复默认颜色', icon: '↺' }
+      { command: 'pascalUnion.coloring.colors.reset', label: 'Reset default colors', icon: '↺' }
     ]
   },
   {
-    title: '跳转与接口',
-    description: '源码函数优先实现；无源码符号可打开从 BPL 恢复的注释式接口。',
+    title: 'Navigation and interfaces',
+    description: 'Source routines prefer implementations; symbols without source can open generated interfaces recovered from packages.',
     settings: [
-      { key: 'navigation.enabled', label: 'Pascal Union 增强跳转', type: 'boolean' },
-      { key: 'navigation.preferImplementation', label: '函数优先跳到实现', type: 'boolean' },
-      { key: 'navigation.singleTargetByDefault', label: '普通跳转只取最佳目标', type: 'boolean' },
-      { key: 'navigation.selectTargetOnJump', label: '跳转后选中目标标识符（可能短暂反色）', type: 'boolean' },
+      { key: 'navigation.enabled', label: 'Enhanced Pascal Union navigation', type: 'boolean' },
+      { key: 'navigation.preferImplementation', label: 'Prefer routine implementations', type: 'boolean' },
+      { key: 'navigation.singleTargetByDefault', label: 'Use only the best target for normal navigation', type: 'boolean' },
+      { key: 'navigation.selectTargetOnJump', label: 'Select the target identifier after navigation (may flash)', type: 'boolean' },
       {
-        key: 'navigation.candidatePickerShortcut', label: '全部候选快捷键', type: 'select',
+        key: 'navigation.candidatePickerShortcut', label: 'All-candidates shortcut', type: 'select',
         options: ['altF12', 'ctrlAltF12', 'none'],
-        optionLabels: ['Alt+F12', 'Ctrl+Alt+F12', '不绑定']
+        optionLabels: ['Alt+F12', 'Ctrl+Alt+F12', 'Unassigned']
       },
-      { key: 'navigation.virtualInterfaces', label: '无源码时打开虚拟接口', type: 'boolean' },
-      { key: 'navigation.isolatePlatformSources', label: '隔离大型 RTL/VCL 源码，避免阻塞 Vallenta', type: 'boolean' },
-      { key: 'navigation.prewarmCurrentFile', label: '预解析当前文件及 uses', type: 'boolean' },
-      { key: 'navigation.interactiveWaitMs', label: 'Ctrl 跳转最长等待', type: 'number', unit: 'ms', min: 0, max: 1000, step: 10 },
-      { key: 'hover.enabled', label: '包符号悬停信息', type: 'boolean' }
+      { key: 'navigation.virtualInterfaces', label: 'Open virtual interfaces when source is unavailable', type: 'boolean' },
+      { key: 'navigation.isolatePlatformSources', label: 'Isolate large RTL/VCL sources to avoid blocking Vallenta', type: 'boolean' },
+      { key: 'navigation.prewarmCurrentFile', label: 'Prewarm the active file and its uses', type: 'boolean' },
+      { key: 'navigation.interactiveWaitMs', label: 'Maximum Ctrl-navigation wait', type: 'number', unit: 'ms', min: 0, max: 1000, step: 10 },
+      { key: 'hover.enabled', label: 'Package-symbol hover information', type: 'boolean' }
     ]
   },
   {
-    title: '类与函数导航',
-    description: '在 Explorer 内组织 Pascal 类型和函数；DPK/DPROJ 额外提供 Package Includes、File Includes 一级定位入口。',
+    title: 'Class and routine navigator',
+    description: 'Organizes Pascal types and routines in Explorer, with compact include targets for DPK and DPROJ files.',
     settings: [
-      { key: 'classNavigator.enabled', label: '在 Explorer 显示 Delphi 类导航', type: 'boolean' },
-      { key: 'classNavigator.showUses', label: '显示 uses 节点（不罗列引用包）', type: 'boolean' },
-      { key: 'classNavigator.showGlobalRoutines', label: '显示全局函数与过程', type: 'boolean' },
-      { key: 'classNavigator.showInterfaces', label: '显示接口', type: 'boolean' },
-      { key: 'classNavigator.showRecordsAndObjects', label: '显示 record 与 object', type: 'boolean' },
-      { key: 'classNavigator.showProperties', label: '在类型首行显示 properties 分组', type: 'boolean' },
-      { key: 'classNavigator.showProjectPackageEntry', label: 'DPK/DPROJ 显示 Package Includes', type: 'boolean' },
-      { key: 'classNavigator.showProjectFileEntry', label: 'DPK/DPROJ 显示 File Includes', type: 'boolean' },
-      { key: 'classNavigator.showUnitInitialization', label: 'Unit 底部显示 initialization', type: 'boolean' },
-      { key: 'classNavigator.showUnitFinalization', label: 'Unit 底部显示 finalization', type: 'boolean' },
+      { key: 'classNavigator.enabled', label: 'Show Delphi class navigator in Explorer', type: 'boolean' },
+      { key: 'classNavigator.showUses', label: 'Show uses nodes without listing imported Units', type: 'boolean' },
+      { key: 'classNavigator.showGlobalRoutines', label: 'Show global functions and procedures', type: 'boolean' },
+      { key: 'classNavigator.showInterfaces', label: 'Show interfaces', type: 'boolean' },
+      { key: 'classNavigator.showRecordsAndObjects', label: 'Show records and objects', type: 'boolean' },
+      { key: 'classNavigator.showProperties', label: 'Show a properties group first in each type', type: 'boolean' },
+      { key: 'classNavigator.showProjectPackageEntry', label: 'Show Package Includes for DPK/DPROJ', type: 'boolean' },
+      { key: 'classNavigator.showProjectFileEntry', label: 'Show File Includes for DPK/DPROJ', type: 'boolean' },
+      { key: 'classNavigator.showUnitInitialization', label: 'Show Unit initialization at the bottom', type: 'boolean' },
+      { key: 'classNavigator.showUnitFinalization', label: 'Show Unit finalization at the bottom', type: 'boolean' },
       {
-        key: 'classNavigator.memberOrder', label: '成员排列方式', type: 'select',
+        key: 'classNavigator.memberOrder', label: 'Member ordering', type: 'select',
         options: ['visibility', 'declaration', 'implementation'],
-        optionLabels: ['按分组排序（默认）', '全部按声明顺序', '按实现顺序']
+        optionLabels: ['Grouped order (default)', 'Declaration order', 'Implementation order']
       },
       {
-        key: 'classNavigator.typeOrder', label: '顶层类型排列方式', type: 'select',
+        key: 'classNavigator.typeOrder', label: 'Top-level type ordering', type: 'select',
         options: ['declaration', 'alphabetical'],
-        optionLabels: ['按声明顺序（默认）', '按字母顺序']
+        optionLabels: ['Declaration order (default)', 'Alphabetical order']
       },
-      { key: 'classNavigator.followCursor', label: '点击与滚动时跟随选中', type: 'boolean' },
-      { key: 'classNavigator.highlightRange.enabled', label: '导航真实条目时在行号旁标记源码块', type: 'boolean' },
-      { key: 'classNavigator.pauseWhenCollapsed', label: '导航收起时暂停监控且不自动展开', type: 'boolean' },
-      { key: 'classNavigator.scrollFollowDelayMs', label: '滚动跟随延迟', type: 'number', unit: 'ms', min: 0, max: 500, step: 5 },
-      { key: 'classNavigator.scrollFollowOffsetLines', label: '滚动跟随定位点向下偏移', type: 'number', unit: '行', min: -20, max: 20, step: 1 },
-      { key: 'classNavigator.navigationClickHoldMs', label: '导航点击防闪烁时间', type: 'number', unit: 'ms', min: 0, max: 2000, step: 50 },
+      { key: 'classNavigator.followCursor', label: 'Follow editor clicks and scrolling', type: 'boolean' },
+      { key: 'classNavigator.highlightRange.enabled', label: 'Mark source blocks for real navigation items', type: 'boolean' },
+      { key: 'classNavigator.pauseWhenCollapsed', label: 'Pause monitoring while the navigator is collapsed', type: 'boolean' },
+      { key: 'classNavigator.scrollFollowDelayMs', label: 'Scroll-follow delay', type: 'number', unit: 'ms', min: 0, max: 500, step: 5 },
+      { key: 'classNavigator.scrollFollowOffsetLines', label: 'Scroll-follow line offset', type: 'number', unit: 'lines', min: -20, max: 20, step: 1 },
+      { key: 'classNavigator.navigationClickHoldMs', label: 'Navigation-click anti-flicker duration', type: 'number', unit: 'ms', min: 0, max: 2000, step: 50 },
       {
-        key: 'classNavigator.navigationReveal.mode', label: '导航跳转后的源码显示方式', type: 'select',
+        key: 'classNavigator.navigationReveal.mode', label: 'Source placement after navigator jumps', type: 'select',
         options: ['smart', 'center', 'top', 'default'],
-        optionLabels: ['智能：完整居中，大块按比例定位（默认）', '始终居中', '起点置顶', 'VS Code 默认定位']
+        optionLabels: ['Smart: center fitting blocks, position large blocks proportionally (default)', 'Always center', 'Place start at top', 'VS Code default']
       },
-      { key: 'classNavigator.navigationReveal.largeBlockStartPercent', label: '大块源码起点距窗口顶部', type: 'number', unit: '%', min: 0, max: 50, step: 5 },
-      { key: 'classNavigator.keepFocusOnNavigationClick', label: '导航点击后保持蓝色树选中与焦点', type: 'boolean' },
-      { key: 'classNavigator.defaultOpenBelowExplorer', label: '首次默认展开并放在文件树下方', type: 'boolean' },
-      { key: 'classNavigator.backgroundParsing.enabled', label: '大文件类导航使用后台线程', type: 'boolean' },
-      { key: 'classNavigator.backgroundParsing.thresholdKb', label: '后台解析文件阈值', type: 'number', unit: 'KB', min: 64, max: 4096, step: 64 }
+      { key: 'classNavigator.navigationReveal.largeBlockStartPercent', label: 'Large-block start position from viewport top', type: 'number', unit: '%', min: 0, max: 50, step: 5 },
+      { key: 'classNavigator.keepFocusOnNavigationClick', label: 'Keep tree focus and blue selection after navigation clicks', type: 'boolean' },
+      { key: 'classNavigator.defaultOpenBelowExplorer', label: 'Initially open below the Explorer file tree', type: 'boolean' },
+      { key: 'classNavigator.backgroundParsing.enabled', label: 'Parse large-file navigation in a worker', type: 'boolean' },
+      { key: 'classNavigator.backgroundParsing.thresholdKb', label: 'Background parsing threshold', type: 'number', unit: 'KB', min: 64, max: 4096, step: 64 }
     ],
     actions: [
-      { command: 'pascalUnion.navigator.showClasses', label: '切换到类导航', icon: '◈' },
-      { command: 'pascalUnion.classNavigator.refresh', label: '刷新当前文件导航', icon: '↻' }
+      { command: 'pascalUnion.navigator.showClasses', label: 'Switch to class navigation', icon: '◈' },
+      { command: 'pascalUnion.classNavigator.refresh', label: 'Refresh active-file navigation', icon: '↻' }
     ]
   },
   {
-    title: 'AI 函数步骤',
-    description: '通过当前 OAI Compatible Copilot 模型，为光标所在或树中选中的函数生成可点击的中文步骤。',
+    title: 'AI routine steps',
+    description: 'Uses the selected OAI Compatible Copilot model to create navigable functional steps for routines.',
     settings: [
-      { key: 'classNavigator.aiSteps.enabled', label: '启用 AI 函数步骤', type: 'boolean' },
+      { key: 'classNavigator.aiSteps.enabled', label: 'Enable AI routine steps', type: 'boolean' },
       {
-        key: 'classNavigator.aiSteps.provider', label: '模型提供器', type: 'select',
+        key: 'classNavigator.aiSteps.provider', label: 'Model provider', type: 'select',
         options: ['oaicopilot'],
         optionLabels: ['OAI Compatible Copilot']
       },
       {
-        key: 'classNavigator.aiSteps.modelId', label: 'AI 模型', type: 'model',
-        placeholder: '选择已配置模型，或输入自定义模型 ID'
+        key: 'classNavigator.aiSteps.modelId', label: 'AI model', type: 'model',
+        placeholder: 'Select a configured model or enter a custom model ID'
       },
       {
-        key: 'classNavigator.aiSteps.reasoningEffort', label: 'AI 推理强度', type: 'select',
+        key: 'classNavigator.aiSteps.reasoningEffort', label: 'AI reasoning effort', type: 'select',
         options: ['auto', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
-        optionLabels: ['提供器默认', '最少（最快，部分网关不兼容）', '低（默认；GLM-5.2 映射为高）', '中等', '高', '更高', '最大（最慢）']
+        optionLabels: ['Provider default', 'Minimal (fastest; some gateways may not support it)', 'Low (default; mapped to high by GLM-5.2)', 'Medium', 'High', 'Extra high', 'Maximum (slowest)']
       },
       {
-        key: 'classNavigator.aiSteps.granularity', label: '功能块粒度', type: 'select',
+        key: 'classNavigator.aiSteps.granularity', label: 'Functional-block granularity', type: 'select',
         options: ['coarse', 'balanced'],
-        optionLabels: ['粗粒度：顶层功能阶段（默认）', '均衡：保留更多实现阶段']
+        optionLabels: ['Coarse: top-level functional phases (default)', 'Balanced: preserve more implementation phases']
       },
-      { key: 'classNavigator.aiSteps.maxSteps', label: '最大功能块数', type: 'number', min: 1, max: 12, step: 1 },
-      { key: 'classNavigator.aiSteps.normalTargetLines', label: '普通生成最细粒度', type: 'number', unit: '行', min: 8, max: 50, step: 1 },
-      { key: 'classNavigator.aiSteps.detailedTargetLines', label: '详细生成最细粒度', type: 'number', unit: '行', min: 6, max: 30, step: 1 },
-      { key: 'classNavigator.aiSteps.substeps.enabled', label: '复杂功能块生成子步骤', type: 'boolean' },
-      { key: 'classNavigator.aiSteps.substeps.maxPerStep', label: '每个功能块最多子步骤', type: 'number', min: 2, max: 8, step: 1 },
-      { key: 'classNavigator.aiSteps.substeps.minParentLines', label: '允许细分的最小功能块行数', type: 'number', min: 6, max: 100, step: 1 },
-      { key: 'classNavigator.aiSteps.substeps.maxDepth', label: '递归步骤最大层数', type: 'number', min: 2, max: 5, step: 1 },
+      { key: 'classNavigator.aiSteps.maxSteps', label: 'Maximum functional blocks', type: 'number', min: 1, max: 12, step: 1 },
+      { key: 'classNavigator.aiSteps.normalTargetLines', label: 'Normal-generation finest granularity', type: 'number', unit: 'lines', min: 8, max: 50, step: 1 },
+      { key: 'classNavigator.aiSteps.detailedTargetLines', label: 'Detailed-generation finest granularity', type: 'number', unit: 'lines', min: 6, max: 30, step: 1 },
+      { key: 'classNavigator.aiSteps.substeps.enabled', label: 'Generate substeps for complex blocks', type: 'boolean' },
+      { key: 'classNavigator.aiSteps.substeps.maxPerStep', label: 'Maximum substeps per block', type: 'number', min: 2, max: 8, step: 1 },
+      { key: 'classNavigator.aiSteps.substeps.minParentLines', label: 'Minimum block length eligible for refinement', type: 'number', min: 6, max: 100, step: 1 },
+      { key: 'classNavigator.aiSteps.substeps.maxDepth', label: 'Maximum recursive step depth', type: 'number', min: 2, max: 5, step: 1 },
       {
-        key: 'classNavigator.aiSteps.maxSourceCharacters', label: '函数源码字符上限',
+        key: 'classNavigator.aiSteps.maxSourceCharacters', label: 'Maximum routine source characters',
         type: 'number', min: 2000, max: 100000, step: 1000
       },
       {
-        key: 'classNavigator.aiSteps.requestTimeoutSeconds', label: '单次请求超时',
-        type: 'number', unit: '秒', min: 15, max: 600, step: 15
+        key: 'classNavigator.aiSteps.requestTimeoutSeconds', label: 'Per-request timeout',
+        type: 'number', unit: 's', min: 15, max: 600, step: 15
       },
-      { key: 'classNavigator.aiSteps.cacheEnabled', label: '缓存未修改函数的步骤', type: 'boolean' },
-      { key: 'classNavigator.aiSteps.highlightRange', label: '点击步骤时在行号旁标记功能块', type: 'boolean' },
+      { key: 'classNavigator.aiSteps.cacheEnabled', label: 'Cache steps for unchanged routines', type: 'boolean' },
+      { key: 'classNavigator.aiSteps.highlightRange', label: 'Mark functional blocks in the gutter', type: 'boolean' },
     ],
     actions: [
-      { command: 'pascalUnion.classNavigator.stopAiGeneration', label: '停止 AI 步骤生成', icon: '■' }
+      { command: 'pascalUnion.classNavigator.stopAiGeneration', label: 'Stop AI step generation', icon: '■' }
     ]
   },
   {
-    title: '补全与包符号',
-    description: '恢复 AppSys、Environment、SO() 返回对象等编译包成员。',
+    title: 'Completion and package symbols',
+    description: 'Recovers compiled members such as AppSys, Environment, and objects returned by service locators.',
     settings: [
-      { key: 'completion.enabled', label: '点号成员补全', type: 'boolean' },
-      { key: 'completion.unqualified.enabled', label: '输入前缀补全全局符号', type: 'boolean' },
-      { key: 'completion.interactiveWaitMs', label: '全局补全最长等待', type: 'number', unit: 'ms', min: 0, max: 500, step: 10 },
-      { key: 'signatureHelp.enabled', label: '函数参数签名提示', type: 'boolean' },
-      { key: 'signatureHelp.triggerOnComma', label: '输入逗号时切换参数提示', type: 'boolean' },
-      { key: 'symbols.compiled.enabled', label: 'BPL/DCP 符号恢复', type: 'boolean' },
-      { key: 'symbols.compiled.parsedCache.enabled', label: '缓存解析后的 BPL/DCP 索引', type: 'boolean' },
-      { key: 'symbols.sourceCache.enabled', label: '缓存工作区与 RAD/VCL 源码索引', type: 'boolean' },
-      { key: 'symbols.compiled.initialPackageLimit', label: '首次检查包数量', type: 'number', min: 1, max: 32, step: 1 }
+      { key: 'completion.enabled', label: 'Member completion after dot', type: 'boolean' },
+      { key: 'completion.unqualified.enabled', label: 'Complete unqualified global-symbol prefixes', type: 'boolean' },
+      { key: 'completion.interactiveWaitMs', label: 'Maximum global-completion wait', type: 'number', unit: 'ms', min: 0, max: 500, step: 10 },
+      { key: 'signatureHelp.enabled', label: 'Routine signature help', type: 'boolean' },
+      { key: 'signatureHelp.triggerOnComma', label: 'Switch signature parameter after comma', type: 'boolean' },
+      { key: 'symbols.compiled.enabled', label: 'Recover BPL/DCP symbols', type: 'boolean' },
+      { key: 'symbols.compiled.parsedCache.enabled', label: 'Cache parsed BPL/DCP indexes', type: 'boolean' },
+      { key: 'symbols.sourceCache.enabled', label: 'Cache workspace and RAD/VCL source indexes', type: 'boolean' },
+      { key: 'symbols.compiled.initialPackageLimit', label: 'Packages checked during initial scan', type: 'number', min: 1, max: 32, step: 1 }
     ]
   },
   {
-    title: '代码格式化',
-    description: '内置原 Delphi Personal Formatter：整篇、保存时、输入时格式化及 Delphi 结构着色。',
+    title: 'Code formatting',
+    description: 'Integrated Delphi Personal Formatter features for document, save, on-type, and structural formatting.',
     settings: [
-      { key: 'formatter.enabled', label: '启用 Pascal Union Formatter', type: 'boolean' },
-      { key: 'formatter.executablePath', label: 'Formatter.exe 路径', type: 'text', target: 'global', placeholder: '留空时自动检测 RAD Studio' },
-      { key: 'formatter.preserveInlineVariables', label: '保留内联变量声明', type: 'boolean' },
-      { key: 'formatter.alignWrappedParameters', label: '对齐换行参数', type: 'boolean' },
+      { key: 'formatter.enabled', label: 'Enable Pascal Union Formatter', type: 'boolean' },
+      { key: 'formatter.executablePath', label: 'Formatter.exe path', type: 'text', target: 'global', placeholder: 'Auto-detect RAD Studio when empty' },
+      { key: 'formatter.preserveInlineVariables', label: 'Preserve inline variable declarations', type: 'boolean' },
+      { key: 'formatter.alignWrappedParameters', label: 'Align wrapped parameters', type: 'boolean' },
       {
-        key: 'formatter.shortcut', label: '整篇格式化快捷键', type: 'select',
+        key: 'formatter.shortcut', label: 'Format-document shortcut', type: 'select',
         options: ['shiftAltF', 'ctrlAltF', 'ctrlKCtrlF', 'none'],
-        optionLabels: ['Shift+Alt+F', 'Ctrl+Alt+F', 'Ctrl+K Ctrl+F', '不绑定']
+        optionLabels: ['Shift+Alt+F', 'Ctrl+Alt+F', 'Ctrl+K Ctrl+F', 'Unassigned']
       },
-      { key: 'formatter.onType.enabled', label: '输入时自动格式化', type: 'boolean' },
+      { key: 'formatter.onType.enabled', label: 'Format while typing', type: 'boolean' },
       {
-        key: 'formatter.onType.semicolon.scope', label: '输入分号时格式化', type: 'select',
+        key: 'formatter.onType.semicolon.scope', label: 'Formatting after semicolon', type: 'select',
         options: ['currentLine', 'previousLine', 'currentAndPrevious', 'disabled'],
-        optionLabels: ['本行', '上一行', '本行和上一行', '关闭']
-      },
-      {
-        key: 'formatter.onType.closingParenthesis.scope', label: '输入右括号时格式化', type: 'select',
-        options: ['currentLine', 'previousLine', 'currentAndPrevious', 'disabled'],
-        optionLabels: ['本行', '上一行', '本行和上一行', '关闭']
+        optionLabels: ['Current line', 'Previous line', 'Current and previous lines', 'Disabled']
       },
       {
-        key: 'formatter.onType.enter.scope', label: '按回车时格式化', type: 'select',
+        key: 'formatter.onType.closingParenthesis.scope', label: 'Formatting after closing parenthesis', type: 'select',
         options: ['currentLine', 'previousLine', 'currentAndPrevious', 'disabled'],
-        optionLabels: ['本行', '上一行', '本行和上一行', '关闭']
+        optionLabels: ['Current line', 'Previous line', 'Current and previous lines', 'Disabled']
       },
-      { key: 'formatter.onType.logging', label: '记录输入格式化日志', type: 'boolean' },
-      { key: 'formatter.highlighting.enabled', label: 'Delphi 结构辅助着色', type: 'boolean' },
+      {
+        key: 'formatter.onType.enter.scope', label: 'Formatting after Enter', type: 'select',
+        options: ['currentLine', 'previousLine', 'currentAndPrevious', 'disabled'],
+        optionLabels: ['Current line', 'Previous line', 'Current and previous lines', 'Disabled']
+      },
+      { key: 'formatter.onType.logging', label: 'Log on-type formatting', type: 'boolean' },
+      { key: 'formatter.highlighting.enabled', label: 'Delphi structural highlighting', type: 'boolean' },
       {
         key: 'formatter.highlighting.blockLevelColors',
-        label: '结构层级循环色板',
+        label: 'Structural level color cycle',
         type: 'colorPalette',
         defaultValue: [...DEFAULT_BLOCK_LEVEL_COLORS],
         placeholder: '#E06C75, #D19A66, #C586C0'
       }
     ],
     actions: [
-      { command: 'pascalUnion.formatter.formatDocument', label: '格式化当前文件', icon: '⌁' }
+      { command: 'pascalUnion.formatter.formatDocument', label: 'Format active file', icon: '⌁' }
     ]
   },
   {
-    title: 'Explorer 隐藏规则',
-    description: '分别控制 Delphi 表单、编译产物、工程元数据和构建目录是否出现在 Explorer。',
+    title: 'Explorer exclusions',
+    description: 'Controls whether Delphi forms, build output, metadata, and output directories appear in Explorer.',
     settings: [
-      { key: 'explorer.hideFormFiles', label: '隐藏 DFM/FMX 表单文件', type: 'boolean', target: 'global' },
-      { key: 'explorer.hideSkinConfigFiles', label: '隐藏 SKINCFG 皮肤配置文件', type: 'boolean', target: 'global' },
-      { key: 'explorer.hideBuildArtifacts', label: '隐藏 DCU/BPL/DCP/EXE 等产物', type: 'boolean', target: 'global' },
-      { key: 'explorer.hideProjectMetadata', label: '隐藏工程缓存和元数据', type: 'boolean', target: 'global' },
-      { key: 'explorer.hideBuildDirectories', label: '隐藏 Win32/Win64/bin/lib 等目录', type: 'boolean', target: 'global' }
+      { key: 'explorer.hideFormFiles', label: 'Hide DFM/FMX form files', type: 'boolean', target: 'global' },
+      { key: 'explorer.hideSkinConfigFiles', label: 'Hide SKINCFG files', type: 'boolean', target: 'global' },
+      { key: 'explorer.hideBuildArtifacts', label: 'Hide DCU/BPL/DCP/EXE output', type: 'boolean', target: 'global' },
+      { key: 'explorer.hideProjectMetadata', label: 'Hide project cache and metadata', type: 'boolean', target: 'global' },
+      { key: 'explorer.hideBuildDirectories', label: 'Hide Win32/Win64/bin/lib directories', type: 'boolean', target: 'global' }
     ]
   },
   {
-    title: '格式化语法规范',
-    description: '默认规范与当前使用风格一致；关闭默认规范后可编辑、保存和加载自定义规范。',
+    title: 'Formatting style',
+    description: 'Use the bundled default style or edit, save, and load a custom formatting profile.',
     settings: [
-      { key: 'formatter.style.useDefault', label: '应用默认语法规范', type: 'boolean' },
+      { key: 'formatter.style.useDefault', label: 'Apply bundled default syntax standard', type: 'boolean' },
       ...STYLE_RULES.map(rule => ({
         ...rule,
         key: `formatter.${rule.key}`,
@@ -269,139 +269,139 @@ const SECTIONS = [
       }))
     ],
     actions: [
-      { command: 'pascalUnion.formatter.style.save', label: '保存自定义规范', icon: '⇩' },
-      { command: 'pascalUnion.formatter.style.load', label: '加载自定义规范', icon: '⇧' }
+      { command: 'pascalUnion.formatter.style.save', label: 'Save custom style', icon: '⇩' },
+      { command: 'pascalUnion.formatter.style.load', label: 'Load custom style', icon: '⇧' }
     ]
   },
   {
-    title: '编译与运行',
-    description: '在 VS Code 中直接调用 Delphi MSBuild/DCC；不会启动 RAD Studio 或 bds.exe。',
+    title: 'Build and run',
+    description: 'Invokes Delphi MSBuild/DCC directly in VS Code without starting RAD Studio or bds.exe.',
     settings: [
-      { key: 'build.enabled', label: '启用无界面正式编译', type: 'boolean' },
+      { key: 'build.enabled', label: 'Enable command-line production builds', type: 'boolean' },
       {
-        key: 'build.configuration', label: '默认 Config', type: 'select',
-        options: ['auto', 'Debug', 'Release'], optionLabels: ['工程默认', 'Debug', 'Release']
+        key: 'build.configuration', label: 'Default configuration', type: 'select',
+        options: ['auto', 'Debug', 'Release'], optionLabels: ['Project default', 'Debug', 'Release']
       },
       {
-        key: 'build.platform', label: '默认 Platform', type: 'select',
-        options: ['auto', 'Win32', 'Win64'], optionLabels: ['工程默认', 'Win32', 'Win64']
+        key: 'build.platform', label: 'Default platform', type: 'select',
+        options: ['auto', 'Win32', 'Win64'], optionLabels: ['Project default', 'Win32', 'Win64']
       },
-      { key: 'build.saveBeforeBuild', label: '编译前保存目标工程文件', type: 'boolean' },
-      { key: 'build.showStatusBar', label: '在状态栏显示 Build All、Run、Debug、平台和构建模式', type: 'boolean' },
+      { key: 'build.saveBeforeBuild', label: 'Save target project files before building', type: 'boolean' },
+      { key: 'build.showStatusBar', label: 'Show Build All, Run, Debug, platform, and configuration in the status bar', type: 'boolean' },
       {
-        key: 'run.buildBeforeRun', label: 'Run 前构建', type: 'select',
-        options: ['always', 'ifOutdated', 'never'], optionLabels: ['始终构建', '仅缺失或过期时', '从不构建']
+        key: 'run.buildBeforeRun', label: 'Build before Run', type: 'select',
+        options: ['always', 'ifOutdated', 'never'], optionLabels: ['Always build', 'When missing or outdated', 'Never build']
       },
-      { key: 'build.stopGroupOnFailure', label: '工程组失败后停止', type: 'boolean' },
-      { key: 'build.terminalSummary', label: '在终端显示明确的构建结果', type: 'boolean' },
-      { key: 'build.output.showErrors', label: '构建输出：错误', type: 'boolean' },
-      { key: 'build.output.showWarnings', label: '构建输出：警告', type: 'boolean' },
-      { key: 'build.output.showOther', label: '构建输出：其他', type: 'boolean' },
-      { key: 'build.completionNotification', label: '构建结束后显示通知', type: 'boolean' },
-      { key: 'build.timeoutSeconds', label: '正式编译超时', type: 'number', unit: 's', min: 30, max: 7200, step: 30 },
-      { key: 'build.msbuildPath', label: 'MSBuild.exe 路径（留空自动检测）', type: 'text', target: 'global' }
+      { key: 'build.stopGroupOnFailure', label: 'Stop the project group after a failure', type: 'boolean' },
+      { key: 'build.terminalSummary', label: 'Show an explicit build result in the terminal', type: 'boolean' },
+      { key: 'build.output.showErrors', label: 'Build output: errors', type: 'boolean' },
+      { key: 'build.output.showWarnings', label: 'Build output: warnings', type: 'boolean' },
+      { key: 'build.output.showOther', label: 'Build output: other messages', type: 'boolean' },
+      { key: 'build.completionNotification', label: 'Show a notification when the build finishes', type: 'boolean' },
+      { key: 'build.timeoutSeconds', label: 'Production build timeout', type: 'number', unit: 's', min: 30, max: 7200, step: 30 },
+      { key: 'build.msbuildPath', label: 'MSBuild.exe path (empty for auto-detection)', type: 'text', target: 'global' }
     ]
   },
   {
-    title: 'Delphi 调试器',
-    description: '使用独立 MIT Delphi DAP 调试器，支持启动工程以及工程组内已加载的 BPL/DLL。',
+    title: 'Delphi debugger',
+    description: 'Uses the independent MIT Delphi DAP debugger for startup projects and loaded BPL/DLL modules.',
     settings: [
-      { key: 'debugger.enabled', label: '启用 Delphi 调试集成', type: 'boolean' },
-      { key: 'debugger.autoInstall', label: '自动安装 Delphi Debugger', type: 'boolean' },
+      { key: 'debugger.enabled', label: 'Enable Delphi debugging integration', type: 'boolean' },
+      { key: 'debugger.autoInstall', label: 'Automatically install Delphi Debugger', type: 'boolean' },
       {
-        key: 'debugger.buildBeforeDebug', label: '调试前构建', type: 'select',
-        options: ['always', 'ifOutdated', 'never'], optionLabels: ['始终构建', '仅缺失或过期时', '从不构建']
+        key: 'debugger.buildBeforeDebug', label: 'Build before debugging', type: 'select',
+        options: ['always', 'ifOutdated', 'never'], optionLabels: ['Always build', 'When missing or outdated', 'Never build']
       },
       {
-        key: 'debugger.shortcutMode', label: '调试与运行快捷键模式', type: 'select',
+        key: 'debugger.shortcutMode', label: 'Debug and Run shortcut layout', type: 'select',
         options: ['visualStudio', 'radStudio'], optionLabels: ['Visual Studio / VS Code', 'RAD Studio']
       },
-      { key: 'debugger.loadGroupModules', label: '加载工程组全部包符号', type: 'boolean' },
-      { key: 'debugger.validateSymbols', label: '调试前检查符号文件', type: 'boolean' },
-      { key: 'debugger.generateDetailedMap', label: '调试构建生成详细 MAP（推荐）', type: 'boolean' },
-      { key: 'debugger.stopAtEntry', label: '在程序入口暂停', type: 'boolean' },
+      { key: 'debugger.loadGroupModules', label: 'Load symbols for every package in the group', type: 'boolean' },
+      { key: 'debugger.validateSymbols', label: 'Validate symbol files before debugging', type: 'boolean' },
+      { key: 'debugger.generateDetailedMap', label: 'Generate detailed MAP files for debug builds (recommended)', type: 'boolean' },
+      { key: 'debugger.stopAtEntry', label: 'Stop at program entry', type: 'boolean' },
       {
-        key: 'debugger.programConsole', label: 'Debug 程序输出位置', type: 'select',
-        options: ['external', 'debugConsole'], optionLabels: ['独立 Windows 控制台', 'VS Code Debug Console']
+        key: 'debugger.programConsole', label: 'Debuggee output destination', type: 'select',
+        options: ['external', 'debugConsole'], optionLabels: ['External Windows console', 'VS Code Debug Console']
       },
-      { key: 'debugger.revealOutputOnStart', label: '调试开始时打开 Debug Console', type: 'boolean' },
+      { key: 'debugger.revealOutputOnStart', label: 'Open the Debug Console when debugging starts', type: 'boolean' },
       {
-        key: 'debugger.stepIsolation', label: '单步线程隔离', type: 'select',
-        options: ['auto', 'none'], optionLabels: ['自动隔离', 'RAD Studio 风格']
+        key: 'debugger.stepIsolation', label: 'Thread isolation while stepping', type: 'select',
+        options: ['auto', 'none'], optionLabels: ['Automatic isolation', 'RAD Studio style']
       },
-      { key: 'debugger.stepIsolationReleaseMs', label: '线程等待释放延迟', type: 'number', unit: 'ms', min: -1, max: 60000, step: 100 }
+      { key: 'debugger.stepIsolationReleaseMs', label: 'Thread release delay', type: 'number', unit: 'ms', min: -1, max: 60000, step: 100 }
     ],
     actions: [
-      { command: 'pascalUnion.dependencies.check', label: '检查并安装调试器', icon: '✓' },
-      { command: 'pascalUnion.debug.selectStartupProject', label: '选择工程组启动工程', icon: '▶' }
+      { command: 'pascalUnion.dependencies.check', label: 'Check and install debugger', icon: '✓' },
+      { command: 'pascalUnion.debug.selectStartupProject', label: 'Select project-group startup project', icon: '▶' }
     ]
   },
   {
-    title: 'Delphi 导航 · 工程模式',
-    description: '类导航与 Project/Package 工程树共用 Explorer 中的 Delphi 导航窗口，并通过右上角按钮切换。',
+    title: 'Delphi navigator · Project mode',
+    description: 'Shares one Explorer view between class navigation and a Project/Package tree.',
     settings: [
-      { key: 'projectNavigator.enabled', label: '允许切换到 Delphi 工程模式', type: 'boolean' },
+      { key: 'projectNavigator.enabled', label: 'Allow switching to Delphi Project mode', type: 'boolean' },
       {
-        key: 'projectNavigator.defaultExpansion', label: '工程树默认展开层级', type: 'select',
-        options: ['firstLevel', 'all'], optionLabels: ['只展开 Project，显示全部 Package', '展开 Project 和 Package']
+        key: 'projectNavigator.defaultExpansion', label: 'Default project-tree expansion', type: 'select',
+        options: ['firstLevel', 'all'], optionLabels: ['Expand Project only and show all Packages', 'Expand Project and Package']
       },
-      { key: 'projectNavigator.showGroupproj', label: 'Project 下显示 GROUPPROJ', type: 'boolean' },
-      { key: 'projectNavigator.showDpr', label: 'Project 下显示 DPR', type: 'boolean' },
-      { key: 'projectNavigator.showDpk', label: 'Package 下显示 DPK', type: 'boolean' },
-      { key: 'projectNavigator.showDproj', label: 'Package 下显示 DPROJ', type: 'boolean' },
-      { key: 'projectNavigator.contextMenus.enabled', label: '显示 Project/Package 右键构建与调试菜单', type: 'boolean' }
+      { key: 'projectNavigator.showGroupproj', label: 'Show GROUPPROJ under Project', type: 'boolean' },
+      { key: 'projectNavigator.showDpr', label: 'Show DPR under Project', type: 'boolean' },
+      { key: 'projectNavigator.showDpk', label: 'Show DPK under Package', type: 'boolean' },
+      { key: 'projectNavigator.showDproj', label: 'Show DPROJ under Package', type: 'boolean' },
+      { key: 'projectNavigator.contextMenus.enabled', label: 'Show Project/Package build and debug context menus', type: 'boolean' }
     ],
     actions: [
-      { command: 'pascalUnion.navigator.toggleMode', label: '切换类导航 / 工程', icon: '⇄' },
-      { command: 'pascalUnion.projectNavigator.refresh', label: '刷新 Delphi 工程树', icon: '↻' }
+      { command: 'pascalUnion.navigator.toggleMode', label: 'Switch class navigation / project', icon: '⇄' },
+      { command: 'pascalUnion.projectNavigator.refresh', label: 'Refresh Delphi project tree', icon: '↻' }
     ]
   },
   {
-    title: '工程与搜索路径',
-    description: '打开新工作区时识别 groupproj、加载 Vallenta 工程组，并合并全部工程的源码路径。',
+    title: 'Projects and search paths',
+    description: 'Discovers groupproj files, loads Vallenta project groups, and merges source paths from every project.',
     settings: [
-      { key: 'projectGroups.autoDetect', label: '自动识别并加载 groupproj', type: 'boolean' },
-      { key: 'projectGroups.activateFirstProject', label: '活动工程失效时自动修复并选择', type: 'boolean' },
-      { key: 'paths.enabled', label: '自动同步全部工程', type: 'boolean' },
-      { key: 'includeNestedSourceDirectories', label: '包含嵌套源码目录', type: 'boolean' },
-      { key: 'restartActiveLsp', label: '路径改变后重启 Vallenta LSP', type: 'boolean' }
+      { key: 'projectGroups.autoDetect', label: 'Automatically discover and load groupproj', type: 'boolean' },
+      { key: 'projectGroups.activateFirstProject', label: 'Repair and select an active project when invalid', type: 'boolean' },
+      { key: 'paths.enabled', label: 'Synchronize all projects automatically', type: 'boolean' },
+      { key: 'includeNestedSourceDirectories', label: 'Include nested source directories', type: 'boolean' },
+      { key: 'restartActiveLsp', label: 'Restart the active Vallenta LSP after path changes', type: 'boolean' }
     ],
     actions: [
-      { command: 'pascalUnion.projects.detect', label: '立即识别 Project Group', icon: '⌕' },
-      { command: 'pascalUnion.sync', label: '立即同步', icon: '↻' },
-      { command: 'pascalUnion.showPaths', label: '查看路径', icon: '≡' }
+      { command: 'pascalUnion.projects.detect', label: 'Discover Project Group now', icon: '⌕' },
+      { command: 'pascalUnion.sync', label: 'Synchronize now', icon: '↻' },
+      { command: 'pascalUnion.showPaths', label: 'Show paths', icon: '≡' }
     ]
   },
   {
-    title: '缺失 uses',
-    description: '发现未引入声明 Unit 的符号，并提供 Add Unit 修复。',
+    title: 'Missing uses',
+    description: 'Finds symbols whose declaring Unit is not imported and offers an Add Unit fix.',
     settings: [
-      { key: 'missingUnits.enabled', label: '编译器诊断的 Add Unit 修复', type: 'boolean' },
-      { key: 'missingUnits.debounceMs', label: 'Unit 索引刷新延迟', type: 'number', unit: 'ms', min: 50, max: 5000, step: 50 },
-      { key: 'missingUnits.compiledFallback', label: '必要时搜索全部编译包', type: 'boolean' }
+      { key: 'missingUnits.enabled', label: 'Add Unit fixes for compiler diagnostics', type: 'boolean' },
+      { key: 'missingUnits.debounceMs', label: 'Unit index refresh delay', type: 'number', unit: 'ms', min: 50, max: 5000, step: 50 },
+      { key: 'missingUnits.compiledFallback', label: 'Search all compiled packages when necessary', type: 'boolean' }
     ]
   },
   {
-    title: '后台诊断',
-    description: '独立语法检查与隔离的 Delphi 编译器检查。',
+    title: 'Background diagnostics',
+    description: 'Independent syntax checks and isolated Delphi compiler diagnostics.',
     settings: [
-      { key: 'diagnostics.enabled', label: '后台诊断总开关', type: 'boolean' },
-      { key: 'diagnostics.syntax.enabled', label: '即时语法检查', type: 'boolean' },
-      { key: 'diagnostics.syntax.debounceMs', label: '语法检查延迟', type: 'number', unit: 'ms', min: 50, max: 5000, step: 50 },
-      { key: 'diagnostics.compiler.enabled', label: 'Delphi 编译检查', type: 'boolean' },
-      { key: 'diagnostics.compiler.idleDelayMs', label: '编译空闲延迟', type: 'number', unit: 'ms', min: 250, max: 60000, step: 250 },
-      { key: 'diagnostics.compiler.startupDelayMs', label: '启动后首次编译延迟', type: 'number', unit: 'ms', min: 0, max: 120000, step: 1000 },
-      { key: 'diagnostics.compiler.maxParallelProjects', label: '并行工程数', type: 'number', min: 1, max: 4, step: 1 },
-      { key: 'diagnostics.compiler.timeoutSeconds', label: '单次超时', type: 'number', unit: 's', min: 10, max: 1800, step: 10 },
-      { key: 'diagnostics.compiler.includeWarnings', label: '显示编译器警告', type: 'boolean' },
-      { key: 'diagnostics.ignoreUtf8ConversionWarning', label: '忽略“建议转换为 UTF-8”警告', type: 'boolean' },
-      { key: 'diagnostics.compiler.configuration', label: '构建配置', type: 'select', options: ['auto', 'Debug', 'Release'] },
-      { key: 'diagnostics.compiler.platform', label: '目标平台', type: 'select', options: ['auto', 'Win32', 'Win64'] }
+      { key: 'diagnostics.enabled', label: 'Enable background diagnostics', type: 'boolean' },
+      { key: 'diagnostics.syntax.enabled', label: 'Immediate syntax diagnostics', type: 'boolean' },
+      { key: 'diagnostics.syntax.debounceMs', label: 'Syntax diagnostic delay', type: 'number', unit: 'ms', min: 50, max: 5000, step: 50 },
+      { key: 'diagnostics.compiler.enabled', label: 'Delphi compiler diagnostics', type: 'boolean' },
+      { key: 'diagnostics.compiler.idleDelayMs', label: 'Compiler idle delay', type: 'number', unit: 'ms', min: 250, max: 60000, step: 250 },
+      { key: 'diagnostics.compiler.startupDelayMs', label: 'Initial compiler delay after startup', type: 'number', unit: 'ms', min: 0, max: 120000, step: 1000 },
+      { key: 'diagnostics.compiler.maxParallelProjects', label: 'Parallel projects', type: 'number', min: 1, max: 4, step: 1 },
+      { key: 'diagnostics.compiler.timeoutSeconds', label: 'Per-run timeout', type: 'number', unit: 's', min: 10, max: 1800, step: 10 },
+      { key: 'diagnostics.compiler.includeWarnings', label: 'Show compiler warnings', type: 'boolean' },
+      { key: 'diagnostics.ignoreUtf8ConversionWarning', label: 'Ignore “convert to UTF-8” warnings', type: 'boolean' },
+      { key: 'diagnostics.compiler.configuration', label: 'Build configuration', type: 'select', options: ['auto', 'Debug', 'Release'] },
+      { key: 'diagnostics.compiler.platform', label: 'Target platform', type: 'select', options: ['auto', 'Win32', 'Win64'] }
     ],
     actions: [
-      { command: 'pascalUnion.diagnostics.runNow', label: '立即检查', icon: '▶' },
-      { command: 'pascalUnion.diagnostics.showStatus', label: '查看状态', icon: 'ⓘ' },
-      { command: 'pascalUnion.diagnostics.clearCache', label: '清理缓存', icon: '⌫' }
+      { command: 'pascalUnion.diagnostics.runNow', label: 'Run diagnostics now', icon: '▶' },
+      { command: 'pascalUnion.diagnostics.showStatus', label: 'Show status', icon: 'ⓘ' },
+      { command: 'pascalUnion.diagnostics.clearCache', label: 'Clear cache', icon: '⌫' }
     ]
   }
 ];
@@ -457,7 +457,7 @@ class PascalUnionControlCenterProvider {
   }
 
   language() {
-    return languageCode(this.configuration().get('ui.language', 'zh-CN'));
+    return languageCode(this.configuration().get('ui.language', 'en'));
   }
 
   values() {
@@ -544,7 +544,7 @@ class PascalUnionControlCenterProvider {
     }
     const panel = vscode.window.createWebviewPanel(
       'pascalUnion.settings',
-      this.language() === 'en' ? 'Pascal Union Settings' : 'Pascal Union 设置',
+      'Pascal Union Settings',
       vscode.ViewColumn.One,
       { enableScripts: true, retainContextWhenHidden: true }
     );
@@ -557,7 +557,7 @@ class PascalUnionControlCenterProvider {
   refresh() {
     if (this.view) this.view.webview.html = this.html(this.view.webview, false);
     if (this.panel) {
-      this.panel.title = this.language() === 'en' ? 'Pascal Union Settings' : 'Pascal Union 设置';
+      this.panel.title = 'Pascal Union Settings';
       this.panel.webview.html = this.html(this.panel.webview, true);
     }
   }
@@ -637,18 +637,18 @@ class PascalUnionControlCenterProvider {
 <body>
   <header class="hero">
     <h1>Pascal Union</h1>
-    <div class="subtitle">${english ? 'Delphi workspace development control center' : 'Delphi 全工程开发控制中心'}</div>
+    <div class="subtitle">${'Delphi workspace development control center'}</div>
     <div class="summary">
-      <div class="metric"><strong id="projectCount">0</strong><span>${english ? 'Projects' : '加载工程'}</span></div>
-      <div class="metric"><strong id="pathCount">0</strong><span>${english ? 'Managed paths' : '托管路径'}</span></div>
-      <div class="metric"><strong id="workspaceCount">0</strong><span>${english ? 'Workspaces' : '工作区'}</span></div>
+      <div class="metric"><strong id="projectCount">0</strong><span>${'Projects'}</span></div>
+      <div class="metric"><strong id="pathCount">0</strong><span>${'Managed paths'}</span></div>
+      <div class="metric"><strong id="workspaceCount">0</strong><span>${'Workspaces'}</span></div>
     </div>
   </header>
   <nav class="tabs">${tabs}</nav>
   ${cards}
   ${fullPage ? '' : `
-  <button type="button" class="footer" id="openSettings">${english ? 'Open full settings in the editor' : '在编辑器主窗口打开分页设置'}</button>
-  <button type="button" class="footer" id="openNativeSettings">${english ? 'Open in VS Code Settings' : '在 VS Code 设置中打开配置'}</button>`}
+  <button type="button" class="footer" id="openSettings">${'Open full settings in the editor'}</button>
+  <button type="button" class="footer" id="openNativeSettings">${'Open in VS Code Settings'}</button>`}
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const initial = ${initial};
@@ -724,7 +724,7 @@ class PascalUnionControlCenterProvider {
       ])]
         .sort((left, right) => left.localeCompare(right));
       input = `<select data-key="${escapeHtml(setting.key)}"${ruleAttributes}>
-        <option value="">${this.language() === 'en' ? 'Automatic (first available model)' : '自动（第一个可用模型）'}</option>
+        <option value="">${'Automatic (first available model)'}</option>
         ${modelIds.map(id => `<option value="${escapeHtml(id)}">${escapeHtml(id)}</option>`).join('')}
       </select>`;
     } else {

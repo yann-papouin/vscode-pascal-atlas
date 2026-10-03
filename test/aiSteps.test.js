@@ -41,10 +41,10 @@ const ROUTINE = {
 
 test('AI step prompt sends numbered source and collapses a short routine to one functional block', () => {
   const result = buildAiStepPrompt(SOURCE, ROUTINE, { maxSteps: 5, maxSourceCharacters: 24000 });
-  assert.match(result.prompt, /最多 1 步/);
-  assert.match(result.prompt, /顶层功能阶段/);
-  assert.match(result.prompt, /短函数可以只返回 1 步/);
-  assert.match(result.prompt, /严格 JSON/);
+  assert.match(result.prompt, /at most 1 steps/i);
+  assert.match(result.prompt, /top-level functional phases/i);
+  assert.match(result.prompt, /short routines may return just one step/i);
+  assert.match(result.prompt, /strict JSON/i);
   assert.match(result.prompt, /\[00004\] procedure TRunner\.Execute/);
   assert.match(result.prompt, /\[00009\]\s+RunWork/);
   assert.equal(result.startLine, 4);
@@ -56,21 +56,21 @@ test('AI step prompt sends numbered source and collapses a short routine to one 
 test('AI step response is normalized, range checked, ordered and capped', () => {
   const range = routineSourceRange(SOURCE, ROUTINE);
   const response = '```json\n{"steps":['
-    + '{"title":"2. 执行准备工作。","line":8},'
-    + '{"title":"1、校验输入参数","line":6},'
-    + '{"title":"越界步骤","line":99}'
+    + '{"title":"2. Prepare work.","line":8},'
+    + '{"title":"1. Validate input parameters","line":6},'
+    + '{"title":"Out-of-range step","line":99}'
     + ']}\n```';
   assert.deepEqual(parseAiStepResponse(response, range, 8), [
-    { title: '校验输入参数', line: 6 },
-    { title: '执行准备工作', line: 8 }
+    { title: 'Validate input parameters', line: 6 },
+    { title: 'Prepare work', line: 8 }
   ]);
 });
 
 test('AI step response accepts provider reasoning, bracketed line numbers and substeps', () => {
-  const response = '<think>先分析函数结构 {这不是 JSON}</think>\n'
-    + '```json\n{"result":{"steps":[{"title":"处理输入","line":"[00010]",'
-    + '"substeps":[{"title":"读取参数","start_line":"[00011]"},'
-    + '{"title":"转换数据","startLine":"[00018]"}]}]}}\n```\n'
+  const response = '<think>Analyze the routine structure first {this is not JSON}</think>\n'
+    + '```json\n{"result":{"steps":[{"title":"Process input","line":"[00010]",'
+    + '"substeps":[{"title":"Read parameters","start_line":"[00011]"},'
+    + '{"title":"Transform data","startLine":"[00018]"}]}]}}\n```\n'
     + '{"note":"done"}';
   assert.deepEqual(parseAiStepResponse(response, { startLine: 1, endLine: 40 }, {
     effectiveMaxSteps: 5,
@@ -79,11 +79,11 @@ test('AI step response accepts provider reasoning, bracketed line numbers and su
     substepMinParentLines: 6,
     maxDepth: 3
   }), [{
-    title: '处理输入',
+    title: 'Process input',
     line: 10,
     children: [
-      { title: '读取参数', line: 11 },
-      { title: '转换数据', line: 18 }
+      { title: 'Read parameters', line: 11 },
+      { title: 'Transform data', line: 18 }
     ]
   }]);
 });
@@ -93,18 +93,18 @@ test('complex AI steps retain bounded recursive navigable substeps', () => {
   const response = JSON.stringify({
     steps: [
       {
-        title: '处理边组',
+        title: 'Process edge groups',
         line: 10,
         children: [
-          { title: '初始化当前分组', line: 12 },
-          { title: '合并相切线段', line: 24, children: [
-            { title: '查找相邻线段', line: 25 },
-            { title: '更新当前边组', line: 34 }
+          { title: 'Initialize current group', line: 12 },
+          { title: 'Merge adjacent segments', line: 24, children: [
+            { title: 'Find adjacent segments', line: 25 },
+            { title: 'Update current edge group', line: 34 }
           ] },
-          { title: '收尾闭合分组', line: 42 }
+          { title: 'Close out group', line: 42 }
         ]
       },
-      { title: '校验分组连接', line: 60 }
+      { title: 'Validate group connections', line: 60 }
     ]
   });
   const steps = parseAiStepResponse(response, range, {
@@ -116,18 +116,18 @@ test('complex AI steps retain bounded recursive navigable substeps', () => {
   });
   assert.deepEqual(steps, [
     {
-      title: '处理边组',
+      title: 'Process edge groups',
       line: 10,
       children: [
-        { title: '初始化当前分组', line: 12 },
-        { title: '合并相切线段', line: 24, children: [
-          { title: '查找相邻线段', line: 25 },
-          { title: '更新当前边组', line: 34 }
+        { title: 'Initialize current group', line: 12 },
+        { title: 'Merge adjacent segments', line: 24, children: [
+          { title: 'Find adjacent segments', line: 25 },
+          { title: 'Update current edge group', line: 34 }
         ] },
-        { title: '收尾闭合分组', line: 42 }
+        { title: 'Close out group', line: 42 }
       ]
     },
-    { title: '校验分组连接', line: 60 }
+    { title: 'Validate group connections', line: 60 }
   ]);
 });
 
@@ -156,9 +156,9 @@ test('detailed prompt fixes roughly ten-line leaves before asking the model for 
   assert.equal(result.fixedPlan.leaves.every(leaf => leaf.meaningfulLines >= 8
     && leaf.meaningfulLines <= 13), true);
   assert.equal(result.fixedPlan.roots.length, 3);
-  assert.match(result.prompt, /边界和层级已经确定/);
-  assert.match(result.prompt, /c01: 行 1-10/);
-  assert.match(result.prompt, /g1_01: 行 1-20，包含 c01, c02/);
+  assert.match(result.prompt, /Boundaries and hierarchy are fixed/);
+  assert.match(result.prompt, /c01: lines 1-10/);
+  assert.match(result.prompt, /g1_01: lines 1-20, includes c01, c02/);
   assert.doesNotMatch(result.prompt, /line.*children/i);
 });
 
@@ -177,7 +177,7 @@ test('detailed response only labels fixed ids and cannot move source ranges', ()
   });
   const items = analysis.fixedPlan.nodes.map((node, index) => ({
     id: node.id,
-    title: `处理阶段${index + 1}`,
+    title: `Process phase ${index + 1}`,
     line: 9999
   }));
   const result = parseAiStepResponseResult(JSON.stringify({ items }), analysis);
@@ -199,13 +199,13 @@ test('detailed response accepts streamed one-object-per-line labels', () => {
     maxDepth: 3, targetLinesPerStep: 10
   });
   const firstTwo = analysis.unresolvedIds.slice(0, 2);
-  const stream = `${JSON.stringify({ id: firstTwo[0], title: '处理前段数据' })}\n`
-    + `${JSON.stringify({ id: firstTwo[1], title: '处理后段数据' })}\n`
+  const stream = `${JSON.stringify({ id: firstTwo[0], title: 'Process first section' })}\n`
+    + `${JSON.stringify({ id: firstTwo[1], title: 'Process final section' })}\n`
     + '{"id":"incomplete"';
   const parsed = parseAiStepResponseResult(stream, analysis);
   assert.equal(parsed.validLabelCount, 2);
-  assert.equal(parsed.modelLabels[firstTwo[0]], '处理前段数据');
-  assert.equal(parsed.modelLabels[firstTwo[1]], '处理后段数据');
+  assert.equal(parsed.modelLabels[firstTwo[0]], 'Process first section');
+  assert.equal(parsed.modelLabels[firstTwo[1]], 'Process final section');
 });
 
 test('detailed response retries only missing ids and keeps deterministic fallbacks', () => {
@@ -221,16 +221,16 @@ test('detailed response retries only missing ids and keeps deterministic fallbac
   });
   const firstId = analysis.unresolvedIds[0];
   const first = parseAiStepResponseResult(JSON.stringify({
-    items: [{ id: firstId, title: '处理第一批数据' }]
+    items: [{ id: firstId, title: 'Process first batch' }]
   }), analysis);
   assert.equal(first.validLabelCount, 1);
   assert.equal(first.missingIds.length, analysis.unresolvedIds.length - 1);
   const repairPrompt = buildAiStepRepairPrompt(analysis, first.missingIds);
-  assert.match(repairPrompt, /只补齐下面列出的 id/);
+  assert.match(repairPrompt, /Fill in only the IDs listed below/);
   assert.doesNotMatch(repairPrompt, new RegExp(`--- ${firstId} \\[`));
   const repairedId = first.missingIds[0];
   const repair = parseAiStepResponseResult(JSON.stringify({
-    items: [{ id: repairedId, title: '继续处理数据' }]
+    items: [{ id: repairedId, title: 'Continue processing data' }]
   }), { ...analysis, prompt: repairPrompt });
   const merged = mergeAiStepResponseResults(analysis, first, repair);
   assert.equal(merged.validLabelCount, 2);
@@ -248,7 +248,7 @@ test('fixed detailed labels are reusable through source-block hashes', () => {
   });
   const response = JSON.stringify({ items: analysis.fixedPlan.nodes.map((node, index) => ({
     id: node.id,
-    title: `缓存步骤${index + 1}`
+    title: `Cached step ${index + 1}`
   })) });
   const result = parseAiStepResponseResult(response, analysis);
   const cached = new Map(plannedLabelsByHash(analysis, result.steps));
@@ -258,16 +258,16 @@ test('fixed detailed labels are reusable through source-block hashes', () => {
     maxDepth: 3, targetLinesPerStep: 10, chunkLabelCache: cached
   });
   assert.deepEqual(restored.unresolvedIds, []);
-  assert.match(restored.prompt, /必须返回以下 0 个 id/);
+  assert.match(restored.prompt, /Return all 0 IDs below/);
 });
 
 test('AI step nodes are numbered and jump to the requested source line', () => {
   const key = routineAnalysisKey('file:///AiStepsSample.pas', SOURCE, ROUTINE);
   const nodes = createAiStepNodes(SOURCE, ROUTINE, key, [
-    { title: '校验输入参数', line: 6 },
-    { title: '执行任务', line: 9 }
+    { title: 'Validate input parameters', line: 6 },
+    { title: 'Run task', line: 9 }
   ]);
-  assert.deepEqual(nodes.map(node => node.label), ['1. 校验输入参数', '2. 执行任务']);
+  assert.deepEqual(nodes.map(node => node.label), ['1. Validate input parameters', '2. Run task']);
   assert.equal(SOURCE.slice(nodes[0].offset, nodes[0].offset + 2), 'if');
   assert.equal(SOURCE.slice(nodes[1].offset, nodes[1].offset + 7), 'RunWork');
   assert.equal(nodes.every(node => node.kind === 'ai-step'), true);
@@ -277,9 +277,9 @@ test('AI step nodes are numbered and jump to the requested source line', () => {
 test('a sole AI step omits the redundant number prefix', () => {
   const key = routineAnalysisKey('file:///AiStepsSample.pas', SOURCE, ROUTINE);
   const nodes = createAiStepNodes(SOURCE, ROUTINE, key, [
-    { title: '执行完整流程', line: 6 }
+    { title: 'Run the complete workflow', line: 6 }
   ]);
-  assert.equal(nodes[0].label, '执行完整流程');
+  assert.equal(nodes[0].label, 'Run the complete workflow');
 });
 
 test('AI substep nodes are nested, numbered and split their parent range', () => {
@@ -289,16 +289,16 @@ test('AI substep nodes are nested, numbered and split their parent range', () =>
     implementationEndOffset: source.length
   };
   const nodes = createAiStepNodes(source, routine, 'nested-key', [{
-    title: '处理边组',
+    title: 'Process edge groups',
     line: 10,
     children: [
-      { title: '初始化分组', line: 12 },
-      { title: '合并线段', line: 24 }
+      { title: 'Initialize group', line: 12 },
+      { title: 'Merge segments', line: 24 }
     ]
-  }, { title: '校验结果', line: 60 }]);
+  }, { title: 'Validate result', line: 60 }]);
   assert.deepEqual(nodes[0].children.map(node => node.label), [
-    '1.1. 初始化分组',
-    '1.2. 合并线段'
+    '1.1. Initialize group',
+    '1.2. Merge segments'
   ]);
   assert.deepEqual(nodes[0].children.map(node => [node.startLine, node.endLine]), [
     [12, 23],
@@ -348,15 +348,15 @@ test('whole-file AI prompt requests every routine in one JSON response', () => {
   const second = { routine: secondRoutine, analysis: buildAiStepPrompt(SOURCE, secondRoutine, { maxSteps: 5 }) };
   const batch = buildBatchAiStepPrompt([first, second]);
   assert.equal(batch.entries.length, 2);
-  assert.match(batch.prompt, /一次处理下面全部 2 个函数/);
+  assert.match(batch.prompt, /Process all 2 routines below in one request/);
   assert.match(batch.prompt, /--- r1 ---/);
   assert.match(batch.prompt, /--- r2 ---/);
   const parsed = parseBatchAiStepResponse(JSON.stringify({ routines: [
-    { id: 'r1', steps: [{ title: '校验输入', line: 6 }] },
-    { id: 'r2', steps: [{ title: '执行任务', line: 9 }] }
+    { id: 'r1', steps: [{ title: 'Validate input', line: 6 }] },
+    { id: 'r2', steps: [{ title: 'Run task', line: 9 }] }
   ] }), batch);
   assert.deepEqual(parsed.map(item => [item.id, item.steps]), [
-    ['r1', [{ title: '校验输入', line: 6 }]],
-    ['r2', [{ title: '执行任务', line: 9 }]]
+    ['r1', [{ title: 'Validate input', line: 6 }]],
+    ['r2', [{ title: 'Run task', line: 9 }]]
   ]);
 });

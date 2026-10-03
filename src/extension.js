@@ -2831,7 +2831,7 @@ class CompiledSymbolSupport {
       candidates.push({
         label: `${implementation ? '$(symbol-method)' : '$(symbol-field)'} `
           + `${definition.owner ? `${definition.owner}.` : ''}${definition.symbol}`,
-        description: `${implementation ? '实现' : '定义'} · ${definition.unitName}`,
+        description: `${implementation ? 'Implementation' : 'Declaration'} · ${definition.unitName}`,
         detail: `${definition.filePath}:${line + 1}`,
         location: new vscode.Location(vscode.Uri.file(definition.filePath),
           this.navigationTargetRange(start, definition.length, document))
@@ -2849,19 +2849,19 @@ class CompiledSymbolSupport {
         const targetUri = compiled.targetUri || compiled.uri;
         candidates.push({
           label: `$(symbol-file) ${token.word}`,
-          description: '编译包接口',
+          description: 'Compiled package interface',
           detail: targetUri.toString(),
           location: compiled
         });
       }
     }
     if (candidates.length === 0) {
-      vscode.window.showInformationMessage(`未找到 ${token.word} 的定义或实现。`);
+      vscode.window.showInformationMessage(`No declaration or implementation found for ${token.word}.`);
       return;
     }
     const selected = await vscode.window.showQuickPick(candidates, {
-      title: `${token.word}：选择定义或实现`,
-      placeHolder: '普通 Ctrl+单击/F12 会直接跳到最佳目标'
+      title: `${token.word}: Select a declaration or implementation`,
+      placeHolder: 'Regular Ctrl+Click/F12 navigation jumps directly to the best target'
     });
     if (!selected) return;
     const targetUri = selected.location.targetUri || selected.location.uri;
@@ -2983,7 +2983,7 @@ class CompiledSymbolSupport {
     for (const definitions of analysis.localDefinitions.values()) {
       for (const definition of definitions) {
         add(definition.symbol, completionKind(definition.kind),
-          `[当前文件] ${definition.unitName}`, '0000');
+          `[Current file] ${definition.unitName}`, '0000');
       }
     }
     if (this.sourceIndex) {
@@ -2991,7 +2991,7 @@ class CompiledSymbolSupport {
         if (!name.startsWith(prefix) || items.size >= 250) continue;
         const definition = definitions.find(item => unitIsVisible(item.unitName, analysis.visibleUnits));
         if (definition) add(definition.symbol, completionKind(definition.kind),
-          `[源码: ${definition.unitName}]`, '0001');
+          `[Source: ${definition.unitName}]`, '0001');
       }
     }
 
@@ -3001,15 +3001,15 @@ class CompiledSymbolSupport {
     for (const unit of packageData?.usedUnitIndexes || []) {
       for (const info of unit.globals.values()) {
         add(info.symbol, vscode.CompletionItemKind.Variable,
-          `[编译包: ${unit.symbol}] ${info.typeName || info.signature}`, '0000');
+          `[Compiled package: ${unit.symbol}] ${info.typeName || info.signature}`, '0000');
       }
       for (const info of unit.classes.values()) {
         add(info.symbol, vscode.CompletionItemKind.Class,
-          `[编译包: ${unit.symbol}]`, '0001');
+          `[Compiled package: ${unit.symbol}]`, '0001');
       }
       for (const overloads of unit.routines.values()) {
         add(overloads[0].name, vscode.CompletionItemKind.Function,
-          `[编译包: ${unit.symbol}] ${overloads.length} 个重载`, '0001');
+          `[Compiled package: ${unit.symbol}] ${overloads.length} overloads`, '0001');
       }
     }
     return items.size > 0 ? new vscode.CompletionList([...items.values()], false) : undefined;
@@ -4109,7 +4109,7 @@ class UsesQuickFixSupport {
         if (seen.has(identity)) continue;
         seen.add(identity);
         const action = new vscode.CodeAction(
-          `添加 ${candidate.unitName} 到 uses（${symbol}）`,
+          `Add ${candidate.unitName} to uses (${symbol})`,
           vscode.CodeActionKind.QuickFix
         );
         const edit = new vscode.WorkspaceEdit();
@@ -4740,7 +4740,7 @@ async function activate(context) {
     const groups = results.reduce((total, result) => total + result.discoveredGroups.length, 0);
     const added = results.reduce((total, result) => total + result.addedGroups.length, 0);
     vscode.window.showInformationMessage(
-      `Pascal Union：识别到 ${groups} 个 groupproj，本次加入 Vallenta ${added} 个。`
+      `Pascal Union: Found ${groups} groupproj file(s); added ${added} to Vallenta.`
     );
   }));
   context.subscriptions.push(vscode.commands.registerCommand('pascalUnion.restore', async () => {

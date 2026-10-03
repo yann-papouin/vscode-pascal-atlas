@@ -120,16 +120,16 @@ class PascalReferenceSupport {
     const position = editor.selection.active;
     const selected = identifierAt(editor.document.getText(), editor.document.offsetAt(position));
     if (!selected) {
-      void vscode.window.showInformationMessage('请把光标放在 Pascal 标识符上。');
+      void vscode.window.showInformationMessage('Place the cursor on a Pascal identifier.');
       return;
     }
     const locations = await vscode.window.withProgress({
       location: vscode.ProgressLocation.Window,
-      title: `正在查找 ${selected.word} 的所有引用…`,
+      title: `Finding all references to ${selected.word}…`,
       cancellable: false
     }, () => this.findReferences(editor.document, position, undefined, true));
     if (locations.length === 0) {
-      void vscode.window.showInformationMessage(`未找到 ${selected.word} 的引用。`);
+      void vscode.window.showInformationMessage(`No references found for ${selected.word}.`);
       return;
     }
     await vscode.commands.executeCommand(
@@ -230,16 +230,16 @@ class PascalReferenceSupport {
     const position = editor.selection.active;
     const selected = identifierAt(editor.document.getText(), editor.document.offsetAt(position));
     if (!selected) {
-      void vscode.window.showInformationMessage('请把光标放在 Pascal 类型或方法上。');
+      void vscode.window.showInformationMessage('Place the cursor on a Pascal type or method.');
       return;
     }
     const locations = await vscode.window.withProgress({
       location: vscode.ProgressLocation.Window,
-      title: `正在查找 ${selected.word} 的所有实现…`,
+      title: `Finding all implementations of ${selected.word}…`,
       cancellable: false
     }, () => this.findImplementations(editor.document, position));
     if (locations.length === 0) {
-      void vscode.window.showInformationMessage(`未找到 ${selected.word} 的实现。`);
+      void vscode.window.showInformationMessage(`No implementations found for ${selected.word}.`);
       return;
     }
     await vscode.commands.executeCommand(
@@ -255,7 +255,7 @@ class PascalReferenceSupport {
     if (!editor || !['pascal', 'objectpascal'].includes(editor.document.languageId)) return;
     const value = formatDelphiGuid(randomUUID());
     const inserted = await editor.edit(builder => builder.replace(editor.selection, value));
-    if (!inserted) void vscode.window.showErrorMessage('无法在当前位置插入 GUID。');
+    if (!inserted) void vscode.window.showErrorMessage('Could not insert a GUID at the current position.');
   }
 
   scheduleAutomaticInterfaceGuid(event) {

@@ -640,17 +640,17 @@ class BuildDebugSupport {
     const resolved = resolvedBuildSelection(group.projectPaths[0], selected);
     const groupLabel = path.basename(group.groupPath);
     this.statusItems.build.text = this.buildInProgress ? '$(sync~spin) Building' : '$(tools) Build All';
-    this.statusItems.build.tooltip = this.lastBuildResult || `构建整个工程组：${groupLabel}`;
+    this.statusItems.build.tooltip = this.lastBuildResult || `Build entire project group: ${groupLabel}`;
     const runActive = this.runInProgress || this.runLaunchInProgress;
     this.statusItems.run.command = 'pascalUnion.run.group';
     this.statusItems.run.text = this.runLaunchInProgress
         ? '$(sync~spin) Starting'
         : '$(run) Run';
     this.statusItems.run.tooltip = this.runInProgress
-      ? '启动工程正在运行；程序输出显示在 Debug Console'
+      ? 'Startup project is running; program output is shown in the Debug Console'
       : this.runLaunchInProgress
-        ? '正在准备启动工程'
-      : `不附加调试器运行 ${groupLabel} 的启动工程`;
+        ? 'Preparing to start the startup project'
+      : `Run the startup project in ${groupLabel} without attaching the debugger`;
     const debugActive = Boolean(vscode.debug.activeDebugSession
       && vscode.debug.activeDebugSession.type !== 'pascal-union-run');
     this.statusItems.debug.command = debugActive
@@ -662,22 +662,22 @@ class BuildDebugSupport {
         ? '$(sync~spin) Starting'
         : '$(debug-start) Debug';
     this.statusItems.debug.tooltip = debugActive
-      ? 'Delphi 调试正在运行；点击停止（Shift+F5）'
+      ? 'Delphi debugging is running; click to stop (Shift+F5)'
       : this.debugLaunchInProgress
-        ? '正在准备 Delphi 调试会话'
-        : `以 Delphi 调试器启动 ${groupLabel}`;
+        ? 'Preparing Delphi debug session'
+        : `Start ${groupLabel} with the Delphi debugger`;
     const executionActive = this.runInProgress || debugActive;
     this.statusItems.stop.text = '$(debug-stop) Stop';
     this.statusItems.stop.command = this.runInProgress
       ? 'pascalUnion.run.stop'
       : 'workbench.action.debug.stop';
     this.statusItems.stop.tooltip = this.runInProgress
-      ? '停止当前 Run 进程（Shift+F5）'
-      : '停止当前 Debug 会话（Shift+F5）';
+      ? 'Stop the current Run process (Shift+F5)'
+      : 'Stop the current Debug session (Shift+F5)';
     this.statusItems.platform.text = `$(device-desktop) ${resolved.platform}`;
-    this.statusItems.platform.tooltip = `目标平台：${resolved.platform}（点击切换）`;
+    this.statusItems.platform.tooltip = `Target platform: ${resolved.platform} (click to change)`;
     this.statusItems.configuration.text = `$(symbol-enum) ${resolved.configuration}`;
-    this.statusItems.configuration.tooltip = `构建模式：${resolved.configuration}（点击切换）`;
+    this.statusItems.configuration.tooltip = `Build configuration: ${resolved.configuration} (click to change)`;
     void vscode.commands.executeCommand('setContext', 'pascalUnion.runInProgress', this.runInProgress);
     void vscode.commands.executeCommand('setContext', 'pascalUnion.executionBusy', Boolean(
       runActive || this.debugLaunchInProgress || vscode.debug.activeDebugSession
@@ -724,9 +724,9 @@ class BuildDebugSupport {
   }
 
   executionBusyMessage() {
-    if (this.runInProgress || this.runLaunchInProgress) return '已有一个 Run 正在启动或运行，请先停止。';
-    if (this.debugLaunchInProgress) return '已有一个 Debug 正在准备启动。';
-    if (vscode.debug.activeDebugSession) return '已有一个 Debug 会话正在运行，请先停止。';
+    if (this.runInProgress || this.runLaunchInProgress) return 'A Run process is starting or already running. Stop it first.';
+    if (this.debugLaunchInProgress) return 'A Debug session is already being prepared.';
+    if (vscode.debug.activeDebugSession) return 'A Debug session is already running. Stop it first.';
     return '';
   }
 
@@ -796,14 +796,14 @@ class BuildDebugSupport {
   selectBuildOutputFilters() {
     const filters = this.buildOutputFilters();
     const items = [
-      { category: 'errors', label: '错误', description: 'Delphi fatal/error 诊断' },
-      { category: 'warnings', label: '警告', description: 'Delphi warning 诊断' },
-      { category: 'other', label: '其他', description: '普通输出、构建目标和最终统计' }
+      { category: 'errors', label: 'Errors', description: 'Delphi fatal/error diagnostics' },
+      { category: 'warnings', label: 'Warnings', description: 'Delphi warning diagnostics' },
+      { category: 'other', label: 'Other', description: 'General output, build targets, and final summary' }
     ];
     const picker = vscode.window.createQuickPick();
     picker.canSelectMany = true;
-    picker.title = 'Pascal Union：构建输出';
-    picker.placeholder = '直接勾选要显示的内容，修改立即生效；无需确认';
+    picker.title = 'Pascal Union: Build Output';
+    picker.placeholder = 'Select the items to show. Changes take effect immediately; no confirmation needed.';
     picker.items = items;
     picker.selectedItems = items.filter(item => filters[item.category]);
 
@@ -891,7 +891,7 @@ class BuildDebugSupport {
 
   async showProjectActions(uri) {
     const group = this.groupFromTarget(uri) || await this.pickGroup(uri?.fsPath || '');
-    if (!group) return void vscode.window.showWarningMessage('当前工作区没有可操作的 Delphi Project Group。');
+    if (!group) return void vscode.window.showWarningMessage('There is no Delphi Project Group to operate on in the current workspace.');
     const picked = await vscode.window.showQuickPick([
       { label: '$(tools) Build All', description: group.name, action: () => this.runGroupCommand('Build', group) },
       { label: '$(run-all) Compile All', description: group.name, action: () => this.runGroupCommand('Make', group) },
@@ -903,7 +903,7 @@ class BuildDebugSupport {
       { label: '$(symbol-enum) Select Build Platform', description: group.name, action: () => this.selectBuildValue(vscode.Uri.file(group.groupDir), 'platform') }
     ], {
       title: `Pascal Union：${group.name}`,
-      placeHolder: '选择工程组操作'
+      placeHolder: 'Select a project group action'
     });
     if (picked) await picked.action();
   }
@@ -912,7 +912,7 @@ class BuildDebugSupport {
     if (this.toolsPromise) return this.toolsPromise;
     this.toolsPromise = Promise.resolve().then(() => {
       const installation = findDelphiInstallation();
-      if (!installation) throw new Error('未找到 Delphi/RAD Studio 命令行工具链。');
+      if (!installation) throw new Error('Delphi/RAD Studio command-line tools were not found.');
       const rsvars = path.join(installation, 'bin', 'rsvars.bat');
       const environment = readRsvarsEnvironment(rsvars);
       const frameworkDir = environment.FrameworkDir
@@ -952,7 +952,7 @@ class BuildDebugSupport {
     const target = targetGroup?.groupDir || uri?.fsPath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!target) return;
     const choices = kind === 'platform' ? ['auto', 'Win32', 'Win64'] : ['auto', 'Debug', 'Release'];
-    const picked = await vscode.window.showQuickPick(choices, { placeHolder: kind === 'platform' ? '选择 Delphi 目标平台' : '选择 Delphi 构建配置' });
+    const picked = await vscode.window.showQuickPick(choices, { placeHolder: kind === 'platform' ? 'Select a Delphi target platform' : 'Select a Delphi build configuration' });
     if (!picked) return;
     const all = this.context.workspaceState.get(SELECTION_KEY, {});
     const key = this.selectionKey(target);
@@ -970,7 +970,7 @@ class BuildDebugSupport {
     const projects = this.model.packageProjects(directory);
     if (projects.length === 1) return projects[0];
     if (!projects.length) return undefined;
-    const picked = await vscode.window.showQuickPick(projects.map(project => ({ label: project.name, description: project.projectPath, project })), { placeHolder: '选择要处理的 Delphi 包' });
+    const picked = await vscode.window.showQuickPick(projects.map(project => ({ label: project.name, description: project.projectPath, project })), { placeHolder: 'Select a Delphi package to process' });
     return picked?.project;
   }
 
@@ -978,7 +978,7 @@ class BuildDebugSupport {
     const groups = directory ? this.model.groupsAt(directory) : [...this.model.groups.values()];
     if (groups.length === 1) return groups[0];
     if (!groups.length) return undefined;
-    const picked = await vscode.window.showQuickPick(groups.map(group => ({ label: group.name, description: group.groupPath, group })), { placeHolder: '选择 Delphi Project Group' });
+    const picked = await vscode.window.showQuickPick(groups.map(group => ({ label: group.name, description: group.groupPath, group })), { placeHolder: 'Select a Delphi Project Group' });
     return picked?.group;
   }
 
@@ -1009,7 +1009,7 @@ class BuildDebugSupport {
       const project = await this.pickPackage(directory);
       if (project) projects.push(project);
     }
-    if (!projects.length) return void vscode.window.showWarningMessage('所选目录不是 Pascal Union 已识别的 Delphi 包根。');
+    if (!projects.length) return void vscode.window.showWarningMessage('The selected directory is not a recognized Delphi package root.');
     projects.sort((left, right) => {
       const group = this.groupForProject(left.projectPath);
       if (!group || group !== this.groupForProject(right.projectPath)) return left.projectPath.localeCompare(right.projectPath);
@@ -1032,7 +1032,7 @@ class BuildDebugSupport {
       return;
     }
     const group = this.groupFromTarget(uri) || await this.pickGroup(uri?.fsPath || '');
-    if (!group) return void vscode.window.showWarningMessage('所选目录不是 Pascal Union 已识别的 Delphi Project Group 根目录。');
+    if (!group) return void vscode.window.showWarningMessage('The selected directory is not a recognized Delphi Project Group root.');
     await this.enqueue(() => this.buildGroup(group, target));
   }
 
@@ -1057,7 +1057,7 @@ class BuildDebugSupport {
       && (projectFiles.has(normalizeKey(document.fileName)) || roots.some(root => isInside(root, document.fileName))));
     const results = await Promise.all(documents.map(document => document.save()));
     if (results.some(result => !result)) {
-      void vscode.window.showErrorMessage('存在无法保存的 Delphi 源文件，构建已取消。');
+      void vscode.window.showErrorMessage('Some Delphi source files could not be saved. The build was cancelled.');
       return false;
     }
     return true;
@@ -1065,7 +1065,7 @@ class BuildDebugSupport {
 
   async buildProject(project, target, overrides = {}) {
     if (!vscode.workspace.getConfiguration('pascalUnion').get('build.enabled', true)) {
-      void vscode.window.showWarningMessage('Pascal Union 正式编译已在设置中关闭。');
+      void vscode.window.showWarningMessage('Pascal Union production builds are disabled in settings.');
       return 1;
     }
     if (!await this.saveForProjects([project.projectPath])) return 1;
@@ -1090,7 +1090,7 @@ class BuildDebugSupport {
 
   async buildGroup(group, target, overrides = {}) {
     if (!vscode.workspace.getConfiguration('pascalUnion').get('build.enabled', true)) {
-      void vscode.window.showWarningMessage('Pascal Union 正式编译已在设置中关闭。');
+      void vscode.window.showWarningMessage('Pascal Union production builds are disabled in settings.');
       return 1;
     }
     if (!vscode.workspace.getConfiguration('pascalUnion').get('build.stopGroupOnFailure', true)) {
@@ -1119,7 +1119,7 @@ class BuildDebugSupport {
 
   async executeBuild(label, executable, args, cwd, environment) {
     if (!fs.existsSync(executable)) {
-      void vscode.window.showErrorMessage(`Pascal Union：找不到构建工具 ${executable}`);
+      void vscode.window.showErrorMessage(`Pascal Union: Build tool not found: ${executable}`);
       return 1;
     }
     this.backgroundDiagnostics?.suspendCompiler?.('foreground build');
@@ -1230,11 +1230,11 @@ class BuildDebugSupport {
       }
       const duration = formatBuildDuration(Date.now() - startedAt);
       const succeeded = exitCode === 0;
-      this.lastBuildResult = `${label}：${succeeded ? '成功' : '失败'}；退出码 ${exitCode}；用时 ${duration}`;
+      this.lastBuildResult = `${label}: ${succeeded ? 'succeeded' : 'failed'}; exit code ${exitCode}; duration ${duration}`;
       this.output.appendLine(`${label}: ${succeeded ? 'BUILD SUCCEEDED' : 'BUILD FAILED'} (exit ${exitCode}, ${duration}).`);
       if (configuration.get('build.completionNotification', true)) {
-        if (succeeded) void vscode.window.showInformationMessage(`Pascal Union：${label} 构建成功，用时 ${duration}。`);
-        else void vscode.window.showErrorMessage(`Pascal Union：${label} 构建失败，退出码 ${exitCode}，用时 ${duration}。`);
+        if (succeeded) void vscode.window.showInformationMessage(`Pascal Union: ${label} build succeeded in ${duration}.`);
+        else void vscode.window.showErrorMessage(`Pascal Union: ${label} build failed with exit code ${exitCode} in ${duration}.`);
       }
       return exitCode;
     } finally {
@@ -1248,7 +1248,7 @@ class BuildDebugSupport {
     const installedDebugger = vscode.extensions.getExtension(DEBUGGER_ID);
     if (installedDebugger && !debuggerNeedsBundledUpgrade(installedDebugger)) return true;
     if (!vscode.workspace.getConfiguration('pascalUnion').get('debugger.autoInstall', true)) {
-      void vscode.window.showErrorMessage('缺少 Delphi Debugger 扩展，请先运行“检查并安装必要扩展”。');
+      void vscode.window.showErrorMessage('The Delphi Debugger extension is missing. Run "Check and Install Required Extensions" first.');
       return false;
     }
     try {
@@ -1257,9 +1257,9 @@ class BuildDebugSupport {
         this.output,
         this.context.globalStorageUri.fsPath
       );
-      void vscode.window.showInformationMessage('Delphi Debugger 已安装或升级，请 Reload Window 后开始调试。');
+      void vscode.window.showInformationMessage('Delphi Debugger was installed or upgraded. Reload the window before debugging.');
     } catch (error) {
-      void vscode.window.showErrorMessage(`Delphi Debugger 安装失败：${error.message}`);
+      void vscode.window.showErrorMessage(`Delphi Debugger installation failed: ${error.message}`);
     }
     return false;
   }
@@ -1292,7 +1292,7 @@ class BuildDebugSupport {
       const existing = candidates.find(project => normalizeKey(project.projectPath) === normalizeKey(saved[key] || ''));
       if (existing) return existing;
     }
-    const picked = await vscode.window.showQuickPick(candidates.map(project => ({ label: project.name, description: project.projectPath, project })), { placeHolder: '选择该 Project Group 的启动工程' });
+    const picked = await vscode.window.showQuickPick(candidates.map(project => ({ label: project.name, description: project.projectPath, project })), { placeHolder: 'Select the startup project for this Project Group' });
     if (!picked) return undefined;
     saved[key] = picked.project.projectPath;
     await this.context.workspaceState.update(STARTUP_KEY, saved);
@@ -1309,7 +1309,7 @@ class BuildDebugSupport {
     const saved = this.context.workspaceState.get(HOST_KEY, {});
     const key = normalizeKey(descriptor.projectPath);
     if (saved[key] && fs.existsSync(saved[key])) return saved[key];
-    const picked = await vscode.window.showOpenDialog({ canSelectMany: false, canSelectFiles: true, canSelectFolders: false, filters: { 'Windows executable': ['exe'] }, title: `选择 ${descriptor.name} 的宿主程序` });
+    const picked = await vscode.window.showOpenDialog({ canSelectMany: false, canSelectFiles: true, canSelectFolders: false, filters: { 'Windows executable': ['exe'] }, title: `Select a host program for ${descriptor.name}` });
     if (!picked?.[0]) return undefined;
     saved[key] = picked[0].fsPath;
     await this.context.workspaceState.update(HOST_KEY, saved);
@@ -1365,33 +1365,33 @@ class BuildDebugSupport {
       && !fs.existsSync(descriptor.mapFile)
       && !fs.existsSync(descriptor.rsmFile)
       && !hasEmbeddedTd32(descriptor.output)) {
-      missing.push(`${descriptor.name} 的 MAP/RSM/内嵌 TD32`);
+      missing.push(`${descriptor.name}: MAP/RSM/embedded TD32`);
     }
     const outputTime = artifactTimestamp(descriptor);
     for (const symbol of [descriptor.mapFile, descriptor.rsmFile, descriptor.dcpFile].filter(item => item && fs.existsSync(item))) {
-      try { if (outputTime && fs.statSync(symbol).mtimeMs + 1000 < outputTime) missing.push(`${path.basename(symbol)} 已过期`); } catch {}
+      try { if (outputTime && fs.statSync(symbol).mtimeMs + 1000 < outputTime) missing.push(`${path.basename(symbol)} is outdated`); } catch {}
     }
-    if (String(descriptor.properties?.dcc_optimize || '').toLowerCase() === 'true') missing.push(`${descriptor.name} 开启了编译优化`);
+    if (String(descriptor.properties?.dcc_optimize || '').toLowerCase() === 'true') missing.push(`${descriptor.name} has compiler optimization enabled`);
     const programMachine = program && peMachine(program);
     const moduleMachine = peMachine(descriptor.output);
     if (programMachine && moduleMachine && programMachine !== moduleMachine) {
-      missing.push(`宿主为 ${programMachine}，${descriptor.name} 为 ${moduleMachine}`);
+      missing.push(`Host is ${programMachine}; ${descriptor.name} is ${moduleMachine}`);
     }
     for (const module of modules) {
       const moduleDescriptor = moduleDescriptors.find(item => path.basename(item.output).toLowerCase() === module.name.toLowerCase());
       if (!module.map && !module.rsm && !module.dcp && !hasEmbeddedTd32(moduleDescriptor?.output || '')) {
-        missing.push(`${module.name} 的 MAP/RSM/DCP/内嵌 TD32`);
+        missing.push(`${module.name}: MAP/RSM/DCP/embedded TD32`);
       }
     }
     if (!missing.length) return true;
     const choice = await vscode.window.showWarningMessage(
-      `调试信息不完整：${missing.slice(0, 4).join('；')}${missing.length > 4 ? '…' : ''}`,
+      `Debug information is incomplete: ${missing.slice(0, 4).join('; ')}${missing.length > 4 ? '…' : ''}`,
       { modal: true },
-      '继续调试',
-      '打开工程'
+      'Continue Debugging',
+      'Open Project'
     );
-    if (choice === '打开工程') await vscode.window.showTextDocument(vscode.Uri.file(descriptor.projectPath));
-    return choice === '继续调试';
+    if (choice === 'Open Project') await vscode.window.showTextDocument(vscode.Uri.file(descriptor.projectPath));
+    return choice === 'Continue Debugging';
   }
 
   shouldBuildBeforeDebug(descriptors) {
@@ -1429,10 +1429,10 @@ class BuildDebugSupport {
 
   async runGroup(uri) {
     if (this.runInProgress) {
-      return void vscode.window.showInformationMessage('Pascal Union：已有一个 Run 进程正在运行。');
+      return void vscode.window.showInformationMessage('Pascal Union: A Run process is already running.');
     }
     const group = this.groupFromTarget(uri) || await this.pickGroup(uri?.fsPath || '');
-    if (!group) return void vscode.window.showWarningMessage('当前工作区没有可运行的 Delphi Project Group。');
+    if (!group) return void vscode.window.showWarningMessage('There is no runnable Delphi Project Group in the current workspace.');
     const startup = await this.selectStartupProject(group, false);
     if (!startup) return;
     const fallback = this.model.project(group.projectPaths[0]) || {};
@@ -1453,7 +1453,7 @@ class BuildDebugSupport {
     }
     const descriptor = descriptors.find(item => normalizeKey(item.projectPath) === normalizeKey(startup.projectPath));
     if (!descriptor || !fs.existsSync(descriptor.output)) {
-      return void vscode.window.showErrorMessage(`启动工程输出不存在：${descriptor?.output || startup.projectPath}`);
+      return void vscode.window.showErrorMessage(`Startup project output does not exist: ${descriptor?.output || startup.projectPath}`);
     }
     const tools = await this.tools().catch(() => undefined);
     const args = parseCommandLine(descriptor.runParams);
@@ -1463,7 +1463,7 @@ class BuildDebugSupport {
     try {
       await this.runInDebugConsole(descriptor, args, tools?.environment || {});
     } catch (error) {
-      void vscode.window.showErrorMessage(`Pascal Union：运行失败：${error.message}`);
+      void vscode.window.showErrorMessage(`Pascal Union: Run failed: ${error.message}`);
     } finally {
       this.runInProgress = false;
       this.refreshStatusBar();
@@ -1498,7 +1498,7 @@ class BuildDebugSupport {
       this.runAdapters.delete(runId);
       if (this.activeRunAdapter === adapter) this.activeRunAdapter = undefined;
       adapter.dispose();
-      throw new Error('无法启动内部 Run 会话。');
+      throw new Error('Could not start the internal Run session.');
     }
     await vscode.commands.executeCommand('workbench.debug.action.focusRepl');
     const exitCode = await adapter.completed;
@@ -1509,7 +1509,7 @@ class BuildDebugSupport {
 
   async debugPackage(uri) {
     if (!vscode.workspace.getConfiguration('pascalUnion').get('debugger.enabled', true)) {
-      return void vscode.window.showWarningMessage('Pascal Union Delphi 调试器已在设置中关闭。');
+      return void vscode.window.showWarningMessage('The Pascal Union Delphi debugger is disabled in settings.');
     }
     if (!await this.ensureDebugger()) return;
     const project = this.projectFromTarget(uri) || await this.pickPackage(uri?.fsPath || '');
@@ -1517,7 +1517,7 @@ class BuildDebugSupport {
     const requestedPlatform = this.selection(project.projectDir, project).platform;
     const platform = compatiblePlatform([project], requestedPlatform);
     if (platform !== requestedPlatform) {
-      void vscode.window.showInformationMessage(`Pascal Union：${project.name} 不支持 ${requestedPlatform}，调试已改用 ${platform}。`);
+      void vscode.window.showInformationMessage(`Pascal Union: ${project.name} does not support ${requestedPlatform}; debugging will use ${platform}.`);
     }
     const debugOverrides = {
       configuration: 'Debug',
@@ -1552,12 +1552,12 @@ class BuildDebugSupport {
     if (!await this.confirmSymbols(descriptor, modules, host, descriptors)) return;
     const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(project.projectPath));
     const started = await vscode.debug.startDebugging(folder, this.debugConfiguration(host, descriptor, descriptors, modules));
-    if (!started) void vscode.window.showErrorMessage('Pascal Union：Delphi 调试会话未能启动，请查看“Delphi Debugger”输出。');
+    if (!started) void vscode.window.showErrorMessage('Pascal Union: Could not start the Delphi debug session. See the "Delphi Debugger" output.');
   }
 
   async attachPackage(uri) {
     if (!vscode.workspace.getConfiguration('pascalUnion').get('debugger.enabled', true)) {
-      return void vscode.window.showWarningMessage('Pascal Union Delphi 调试器已在设置中关闭。');
+      return void vscode.window.showWarningMessage('The Pascal Union Delphi debugger is disabled in settings.');
     }
     if (!await this.ensureDebugger()) return;
     const project = this.projectFromTarget(uri) || await this.pickPackage(uri?.fsPath || '');
@@ -1577,7 +1577,7 @@ class BuildDebugSupport {
 
   async buildAndDebugGroup(uri) {
     if (!vscode.workspace.getConfiguration('pascalUnion').get('debugger.enabled', true)) {
-      return void vscode.window.showWarningMessage('Pascal Union Delphi 调试器已在设置中关闭。');
+      return void vscode.window.showWarningMessage('The Pascal Union Delphi debugger is disabled in settings.');
     }
     if (!await this.ensureDebugger()) return;
     const group = this.groupFromTarget(uri) || await this.pickGroup(uri?.fsPath || '');
@@ -1588,7 +1588,7 @@ class BuildDebugSupport {
     const requestedPlatform = this.selection(group.groupDir).platform;
     const platform = compatiblePlatform(projects, requestedPlatform);
     if (platform !== requestedPlatform) {
-      void vscode.window.showInformationMessage(`Pascal Union：该工程组不支持 ${requestedPlatform}，调试已改用 ${platform}。`);
+      void vscode.window.showInformationMessage(`Pascal Union: This project group does not support ${requestedPlatform}; debugging will use ${platform}.`);
     }
     const debugOverrides = {
       configuration: 'Debug',
@@ -1613,7 +1613,7 @@ class BuildDebugSupport {
     }
     const descriptor = descriptors.find(item => normalizeKey(item.projectPath) === normalizeKey(startup.projectPath));
     if (!descriptor || !fs.existsSync(descriptor.output)) {
-      return void vscode.window.showErrorMessage(`启动工程输出不存在：${descriptor?.output || startup.projectPath}`);
+      return void vscode.window.showErrorMessage(`Startup project output does not exist: ${descriptor?.output || startup.projectPath}`);
     }
     const modules = vscode.workspace.getConfiguration('pascalUnion').get('debugger.loadGroupModules', true)
       ? descriptors.filter(item => ['package', 'library'].includes(item.kind) && fs.existsSync(item.output)).map(item => this.moduleFor(item))
@@ -1622,7 +1622,7 @@ class BuildDebugSupport {
     const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(group.groupPath));
     this.output.appendLine(`Starting Delphi debugger: ${descriptor.output} (${descriptor.configuration}/${descriptor.platform}), modules=${modules.length}, map=${fs.existsSync(descriptor.mapFile) ? descriptor.mapFile : 'missing'}, rsm=${fs.existsSync(descriptor.rsmFile) ? descriptor.rsmFile : 'missing'}.`);
     const started = await vscode.debug.startDebugging(folder, this.debugConfiguration(descriptor.output, descriptor, descriptors, modules));
-    if (!started) void vscode.window.showErrorMessage('Pascal Union：Delphi 调试会话未能启动，请查看“Delphi Debugger”输出。');
+    if (!started) void vscode.window.showErrorMessage('Pascal Union: Could not start the Delphi debug session. See the "Delphi Debugger" output.');
   }
 
   async provideDebugConfigurations(folder) {

@@ -202,7 +202,7 @@ async function resetSymbolColors(output, vscodeApi) {
     await configuration.update(key, value, target);
   }
   output?.appendLine('Reset the Pascal Union symbol color profile; non-color settings were unchanged.');
-  void vscode.window.showInformationMessage('已恢复默认符号颜色；着色开关和延迟等其他设置未改变。');
+  void vscode.window.showInformationMessage('Default symbol colors restored. Other settings, including coloring and delay options, were not changed.');
 }
 
 module.exports = {

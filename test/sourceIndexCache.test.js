@@ -76,7 +76,7 @@ test('missing-unit assistance is driven by compiler diagnostics instead of specu
   assert.doesNotMatch(extensionSource, /Unknown type.*missing Unit in uses/);
   assert.match(extensionSource, /unknownSymbolFromDiagnostic\(diagnostic\.message\)/);
   assert.match(extensionSource, /registerCodeActionsProvider\(/);
-  assert.match(extensionSource, /new vscode\.CodeAction\([\s\S]*?添加.*到 uses/);
+  assert.match(extensionSource, /new vscode\.CodeAction\([\s\S]*?Add .* to uses/);
 });
 
 test('definition links pin Ctrl-hover decoration to the exact source token', () => {

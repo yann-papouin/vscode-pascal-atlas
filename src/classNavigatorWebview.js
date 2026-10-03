@@ -4,7 +4,7 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
   const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const safeCodiconFontUri = String(codiconFontUri).replace(/["'()\\\r\n]/g, character => `\\${character}`);
   return `<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="UTF-8">
+<html lang="en"><head><meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
@@ -76,26 +76,26 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
 </style></head><body>
 <section id="search" hidden>
   <div class="query-line">
-    <input id="query" type="text" spellcheck="false" autocomplete="off" aria-label="查找 Delphi 导航条目" placeholder="名称开头；* 匹配任意字符">
-    <button id="close-search" class="icon-button codicon" title="关闭搜索 (Esc)" aria-label="关闭搜索">&#xea76;</button>
+    <input id="query" type="text" spellcheck="false" autocomplete="off" aria-label="Find Delphi navigator items" placeholder="Name prefix; * matches any characters">
+    <button id="close-search" class="icon-button codicon" title="Close search (Esc)" aria-label="Close search">&#xea76;</button>
   </div>
   <div class="filter-line">
-    <label>范围<select id="scope"><option value="current">当前文件</option><option value="global">全局</option></select></label>
-    <label><input id="kind-types" type="checkbox">类</label>
-    <label><input id="kind-files" type="checkbox">文件名</label>
-    <label><input id="kind-routines" type="checkbox">函数</label>
-    <label>跳转<select id="navigation"><option value="all">全部实时</option><option value="current">仅当前文件实时</option><option value="confirm">确认时</option></select></label>
+    <label>Scope<select id="scope"><option value="current">Current file</option><option value="global">Global</option></select></label>
+    <label><input id="kind-types" type="checkbox">Types</label>
+    <label><input id="kind-files" type="checkbox">File names</label>
+    <label><input id="kind-routines" type="checkbox">Routines</label>
+    <label>Navigation<select id="navigation"><option value="all">Always live</option><option value="current">Current file only</option><option value="confirm">On confirmation</option></select></label>
   </div>
   <div id="search-status"></div>
 </section>
 <section id="sort-panel" hidden>
   <div class="panel-header">
-    <strong>Delphi 导航排序</strong>
-    <button id="close-sort" class="icon-button codicon" title="关闭排序设置 (Esc)" aria-label="关闭排序设置">&#xea76;</button>
+    <strong>Delphi Navigator Sorting</strong>
+    <button id="close-sort" class="icon-button codicon" title="Close sorting settings (Esc)" aria-label="Close sorting settings">&#xea76;</button>
   </div>
   <div class="sort-options">
-    <label>类内成员<select id="member-order"><option value="visibility">按分组排序</option><option value="declaration">按声明顺序</option><option value="implementation">按实现顺序</option></select></label>
-    <label>顶层类型<select id="type-order"><option value="declaration">按声明顺序</option><option value="alphabetical">按字母顺序</option></select></label>
+    <label>Members in types<select id="member-order"><option value="visibility">By visibility</option><option value="declaration">Declaration order</option><option value="implementation">Implementation order</option></select></label>
+    <label>Top-level types<select id="type-order"><option value="declaration">Declaration order</option><option value="alphabetical">Alphabetical order</option></select></label>
   </div>
 </section>
 <div id="tree" role="tree" tabindex="0"></div>
@@ -251,7 +251,7 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
 
   function renderTree() {
     treeHost.replaceChildren();
-    if (!roots.length) { const empty = document.createElement('div'); empty.id = 'empty'; empty.textContent = messageText || '打开 Pascal/Delphi、DPK 或 DPROJ 文件后显示结构导航。'; treeHost.appendChild(empty); return; }
+    if (!roots.length) { const empty = document.createElement('div'); empty.id = 'empty'; empty.textContent = messageText || 'Open a Pascal/Delphi, DPK, or DPROJ file to view its structure.'; treeHost.appendChild(empty); return; }
     roots.forEach(node => treeHost.appendChild(renderNode(node, 0))); setSelected(selectedId, false, false);
   }
 
@@ -259,7 +259,7 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
     clearTimeout(searchTimer); const requestId = ++searchRequest; const options = readOptions(); const query = queryInput.value.trim();
     if (persistOptions) vscode.postMessage({ type:'searchOptions', options });
     if (!query) { results = []; activeResult = -1; resultsHost.hidden = true; treeHost.hidden = false; status.textContent = ''; return; }
-    resultsHost.hidden = false; treeHost.hidden = true; status.textContent = options.scope === 'global' ? '正在搜索全局索引…' : '正在搜索…';
+    resultsHost.hidden = false; treeHost.hidden = true; status.textContent = options.scope === 'global' ? 'Searching the global index…' : 'Searching…';
     searchTimer = setTimeout(() => vscode.postMessage({ type:'search', requestId, query, options }), 35);
   }
   function shouldPreview(item) { return searchOptions.navigation === 'all' || (searchOptions.navigation === 'current' && item.isCurrentFile); }
@@ -272,7 +272,7 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
   }
   function confirmResult() {
     const item = results[activeResult]; if (!item) return;
-    status.textContent = '正在定位并选中导航项…';
+    status.textContent = 'Navigating to and selecting item…';
     vscode.postMessage({ type:'searchActivate', id:item.id, preview:false });
   }
   function renderResults(items, responseStatus) {
@@ -285,7 +285,7 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
       if (item.description) { const detail = document.createElement('span'); detail.className = 'result-detail'; detail.textContent = item.description; main.appendChild(detail); }
       row.appendChild(main); row.addEventListener('mousedown', () => activateResult(index, true)); row.addEventListener('click', confirmResult); resultsHost.appendChild(row);
     }
-    status.textContent = responseStatus || (results.length ? results.length + ' 个匹配项' : '没有匹配项');
+    status.textContent = responseStatus || (results.length ? results.length + ' matches' : 'No matches');
     activateResult(results.length ? 0 : -1, true);
   }
   function showSearch(options) {

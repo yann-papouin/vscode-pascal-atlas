@@ -267,9 +267,9 @@ test('manifest keeps project commands out of the native Explorer and exposes the
   assert.equal(terminalToolbar.length, 6);
   assert.ok(terminalToolbar.every(item => item.when.includes('pascalUnion.buildTerminalActive')));
   const commands = new Map(manifest.contributes.commands.map(item => [item.command, item]));
-  assert.equal(commands.get('pascalUnion.build.toggleErrorsChecked').title, '✓ 显示错误');
-  assert.equal(commands.get('pascalUnion.build.toggleWarningsChecked').title, '✓ 显示警告');
-  assert.equal(commands.get('pascalUnion.build.toggleOtherChecked').title, '✓ 显示其他信息');
+  assert.equal(commands.get('pascalUnion.build.toggleErrorsChecked').title, '✓ Show Errors');
+  assert.equal(commands.get('pascalUnion.build.toggleWarningsChecked').title, '✓ Show Warnings');
+  assert.equal(commands.get('pascalUnion.build.toggleOtherChecked').title, '✓ Show Other Messages');
   assert.deepEqual(commands.get('pascalUnion.build.toggleErrorsChecked').icon, {
     light: 'media/build-filter-error-checked-light.svg',
     dark: 'media/build-filter-error-checked-dark.svg'
@@ -315,9 +315,9 @@ test('manifest keeps project commands out of the native Explorer and exposes the
   assert.match(navigatorSource, /new ClassNavigatorWebview\(vscode, 'pascalUnion\.classNavigator'/);
   assert.match(navigatorSource, /WEBVIEW_CONTEXT_COMMANDS\.map[\s\S]*?tree\.selection\[0\][\s\S]*?executeCommand\(command, target\)/);
   assert.match(navigatorSource, /workspaceState\.update\(SEARCH_OPTIONS_STATE_KEY, navigatorSearchOptions\)/);
-  assert.match(navigatorWebviewSource, /id="scope"[\s\S]*?当前文件[\s\S]*?全局/);
+  assert.match(navigatorWebviewSource, /id="scope"[\s\S]*?Current file[\s\S]*?Global/);
   assert.match(navigatorWebviewSource, /id="kind-types"[\s\S]*?id="kind-files"[\s\S]*?id="kind-routines"/);
-  assert.match(navigatorWebviewSource, /全部实时[\s\S]*?仅当前文件实时[\s\S]*?确认时/);
+  assert.match(navigatorWebviewSource, /Always live[\s\S]*?Current file only[\s\S]*?On confirmation/);
   assert.match(navigatorWebviewSource, /event\.key === 'Escape'[\s\S]*?hideSearch\(\)/);
   assert.match(navigatorWebviewSource, /id="sort-panel"[\s\S]*?id="member-order"[\s\S]*?id="type-order"/);
   assert.match(navigatorWebviewSource, /type:'sortUpdate', key, value/);
@@ -351,11 +351,11 @@ test('manifest keeps project commands out of the native Explorer and exposes the
   assert.deepEqual(
     ['pascalUnion.build.toggleErrors', 'pascalUnion.build.toggleWarnings', 'pascalUnion.build.toggleOther']
       .map(command => manifest.contributes.commands.find(item => item.command === command).title),
-    ['显示错误', '显示警告', '显示其他信息']
+    ['Show Errors', 'Show Warnings', 'Show Other Messages']
   );
   assert.match(source, /createQuickPick\(\)[\s\S]*?canSelectMany\s*=\s*true/);
   assert.match(source, /onDidChangeSelection\([\s\S]*?buildTerminalSession\?\.setFilters\(next\)/);
-  assert.doesNotMatch(source, /showQuickPick\(items,\s*\{[\s\S]*?Pascal Union：构建输出/);
+  assert.doesNotMatch(source, /showQuickPick\(items,\s*\{[\s\S]*?Pascal Union: Build Output/);
   assert.ok(manifest.contributes.configuration.properties['pascalUnion.build.completionNotification']);
   assert.equal(manifest.contributes.configuration.properties['pascalUnion.build.showStatusBar'].default, true);
   assert.ok(manifest.contributes.configuration.properties['pascalUnion.projectNavigator.enabled']);
@@ -417,7 +417,7 @@ test('manifest keeps project commands out of the native Explorer and exposes the
   assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.build.compileGroup').title, 'Compile All');
   assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.build.cleanGroup').title, 'Clean All');
   assert.equal(manifest.contributes.views.explorer.some(item => item.id === 'pascalUnion.projectNavigator'), false);
-  assert.equal(manifest.contributes.views.explorer.find(item => item.id === 'pascalUnion.classNavigator').name, 'Delphi 导航');
+  assert.equal(manifest.contributes.views.explorer.find(item => item.id === 'pascalUnion.classNavigator').name, 'Delphi Navigator');
   assert.equal(Object.keys(manifest.contributes.configuration.properties).some(key => key.startsWith('pascalUnion.explorer.projectMarkers')), false);
   assert.ok(manifest.contributes.problemMatchers.some(item => item.name === 'pascalUnionDelphi'));
   const classicMatcher = new RegExp(manifest.contributes.problemMatchers

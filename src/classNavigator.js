@@ -547,7 +547,7 @@ function navigatorSearchResultsForModel(model, filePath, query, rawOptions = {})
       id: navigatorSearchResultId('file', filePath, 0, fileName),
       kind: 'file',
       label: fileName,
-      description: '当前文件',
+      description: 'Current file',
       tooltip: filePath,
       icon: 'file',
       filePath,
@@ -1279,7 +1279,7 @@ function aiRetryReasoningEffort(reasoningEffort) {
   return reasoningEffort === 'minimal' ? 'low' : reasoningEffort;
 }
 
-function pendingNavigatorModel(filePath, label = '正在后台分析当前文件…', kind = 'navigator-loading') {
+function pendingNavigatorModel(filePath, label = 'Analyzing current file in the background…', kind = 'navigator-loading') {
   const loading = {
     id: `loading:${filePath}`,
     kind,
@@ -1442,7 +1442,7 @@ class ClassNavigatorProvider {
       routine.children.push({
         id: `ai-step-loading:${routine.id}`,
         kind: 'ai-step-loading',
-        label: '正在生成步骤…',
+        label: 'Generating steps…',
         children: [],
         parent: routine
       });
@@ -1570,7 +1570,7 @@ class ClassNavigatorProvider {
         const loading = {
           id: `ai-step-loading:${routine.id}`,
           kind: 'ai-step-loading',
-          label: '正在生成步骤…',
+          label: 'Generating steps…',
           children: [],
           parent: routine
         };
@@ -1616,7 +1616,7 @@ class ClassNavigatorProvider {
         this.output?.appendLine(`Large-file class navigator failed: ${message.error}`);
         this.cache = {
           key,
-          model: pendingNavigatorModel(document.fileName, '类导航分析失败；可点击刷新重试。', 'navigator-error')
+          model: pendingNavigatorModel(document.fileName, 'Class navigator analysis failed. Click refresh to retry.', 'navigator-error')
         };
       } else {
         this.applyAiSteps(message.model, activeDocument);
@@ -1635,7 +1635,7 @@ class ClassNavigatorProvider {
       this.output?.appendLine(`Large-file class navigator worker failed: ${error.stack || error.message}`);
       this.cache = {
         key,
-        model: pendingNavigatorModel(document.fileName, '类导航分析失败；可点击刷新重试。', 'navigator-error')
+        model: pendingNavigatorModel(document.fileName, 'Class navigator analysis failed. Click refresh to retry.', 'navigator-error')
       };
       this.changed.fire(undefined);
     });
@@ -1770,15 +1770,15 @@ class ClassNavigatorProvider {
     }
     else if (node.kind === 'unit-initialization-section') {
       item.iconPath = new vscode.ThemeIcon('symbol-function', new vscode.ThemeColor('charts.purple'));
-      item.tooltip = 'Unit 初始化段；点击跳到 initialization。';
+      item.tooltip = 'Unit initialization section. Click to go to initialization.';
     }
     else if (node.kind === 'unit-finalization-section') {
       item.iconPath = new vscode.ThemeIcon('symbol-function', new vscode.ThemeColor('charts.purple'));
-      item.tooltip = 'Unit 终结段；点击跳到 finalization。';
+      item.tooltip = 'Unit finalization section. Click to go to finalization.';
     }
     else if (node.kind === 'properties-group') {
       item.iconPath = new vscode.ThemeIcon('list-tree');
-      item.tooltip = '该类型声明的 properties';
+      item.tooltip = 'Properties declared by this type';
     }
     else if (node.kind === 'property') {
       item.iconPath = new vscode.ThemeIcon('symbol-property', accessColor);
@@ -1787,12 +1787,12 @@ class ClassNavigatorProvider {
     else if (node.kind === 'ai-step') {
       item.iconPath = new vscode.ThemeIcon('list-ordered', new vscode.ThemeColor('charts.purple'));
       item.tooltip = node.endLine > node.startLine
-        ? `AI 整理的函数步骤 · 第 ${node.startLine}–${node.endLine} 行`
-        : `AI 整理的函数步骤 · 第 ${node.startLine} 行`;
+        ? `AI-generated routine steps · lines ${node.startLine}–${node.endLine}`
+        : `AI-generated routine steps · line ${node.startLine}`;
     }
     else if (node.kind === 'ai-step-loading') {
       item.iconPath = new vscode.ThemeIcon('loading~spin');
-      item.tooltip = '正在通过 OAI Compatible 模型整理当前函数。';
+      item.tooltip = 'Summarizing the current routine with the OAI Compatible model.';
     }
     else if (node.kind === 'type') {
       const icon = node.typeKind === 'interface'
@@ -1807,15 +1807,15 @@ class ClassNavigatorProvider {
         .includes(node.specialRoutineKind);
       const icon = routineIconName(node);
       const flavor = lifecycle
-        ? '生命周期方法'
+        ? 'Lifecycle method'
         : node.specialRoutineKind === 'operator'
-          ? '运算符'
+          ? 'Operator'
           : node.routineFlavor === 'static'
-            ? '静态方法'
+            ? 'Static method'
             : node.routineFlavor === 'class'
-              ? '类方法'
+              ? 'Class method'
               : node.routineFlavor === 'local'
-                ? '局部函数'
+                ? 'Local routine'
                 : undefined;
       item.iconPath = new vscode.ThemeIcon(
         icon,
@@ -1823,14 +1823,14 @@ class ClassNavigatorProvider {
       );
       item.tooltip = `${flavor ? `${flavor} · ` : ''}${node.access ? `${node.access} · ` : ''}${node.signature || `${node.routineKind} ${node.name}`}`;
     }
-    if (node.kind === 'uses-group') item.tooltip = '当前文件的 uses；点击跳到 uses，不展开引用包。';
+    if (node.kind === 'uses-group') item.tooltip = 'Uses in the current file. Click to go to the uses clause; imported packages are not expanded.';
     if (node.kind === 'uses-section') {
-      item.tooltip = `${node.section === 'interface' ? 'interface' : 'implementation'} uses；点击定位并标记该 uses 块。`;
+      item.tooltip = `${node.section === 'interface' ? 'interface' : 'implementation'} uses. Click to navigate to and mark this uses block.`;
     }
     if (Number.isInteger(node.offset) || Number.isInteger(node.declarationOffset)) {
       item.command = {
         command: 'pascalUnion.classNavigator.open',
-        title: '跳转',
+        title: 'Go to',
         arguments: [node]
       };
     }
@@ -1909,7 +1909,7 @@ function navigatorNodeById(model, id) {
 function classNavigatorHtml(webview) {
   const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="UTF-8">
+<html lang="en"><head><meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
@@ -2021,7 +2021,7 @@ function classNavigatorHtml(webview) {
     if (!roots.length) {
       const empty = document.createElement('div');
       empty.id = 'empty';
-      empty.textContent = '打开 Pascal/Delphi、DPK 或 DPROJ 文件后显示结构导航。';
+      empty.textContent = 'Open a Pascal/Delphi, DPK, or DPROJ file to view its structure.';
       host.appendChild(empty);
       return;
     }
@@ -2139,11 +2139,11 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
   };
   const stopAiGeneration = () => {
     if (!activeAiCancellation) {
-      void vscode.window.showInformationMessage('当前没有正在运行的 AI 步骤生成任务。');
+      void vscode.window.showInformationMessage('There is no AI step-generation task running.');
       return;
     }
     activeAiCancellation.cancel();
-    void vscode.window.setStatusBarMessage('$(stop-circle) 正在停止 AI 步骤生成…', 2000);
+    void vscode.window.setStatusBarMessage('$(stop-circle) Stopping AI step generation…', 2000);
   };
   const savedExpandedRoutines = context.workspaceState.get(EXPANDED_ROUTINES_STATE_KEY, {});
   const expandedRoutineIdsByDocument = new Map(
@@ -2249,12 +2249,12 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       tree.description = 'Project / Package';
       tree.message = projectProvider?.roots?.length
         ? undefined
-        : '当前工作区没有识别到 Delphi Project Group 或工程。';
+        : 'No Delphi Project Group or project was detected in the current workspace.';
       return;
     }
     const document = provider.activeDocument();
     tree.description = document ? path.basename(document.fileName) : undefined;
-    tree.message = document ? undefined : '打开 Pascal/Delphi、DPK 或 DPROJ 文件后显示结构导航。';
+    tree.message = document ? undefined : 'Open a Pascal/Delphi, DPK, or DPROJ file to view its structure.';
   };
   const followEnabled = () => {
     const config = vscode.workspace.getConfiguration('pascalUnion');
@@ -2591,7 +2591,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
           await tree.postSearchResults(
             message.requestId,
             results.map(serializeSearchResult),
-            '全局源码索引尚不可用；当前仅显示本文件结果'
+            'The global source index is not available yet; showing results from this file only.'
           );
           return;
         }
@@ -2629,12 +2629,12 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       }
       if (generation !== navigatorSearchRequest || navigatorSearchSession !== session) return;
       navigatorSearchResults = new Map(results.map(result => [result.id, result]));
-      const status = results.length >= 500 ? '显示前 500 个匹配项' : undefined;
+      const status = results.length >= 500 ? 'Showing the first 500 matches' : undefined;
       await tree.postSearchResults(message.requestId, results.map(serializeSearchResult), status);
     } catch (error) {
       if (generation !== navigatorSearchRequest || navigatorSearchSession !== session) return;
       output?.appendLine(`Delphi navigator global search failed: ${error.stack || error.message}`);
-      await tree.postSearchResults(message.requestId, [], `全局搜索失败：${error.message}`);
+      await tree.postSearchResults(message.requestId, [], `Global search failed: ${error.message}`);
     }
   };
 
@@ -2683,7 +2683,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       }
     } catch (error) {
       output?.appendLine(`Delphi navigator search navigation failed: ${error.stack || error.message}`);
-      void vscode.window.showErrorMessage(`无法打开搜索结果：${error.message}`);
+      void vscode.window.showErrorMessage(`Could not open search result: ${error.message}`);
     }
   };
 
@@ -2695,7 +2695,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     }
     const document = provider.activeDocument();
     if (!document) {
-      void vscode.window.showInformationMessage('请先打开一个 Pascal/Delphi 源文件。');
+      void vscode.window.showInformationMessage('Open a Pascal/Delphi source file first.');
       return;
     }
     const model = await provider.readyModel(document);
@@ -2727,12 +2727,12 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
 
   const selectAiChatModel = async settings => {
     if (!vscode.lm?.selectChatModels || !vscode.LanguageModelChatMessage?.User) {
-      throw new Error('当前 VS Code 版本不支持 Language Model API。');
+      throw new Error('This version of VS Code does not support the Language Model API.');
     }
     const models = await vscode.lm.selectChatModels({ vendor: settings.provider });
     if (!models.length) {
       throw new Error(
-        `没有找到 ${settings.provider} 模型。请确认 OAI Compatible Copilot 已启用并已配置模型。`
+        `No ${settings.provider} models were found. Make sure OAI Compatible Copilot is enabled and a model is configured.`
       );
     }
     const chatModel = settings.modelId
@@ -2740,7 +2740,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
         || candidate.name === settings.modelId)
       : models[0];
     if (!chatModel) {
-      throw new Error(`未找到配置的模型“${settings.modelId}”；请在 AI 函数步骤设置中修改模型 ID。`);
+      throw new Error(`Configured model "${settings.modelId}" was not found. Change the model ID in AI Routine Steps settings.`);
     }
     return chatModel;
   };
@@ -2787,14 +2787,14 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
           }
         }
       }
-      if (timedOut) throw new Error(`模型请求超过 ${timeoutSeconds} 秒，已停止等待。`);
+      if (timedOut) throw new Error(`The model request exceeded ${timeoutSeconds} seconds. Waiting has stopped.`);
       if (token.isCancellationRequested) return { steps: [], responseLength: responseText.length };
       return {
         ...parseAiStepResponseResult(responseText, request.analysis, request.analysis),
         responseLength: responseText.length
       };
     } catch (error) {
-      if (timedOut) throw new Error(`模型请求超过 ${timeoutSeconds} 秒，已停止等待。`);
+      if (timedOut) throw new Error(`The model request exceeded ${timeoutSeconds} seconds. Waiting has stopped.`);
       throw error;
     } finally {
       clearTimeout(timeout);
@@ -2819,7 +2819,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
         { ...request, analysis: repairAnalysis, onPartial: undefined },
         chatModel,
         token,
-        `${justification} 仅补齐上一次遗漏的固定代码块标题。`
+        `${justification} Fill in only the fixed code-block titles omitted from the previous response.`
       );
       if (token.isCancellationRequested) return [];
       const merged = mergeAiStepResponseResults(request.analysis, first, repair);
@@ -2862,12 +2862,12 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       ? buildAiStepPrompt(request.text, request.routine, retrySettings)
       : { ...request.analysis };
     if (!retryAnalysis) return [];
-    retryAnalysis.prompt += '\n上一次返回未形成有效 JSON。请务必只返回一个完整的 JSON 对象，并使用方括号中的真实行号。';
+    retryAnalysis.prompt += '\nThe previous response was not valid JSON. Return exactly one complete JSON object and use the actual line numbers in brackets.';
     const retry = await sendAiStepRequest(
       { ...request, settings: retrySettings, analysis: retryAnalysis },
       chatModel,
       token,
-      `${justification} 上一次响应无法解析，进行一次兼容性重试。`
+      `${justification} The previous response could not be parsed. Retrying once with a compatibility prompt.`
     );
     if (!retry.steps.length && !token.isCancellationRequested) {
       output?.appendLine(
@@ -2903,13 +2903,13 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
   const generateAiSteps = async (requestedNode, generationMode = 'normal') => {
     const document = provider.activeDocument();
     if (!document) {
-      void vscode.window.showInformationMessage('请先打开一个 Pascal/Delphi 源文件。');
+      void vscode.window.showInformationMessage('Open a Pascal/Delphi source file first.');
       return;
     }
     const detailed = generationMode === 'detailed';
     const settings = aiSettingsForMode(document, generationMode);
     if (!settings.enabled) {
-      void vscode.window.showInformationMessage('请先在 Pascal Union 设置中启用“AI 函数步骤”。');
+      void vscode.window.showInformationMessage('Enable "AI Routine Steps" in Pascal Union settings first.');
       return;
     }
     const model = provider.model();
@@ -2921,21 +2921,21 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       || provider.routineForNode(activeNodeAt(model, caretOffset));
     const request = provider.aiRequestFor(routine, document, document.getText(), settings);
     if (!request) {
-      void vscode.window.showInformationMessage('请将光标放在具有实现代码的函数中，或先在导航树中选择该函数。');
+      void vscode.window.showInformationMessage('Place the cursor in a routine with an implementation, or select the routine in the navigator.');
       return;
     }
     if (request.reusedChunkCache) {
       provider.refreshAiRoutine(request);
-      void vscode.window.showInformationMessage('已从未改动的代码块缓存恢复 AI 步骤。');
+      void vscode.window.showInformationMessage('AI steps were restored from the unchanged code-block cache.');
       return;
     }
     if (!vscode.lm?.selectChatModels || !vscode.LanguageModelChatMessage?.User) {
-      void vscode.window.showErrorMessage('当前 VS Code 版本不支持 Language Model API。');
+      void vscode.window.showErrorMessage('This version of VS Code does not support the Language Model API.');
       return;
     }
     const operation = beginAiOperation();
     if (!operation) {
-      void vscode.window.showInformationMessage('已有 AI 步骤生成任务正在运行；可先点击停止按钮。');
+      void vscode.window.showInformationMessage('An AI step-generation task is already running. Click Stop first.');
       return;
     }
     let completed = false;
@@ -2953,7 +2953,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       provider.beginAiGeneration(request, { refresh: false });
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Window,
-        title: `正在${detailed ? '详细' : ''}整理 ${request.routine.label} 的步骤`,
+        title: `Generating ${detailed ? 'detailed ' : ''}steps for ${request.routine.label}`,
         cancellable: true
       }, async (_progress, progressToken) => {
         const cancellation = progressToken.onCancellationRequested(() => operation.cancel());
@@ -2966,11 +2966,11 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
             chatModel,
             operation.token,
             detailed
-              ? '为用户右键选择的 Delphi 函数生成细粒度、可递归展开且可点击的中文导航步骤。'
-              : '为用户右键选择的 Delphi 函数生成可递归展开且可点击的中文导航步骤。'
+              ? 'Generate fine-grained, recursively expandable, clickable English navigation steps for the Delphi routine selected by the user.'
+              : 'Generate recursively expandable, clickable English navigation steps for the Delphi routine selected by the user.'
           );
           if (operation.token.isCancellationRequested) return;
-          if (!steps.length) throw new Error('模型没有返回可定位的步骤，请重试或更换模型。');
+          if (!steps.length) throw new Error('The model returned no navigable steps. Retry or choose another model.');
           await provider.completeAiGeneration(request, steps, chatModel);
           completed = true;
           output?.appendLine(
@@ -2986,7 +2986,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
         || /cancel/i.test(error?.code || '') || /cancel/i.test(error?.message || '');
       if (!cancelled) {
         output?.appendLine(`AI function step generation failed: ${error.stack || error.message}`);
-        void vscode.window.showErrorMessage(`AI 函数步骤生成失败：${error.message}`);
+        void vscode.window.showErrorMessage(`AI routine step generation failed: ${error.message}`);
       }
     } finally {
       if (!completed) provider.failAiGeneration(request);
@@ -2997,17 +2997,17 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
   const generateClassAiSteps = async (requestedNode, generationMode = 'normal') => {
     const document = provider.activeDocument();
     if (!document || !/\.(?:pas|pp)$/i.test(document.fileName)) {
-      void vscode.window.showInformationMessage('请先打开一个 .pas 或 .pp 源文件。');
+      void vscode.window.showInformationMessage('Open a .pas or .pp source file first.');
       return;
     }
     const settings = aiSettingsForMode(document, generationMode);
     if (!settings.enabled) {
-      void vscode.window.showInformationMessage('请先在 Pascal Union 设置中启用“AI 函数步骤”。');
+      void vscode.window.showInformationMessage('Enable "AI Routine Steps" in Pascal Union settings first.');
       return;
     }
     if (requestedNode?.kind !== 'type') return;
     if (activeAiCancellation) {
-      void vscode.window.showInformationMessage('已有 AI 步骤生成任务正在运行；可先点击停止按钮。');
+      void vscode.window.showInformationMessage('An AI step-generation task is already running. Click Stop first.');
       return;
     }
 
@@ -3026,7 +3026,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       .filter(node => Number.isInteger(node.implementationOffset))
       .map(node => [node.id, node])).values()];
     if (!routines.length) {
-      void vscode.window.showInformationMessage(`类 ${requestedNode.label} 中没有可生成步骤的函数实现。`);
+      void vscode.window.showInformationMessage(`Class ${requestedNode.label} has no routine implementations for step generation.`);
       return;
     }
 
@@ -3045,7 +3045,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     }
     if (!requests.length) {
       void vscode.window.showInformationMessage(
-        `AI 函数步骤：无需请求模型，使用缓存 ${counts.skipped}，失败 ${counts.failed}。`
+        `AI routine steps: no model request needed; used ${counts.skipped} cached result(s), ${counts.failed} failed.`
       );
       return;
     }
@@ -3060,7 +3060,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       if (operation.token.isCancellationRequested) return;
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Window,
-        title: `正在${generationMode === 'detailed' ? '详细' : ''}整理 ${requestedNode.label} 的全部函数（${requests.length} 个）`,
+        title: `Generating ${generationMode === 'detailed' ? 'detailed ' : ''}steps for all routines in ${requestedNode.label} (${requests.length})`,
         cancellable: true
       }, async (progress, progressToken) => {
         const cancellation = progressToken.onCancellationRequested(() => operation.cancel());
@@ -3089,11 +3089,11 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
                   chatModel,
                   operation.token,
                   generationMode === 'detailed'
-                    ? '为用户右键选择的 Delphi 类函数生成详细、递归的中文导航步骤。'
-                    : '为用户右键选择的 Delphi 类函数生成递归的中文导航步骤。'
+                    ? 'Generate detailed, recursive English navigation steps for the routines in the Delphi class selected by the user.'
+                    : 'Generate recursive English navigation steps for the routines in the Delphi class selected by the user.'
                 );
                 if (operation.token.isCancellationRequested) return;
-                if (!steps.length) throw new Error('模型没有返回可定位的步骤。');
+                if (!steps.length) throw new Error('The model returned no navigable steps.');
                 // completeAiGeneration fires only this routine element. Its
                 // arrow and all recursively generated child arrows therefore
                 // appear as soon as this request completes.
@@ -3137,7 +3137,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
         || /cancel/i.test(error?.code || '') || /cancel/i.test(error?.message || '');
       if (!cancelled) {
         output?.appendLine(`Class AI function step generation failed: ${error.stack || error.message}`);
-        void vscode.window.showErrorMessage(`类 ${requestedNode.label} 的 AI 函数步骤生成失败：${error.message}`);
+        void vscode.window.showErrorMessage(`AI routine step generation failed for class ${requestedNode.label}: ${error.message}`);
       }
     } finally {
       cancelled ||= operation.token.isCancellationRequested;
@@ -3150,10 +3150,10 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     }
 
     const suffix = stoppedForEdit
-      ? '；文件在处理期间被修改，已安全停止'
-      : cancelled ? '；已取消' : '';
+      ? '; stopped safely because the file changed during processing'
+      : cancelled ? '; cancelled' : '';
     void vscode.window.showInformationMessage(
-      `AI 函数步骤：新生成 ${counts.generated}，使用缓存 ${counts.skipped}，失败 ${counts.failed}${suffix}。`
+      `AI routine steps: generated ${counts.generated}, used ${counts.skipped} cached result(s), failed ${counts.failed}${suffix}.`
     );
   };
 
@@ -3237,7 +3237,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       await setNavigatorMode('class');
       const firstNode = provider.model()?.roots?.[0];
       if (!firstNode) {
-        void vscode.window.showInformationMessage('请先打开一个 Pascal/Delphi 源文件。');
+        void vscode.window.showInformationMessage('Open a Pascal/Delphi source file first.');
         return;
       }
       await tree.reveal(firstNode, { select: false, focus: true, expand: false });

@@ -21,40 +21,40 @@ const REQUIRED_EXTENSIONS = [
   {
     id: 'VallentaStudio.vallenta-studio',
     name: 'Vallenta Studio',
-    reason: '提供 Delphi/Pascal 语言、LSP、工程、编译和调试能力'
+    reason: 'Provides Delphi/Pascal language support, LSP, project management, compilation, and debugging.'
   },
   {
     id: 'ms-vscode.cpptools',
     name: 'Microsoft C/C++',
-    reason: 'Vallenta Studio 声明的调试基础依赖'
+    reason: 'A debugging prerequisite declared by Vallenta Studio.'
   },
   {
     id: 'mca-software.delphi-debugger',
     name: 'Delphi Debugger',
-    reason: '提供 Pascal Union 的原生 Delphi Win32/Win64 调试能力'
+    reason: 'Provides native Delphi Win32/Win64 debugging for Pascal Union.'
   }
 ];
 
 const REDUNDANT_EXTENSIONS = [
   {
     id: 'local.delphi-win64-debug',
-    name: 'Delphi Debugger（旧版本地安装）',
-    reason: '与 Marketplace 版 mca-software.delphi-debugger 注册相同调试类型，不能同时启用'
+    name: 'Delphi Debugger (legacy local installation)',
+    reason: 'Registers the same debug type as the Marketplace version, mca-software.delphi-debugger, so both cannot be enabled at once.'
   },
   {
     id: 'local.pascal-on-type-formatter',
     name: 'Delphi Personal Formatter',
-    reason: '其完整实现已经集成到 Pascal Union'
+    reason: 'Its complete implementation is already included in Pascal Union.'
   },
   {
     id: 'alefragnani.pascal-formatter',
     name: 'Pascal Formatter',
-    reason: 'Pascal Union 直接使用 RAD Studio Formatter.exe，不调用此扩展'
+    reason: 'Pascal Union uses RAD Studio Formatter.exe directly and does not call this extension.'
   },
   {
     id: 'alefragnani.pascal',
     name: 'Pascal',
-    reason: 'Vallenta 已提供语言、语法和导航，Pascal Union 已提供常用代码片段；同时启用可能产生重复提供器'
+    reason: 'Vallenta already provides language, syntax, and navigation support, while Pascal Union provides common snippets. Enabling both may create duplicate providers.'
   }
 ];
 
@@ -131,7 +131,7 @@ async function githubDebuggerAsset() {
     const asset = (release.assets || []).find(item => /^mca-software\.delphi-debugger-.*\.vsix$/i.test(item.name));
     if (asset) return asset;
   }
-  throw new Error('GitHub Releases 中没有可安装的 Delphi Debugger VSIX。');
+  throw new Error('No installable Delphi Debugger VSIX was found in GitHub Releases.');
 }
 
 async function installDebuggerFromGithub(output, storageRoot) {
@@ -140,7 +140,7 @@ async function installDebuggerFromGithub(output, storageRoot) {
   if (asset.digest?.startsWith('sha256:')) {
     const actual = createHash('sha256').update(data).digest('hex');
     const expected = asset.digest.slice('sha256:'.length).toLowerCase();
-    if (actual !== expected) throw new Error('Delphi Debugger VSIX SHA-256 校验失败。');
+    if (actual !== expected) throw new Error('Delphi Debugger VSIX SHA-256 verification failed.');
   }
   const directory = path.join(storageRoot, 'dependencies');
   await fs.promises.mkdir(directory, { recursive: true });
@@ -226,20 +226,20 @@ async function checkDependencies(output, options = {}) {
 
   if (failed.length > 0) {
     void vscode.window.showErrorMessage(
-      `Pascal Union 无法安装必要扩展：${failed.map(item => item.extension.name).join('、')}。`
+      `Pascal Union could not install required extensions: ${failed.map(item => item.extension.name).join(', ')}.`
     );
   } else if (notify) {
     const requiredStatus = missing.length === 0
-      ? '必要扩展均已安装'
+      ? 'All required extensions are installed'
       : installed.length === missing.length
-        ? `已安装 ${installed.map(item => item.name).join('、')}，Reload 后生效`
-        : `缺少 ${missing.map(item => item.name).join('、')}（自动安装已关闭）`;
+        ? `Installed ${installed.map(item => item.name).join(', ')}; reload to apply`
+        : `Missing ${missing.map(item => item.name).join(', ')} (automatic installation is disabled)`;
     const redundantStatus = redundant.length > 0
-      ? `；可停用重复扩展：${redundant.map(item => item.name).join('、')}`
+      ? `; duplicate extensions can be disabled: ${redundant.map(item => item.name).join(', ')}`
       : '';
     const toolStatus = tools.formatter && tools.tdump64
-      ? '；RAD Studio 格式化与包符号工具正常'
-      : `；缺少${[!tools.formatter && ' Formatter.exe', !tools.tdump64 && ' tdump64.exe'].filter(Boolean).join('、')}`;
+      ? '; RAD Studio formatting and package symbol tools are ready'
+      : `; missing${[!tools.formatter && ' Formatter.exe', !tools.tdump64 && ' tdump64.exe'].filter(Boolean).join(', ')}`;
     void vscode.window.showInformationMessage(`${requiredStatus}${toolStatus}${redundantStatus}。`);
   }
 
@@ -267,7 +267,7 @@ function registerDependencySupport(context, output) {
       + `and ${result.removedKeywordStyles.length} forced keyword-bold rule(s); backup: ${result.backupPath}.`
     );
     void vscode.window.showInformationMessage(
-      '已统一 Pascal 关键字字重并更新 Vallenta 编辑器集成。请完全退出所有 VS Code 窗口后重新打开。'
+      'Pascal keyword font weights were normalized and Vallenta editor integration was updated. Fully quit all VS Code windows, then reopen the editor.'
     );
   }).catch(error => {
     output.appendLine(`Unable to normalize Vallenta editor integration: ${error.stack || error.message}`);

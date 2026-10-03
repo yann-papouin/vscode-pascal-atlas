@@ -1,295 +1,32 @@
-'use strict';
+﻿'use strict';
 
 const PAGE_GROUPS = Object.freeze([
-  { id: 'general', zh: '通用', en: 'General', sections: ['界面与语言', '总开关', '依赖与兼容'] },
-  { id: 'editing', zh: '编辑体验', en: 'Editing', sections: ['文件编码', 'Explorer 隐藏规则', '缺失 uses'] },
-  { id: 'symbols', zh: '导航与符号', en: 'Navigation & Symbols', sections: ['符号着色', '跳转与接口', '类与函数导航', 'AI 函数步骤', '补全与包符号'] },
-  { id: 'formatting', zh: '格式化', en: 'Formatting', sections: ['代码格式化', '格式化语法规范'] },
-  { id: 'projects', zh: '工程与文件', en: 'Projects & Files', sections: ['Delphi 导航 · 工程模式', '工程与搜索路径'] },
-  { id: 'build', zh: '构建与调试', en: 'Build & Debug', sections: ['编译与运行', 'Delphi 调试器'] },
-  { id: 'diagnostics', zh: '诊断', en: 'Diagnostics', sections: ['后台诊断'] }
+  { id: 'general', title: 'General', sections: ['Interface language', 'Master switch', 'Dependencies and compatibility'] },
+  { id: 'editing', title: 'Editing', sections: ['File encoding', 'Explorer exclusions', 'Missing uses'] },
+  { id: 'symbols', title: 'Navigation & Symbols', sections: ['Symbol coloring', 'Navigation and interfaces', 'Class and routine navigator', 'AI routine steps', 'Completion and package symbols'] },
+  { id: 'formatting', title: 'Formatting', sections: ['Code formatting', 'Formatting style'] },
+  { id: 'projects', title: 'Projects & Files', sections: ['Delphi navigator · Project mode', 'Projects and search paths'] },
+  { id: 'build', title: 'Build & Debug', sections: ['Build and run', 'Delphi debugger'] },
+  { id: 'diagnostics', title: 'Diagnostics', sections: ['Background diagnostics'] }
 ]);
 
-const SECTION_EN = Object.freeze({
-  '界面与语言': ['Interface language', 'Controls the language used by Pascal Union settings pages.'],
-  '总开关': ['Master switch', 'Controls all Pascal Union companion features. Vallenta remains available when this is disabled.'],
-  '依赖与兼容': ['Dependencies and compatibility', 'Keeps Vallenta Studio and debugging prerequisites available; legacy formatter and duplicate Pascal providers are not required.'],
-  '文件编码': ['File encoding', 'New Delphi files default to GB2312 and other files to UTF-8; ambiguous Pascal files fall back to GB2312.'],
-  '符号着色': ['Symbol coloring', 'Analyzes the active file first and merges symbols from every loaded project, source tree, and package.'],
-  '跳转与接口': ['Navigation and interfaces', 'Source routines prefer implementations; symbols without source can open generated interfaces recovered from packages.'],
-  '类与函数导航': ['Class and routine navigator', 'Organizes Pascal types and routines in Explorer, with compact include targets for DPK and DPROJ files.'],
-  'AI 函数步骤': ['AI routine steps', 'Uses the selected OAI Compatible Copilot model to create navigable functional steps for routines.'],
-  '补全与包符号': ['Completion and package symbols', 'Recovers compiled members such as AppSys, Environment, and objects returned by service locators.'],
-  '代码格式化': ['Code formatting', 'Integrated Delphi Personal Formatter features for document, save, on-type, and structural formatting.'],
-  'Explorer 隐藏规则': ['Explorer exclusions', 'Controls whether Delphi forms, build output, metadata, and output directories appear in Explorer.'],
-  '格式化语法规范': ['Formatting style', 'Use the bundled default style or edit, save, and load a custom formatting profile.'],
-  '编译与运行': ['Build and run', 'Invokes Delphi MSBuild/DCC directly in VS Code without starting RAD Studio or bds.exe.'],
-  'Delphi 调试器': ['Delphi debugger', 'Uses the independent MIT Delphi DAP debugger for startup projects and loaded BPL/DLL modules.'],
-  'Delphi 导航 · 工程模式': ['Delphi navigator · Project mode', 'Shares one Explorer view between class navigation and a Project/Package tree.'],
-  '工程与搜索路径': ['Projects and search paths', 'Discovers groupproj files, loads Vallenta project groups, and merges source paths from every project.'],
-  '缺失 uses': ['Missing uses', 'Finds symbols whose declaring Unit is not imported and offers an Add Unit fix.'],
-  '后台诊断': ['Background diagnostics', 'Independent syntax checks and isolated Delphi compiler diagnostics.']
-});
-
-const SETTING_EN = Object.freeze({
-  'ui.language': 'Settings language',
-  'enabled': 'Enable Pascal Union',
-  'dependencies.autoInstall': 'Automatically install missing required extensions',
-  'encoding.enabled': 'Enable file encoding policy',
-  'encoding.delphiDefault': 'New or ambiguous Delphi files',
-  'encoding.otherDefault': 'New or ambiguous non-Delphi files',
-  'encoding.detectExisting': 'Detect and preserve existing file encoding',
-  'encoding.respectDprojDeclaration': 'Prefer the DPROJ XML encoding declaration',
-  'coloring.enabled': 'Pascal Union symbol coloring',
-  'coloring.typingDelayMs': 'Active-file typing delay',
-  'coloring.inactiveEditorDelayMs': 'Inactive-editor delay',
-  'coloring.persistedCache.enabled': 'Preserve recent file coloring across windows',
-  'coloring.colors.useDefault': 'Use theme semantic colors',
-  'coloring.colors.unit': 'Unit names',
-  'coloring.colors.type': 'Types and interfaces',
-  'coloring.colors.variable': 'Variables and fields',
-  'coloring.colors.constant': 'Constants',
-  'coloring.colors.enumMember': 'Enum members',
-  'coloring.colors.property': 'Properties',
-  'coloring.colors.method': 'Functions and procedures',
-  'navigation.enabled': 'Enhanced Pascal Union navigation',
-  'navigation.preferImplementation': 'Prefer routine implementations',
-  'navigation.singleTargetByDefault': 'Use only the best target for normal navigation',
-  'navigation.selectTargetOnJump': 'Select the target identifier after navigation (may flash)',
-  'navigation.candidatePickerShortcut': 'All-candidates shortcut',
-  'navigation.virtualInterfaces': 'Open virtual interfaces when source is unavailable',
-  'navigation.isolatePlatformSources': 'Isolate large RTL/VCL sources to avoid blocking Vallenta',
-  'navigation.prewarmCurrentFile': 'Prewarm the active file and its uses',
-  'navigation.interactiveWaitMs': 'Maximum Ctrl-navigation wait',
-  'hover.enabled': 'Package-symbol hover information',
-  'classNavigator.enabled': 'Show Delphi class navigator in Explorer',
-  'classNavigator.showUses': 'Show uses nodes without listing imported Units',
-  'classNavigator.showGlobalRoutines': 'Show global functions and procedures',
-  'classNavigator.showInterfaces': 'Show interfaces',
-  'classNavigator.showRecordsAndObjects': 'Show records and objects',
-  'classNavigator.showProperties': 'Show a properties group first in each type',
-  'classNavigator.showProjectPackageEntry': 'Show Package Includes for DPK/DPROJ',
-  'classNavigator.showProjectFileEntry': 'Show File Includes for DPK/DPROJ',
-  'classNavigator.showUnitInitialization': 'Show Unit initialization at the bottom',
-  'classNavigator.showUnitFinalization': 'Show Unit finalization at the bottom',
-  'classNavigator.memberOrder': 'Member ordering',
-  'classNavigator.typeOrder': 'Top-level type ordering',
-  'classNavigator.followCursor': 'Follow editor clicks and scrolling',
-  'classNavigator.highlightRange.enabled': 'Mark source blocks for real navigation items',
-  'classNavigator.pauseWhenCollapsed': 'Pause monitoring while the navigator is collapsed',
-  'classNavigator.scrollFollowDelayMs': 'Scroll-follow delay',
-  'classNavigator.scrollFollowOffsetLines': 'Scroll-follow line offset',
-  'classNavigator.navigationClickHoldMs': 'Navigation-click anti-flicker duration',
-  'classNavigator.navigationReveal.mode': 'Source placement after navigator jumps',
-  'classNavigator.navigationReveal.largeBlockStartPercent': 'Large-block start position from viewport top',
-  'classNavigator.keepFocusOnNavigationClick': 'Keep tree focus and blue selection after navigation clicks',
-  'classNavigator.defaultOpenBelowExplorer': 'Initially open below the Explorer file tree',
-  'classNavigator.backgroundParsing.enabled': 'Parse large-file navigation in a worker',
-  'classNavigator.backgroundParsing.thresholdKb': 'Background parsing threshold',
-  'classNavigator.aiSteps.enabled': 'Enable AI routine steps',
-  'classNavigator.aiSteps.provider': 'Model provider',
-  'classNavigator.aiSteps.modelId': 'AI model',
-  'classNavigator.aiSteps.reasoningEffort': 'AI reasoning effort',
-  'classNavigator.aiSteps.granularity': 'Functional-block granularity',
-  'classNavigator.aiSteps.maxSteps': 'Maximum functional blocks',
-  'classNavigator.aiSteps.normalTargetLines': 'Normal-generation finest granularity',
-  'classNavigator.aiSteps.detailedTargetLines': 'Detailed-generation finest granularity',
-  'classNavigator.aiSteps.substeps.enabled': 'Generate substeps for complex blocks',
-  'classNavigator.aiSteps.substeps.maxPerStep': 'Maximum substeps per block',
-  'classNavigator.aiSteps.substeps.minParentLines': 'Minimum block length eligible for refinement',
-  'classNavigator.aiSteps.substeps.maxDepth': 'Maximum recursive step depth',
-  'classNavigator.aiSteps.maxSourceCharacters': 'Maximum routine source characters',
-  'classNavigator.aiSteps.requestTimeoutSeconds': 'Per-request timeout',
-  'classNavigator.aiSteps.cacheEnabled': 'Cache steps for unchanged routines',
-  'classNavigator.aiSteps.highlightRange': 'Mark functional blocks in the gutter',
-  'completion.enabled': 'Member completion after dot',
-  'completion.unqualified.enabled': 'Complete unqualified global-symbol prefixes',
-  'completion.interactiveWaitMs': 'Maximum global-completion wait',
-  'signatureHelp.enabled': 'Routine signature help',
-  'signatureHelp.triggerOnComma': 'Switch signature parameter after comma',
-  'symbols.compiled.enabled': 'Recover BPL/DCP symbols',
-  'symbols.compiled.parsedCache.enabled': 'Cache parsed BPL/DCP indexes',
-  'symbols.sourceCache.enabled': 'Cache workspace and RAD/VCL source indexes',
-  'symbols.compiled.initialPackageLimit': 'Packages checked during initial scan',
-  'formatter.enabled': 'Enable Pascal Union Formatter',
-  'formatter.executablePath': 'Formatter.exe path',
-  'formatter.preserveInlineVariables': 'Preserve inline variable declarations',
-  'formatter.alignWrappedParameters': 'Align wrapped parameters',
-  'formatter.shortcut': 'Format-document shortcut',
-  'formatter.onType.enabled': 'Format while typing',
-  'formatter.onType.semicolon.scope': 'Formatting after semicolon',
-  'formatter.onType.closingParenthesis.scope': 'Formatting after closing parenthesis',
-  'formatter.onType.enter.scope': 'Formatting after Enter',
-  'formatter.onType.logging': 'Log on-type formatting',
-  'formatter.highlighting.enabled': 'Delphi structural highlighting',
-  'formatter.highlighting.blockLevelColors': 'Structural level color cycle',
-  'explorer.hideFormFiles': 'Hide DFM/FMX form files',
-  'explorer.hideSkinConfigFiles': 'Hide SKINCFG files',
-  'explorer.hideBuildArtifacts': 'Hide DCU/BPL/DCP/EXE output',
-  'explorer.hideProjectMetadata': 'Hide project cache and metadata',
-  'explorer.hideBuildDirectories': 'Hide Win32/Win64/bin/lib directories',
-  'formatter.style.useDefault': 'Apply bundled default syntax standard',
-  'build.enabled': 'Enable command-line production builds',
-  'build.configuration': 'Default configuration',
-  'build.platform': 'Default platform',
-  'build.saveBeforeBuild': 'Save target project files before building',
-  'build.showStatusBar': 'Show Build All, Run, Debug, platform, and configuration in the status bar',
-  'run.buildBeforeRun': 'Build before Run',
-  'build.stopGroupOnFailure': 'Stop the project group after a failure',
-  'build.terminalSummary': 'Show an explicit build result in the terminal',
-  'build.output.showErrors': 'Build output: errors',
-  'build.output.showWarnings': 'Build output: warnings',
-  'build.output.showOther': 'Build output: other messages',
-  'build.completionNotification': 'Show a notification when the build finishes',
-  'build.timeoutSeconds': 'Production build timeout',
-  'build.msbuildPath': 'MSBuild.exe path (empty for auto-detection)',
-  'debugger.enabled': 'Enable Delphi debugging integration',
-  'debugger.autoInstall': 'Automatically install Delphi Debugger',
-  'debugger.buildBeforeDebug': 'Build before debugging',
-  'debugger.shortcutMode': 'Debug and Run shortcut layout',
-  'debugger.loadGroupModules': 'Load symbols for every package in the group',
-  'debugger.validateSymbols': 'Validate symbol files before debugging',
-  'debugger.generateDetailedMap': 'Generate detailed MAP files for debug builds (recommended)',
-  'debugger.stopAtEntry': 'Stop at program entry',
-  'debugger.programConsole': 'Debuggee output destination',
-  'debugger.revealOutputOnStart': 'Open the Debug Console when debugging starts',
-  'debugger.stepIsolation': 'Thread isolation while stepping',
-  'debugger.stepIsolationReleaseMs': 'Thread release delay',
-  'projectNavigator.enabled': 'Allow switching to Delphi Project mode',
-  'projectNavigator.defaultExpansion': 'Default project-tree expansion',
-  'projectNavigator.showGroupproj': 'Show GROUPPROJ under Project',
-  'projectNavigator.showDpr': 'Show DPR under Project',
-  'projectNavigator.showDpk': 'Show DPK under Package',
-  'projectNavigator.showDproj': 'Show DPROJ under Package',
-  'projectNavigator.contextMenus.enabled': 'Show Project/Package build and debug context menus',
-  'projectGroups.autoDetect': 'Automatically discover and load groupproj',
-  'projectGroups.activateFirstProject': 'Repair and select an active project when invalid',
-  'paths.enabled': 'Synchronize all projects automatically',
-  'includeNestedSourceDirectories': 'Include nested source directories',
-  'restartActiveLsp': 'Restart the active Vallenta LSP after path changes',
-  'missingUnits.enabled': 'Add Unit fixes for compiler diagnostics',
-  'missingUnits.debounceMs': 'Unit index refresh delay',
-  'missingUnits.compiledFallback': 'Search all compiled packages when necessary',
-  'diagnostics.enabled': 'Enable background diagnostics',
-  'diagnostics.syntax.enabled': 'Immediate syntax diagnostics',
-  'diagnostics.syntax.debounceMs': 'Syntax diagnostic delay',
-  'diagnostics.compiler.enabled': 'Delphi compiler diagnostics',
-  'diagnostics.compiler.idleDelayMs': 'Compiler idle delay',
-  'diagnostics.compiler.startupDelayMs': 'Initial compiler delay after startup',
-  'diagnostics.compiler.maxParallelProjects': 'Parallel projects',
-  'diagnostics.compiler.timeoutSeconds': 'Per-run timeout',
-  'diagnostics.compiler.includeWarnings': 'Show compiler warnings',
-  'diagnostics.ignoreUtf8ConversionWarning': 'Ignore “convert to UTF-8” warnings',
-  'diagnostics.compiler.configuration': 'Build configuration',
-  'diagnostics.compiler.platform': 'Target platform'
-});
-
-const STYLE_EN = Object.freeze({
-  'style.indentation.tabSize': 'Tab width', 'style.indentation.indentSize': 'Indent width',
-  'style.indentation.useTabs': 'Use tabs', 'style.indentation.continuationIndent': 'Continuation indent',
-  'style.indentation.compilerDirectives': 'Indent compiler directives', 'style.indentation.blockContents': 'Indent block contents',
-  'style.indentation.brackets': 'Indent brackets', 'style.indentation.beginEnd': 'Indent begin/end',
-  'style.indentation.methodBody': 'Indent routine implementation body', 'style.indentation.nestedMethods': 'Indent nested routine implementations',
-  'style.indentation.afterSections': 'Indent after interface/implementation', 'style.indentation.classBody': 'Indent class definitions',
-  'style.indentation.caseContents': 'Indent case contents', 'style.indentation.caseLabels': 'Indent case labels',
-  'style.spacing.assignment': 'Assignment operator spacing', 'style.spacing.mathOperators': 'Math operator spacing',
-  'style.spacing.colon': 'Colon spacing', 'style.spacing.comma': 'Comma spacing', 'style.spacing.semicolon': 'Semicolon spacing',
-  'style.spacing.parentheses': 'Spaces inside parentheses', 'style.spacing.squareBrackets': 'Spaces inside square brackets',
-  'style.lineBreaks.varAndConstItems': 'One var/const item per line', 'style.lineBreaks.usesItems': 'One uses item per line',
-  'style.lineBreaks.beforeControlBegin': 'Line break before control-block begin', 'style.lineBreaks.afterMethodBegin': 'Line break after routine begin',
-  'style.lineBreaks.afterControlBegin': 'Line break after control-block begin', 'style.lineBreaks.afterOtherBegin': 'Line break after other begin',
-  'style.lineBreaks.afterSemicolon': 'Line break after semicolon', 'style.lineBreaks.elseIfTogether': 'Put else and if on separate lines',
-  'style.lineBreaks.keepUserBreaks': 'Preserve user line breaks', 'style.lineBreaks.maxEmptyLines': 'Maximum consecutive empty lines',
-  'style.lineBreaks.rightMargin': 'Right margin column', 'style.capitalization.keywords': 'Pascal keywords',
-  'style.capitalization.compilerDirectives': 'Compiler directives', 'style.capitalization.numbers': 'Hexadecimal numbers',
-  'style.capitalization.otherWords': 'Other identifiers', 'style.alignment.assignments': 'Align assignments',
-  'style.alignment.typeNames': 'Align variable type names', 'style.alignment.constants': 'Align constants',
-  'style.alignment.initializations': 'Align initialization expressions', 'style.alignment.typeDefinitions': 'Align type definitions',
-  'style.alignment.parameterTypes': 'Align parameter types', 'style.alignment.endOfLineComments': 'Align end-of-line comments',
-  'style.alignment.properties': 'Align property declarations'
-});
-
-const ACTION_EN = Object.freeze({
-  'pascalUnion.dependencies.check': 'Check extension environment',
-  'pascalUnion.coloring.colors.reset': 'Reset default colors',
-  'pascalUnion.navigator.showClasses': 'Switch to class navigation',
-  'pascalUnion.classNavigator.refresh': 'Refresh active-file navigation',
-  'pascalUnion.classNavigator.generateAiSteps': 'Generate steps for the active routine',
-  'pascalUnion.classNavigator.generateDetailedAiSteps': 'Generate detailed recursive steps',
-  'pascalUnion.classNavigator.stopAiGeneration': 'Stop AI step generation',
-  'pascalUnion.formatter.formatDocument': 'Format active file',
-  'pascalUnion.formatter.style.save': 'Save custom style',
-  'pascalUnion.formatter.style.load': 'Load custom style',
-  'pascalUnion.debug.selectStartupProject': 'Select project-group startup project',
-  'pascalUnion.navigator.toggleMode': 'Switch class navigation / project',
-  'pascalUnion.projectNavigator.refresh': 'Refresh Delphi project tree',
-  'pascalUnion.projects.detect': 'Discover Project Group now',
-  'pascalUnion.sync': 'Synchronize now',
-  'pascalUnion.showPaths': 'Show paths',
-  'pascalUnion.diagnostics.runNow': 'Run diagnostics now',
-  'pascalUnion.diagnostics.showStatus': 'Show status',
-  'pascalUnion.diagnostics.clearCache': 'Clear cache'
-});
-
-const OPTION_EN = Object.freeze({
-  '简体中文（默认）': 'Simplified Chinese (default)', '英文': 'English', '工程默认': 'Project default',
-  '不绑定': 'Unassigned', '按分组排序（默认）': 'Grouped order (default)',
-  '全部按声明顺序': 'Declaration order', '按实现顺序': 'Implementation order',
-  '按声明顺序（默认）': 'Declaration order (default)', '按字母顺序': 'Alphabetical order',
-  '智能：完整居中，大块按比例定位（默认）': 'Smart: center fitting blocks, position large blocks proportionally (default)',
-  '始终居中': 'Always center', '起点置顶': 'Place start at top', 'VS Code 默认定位': 'VS Code default',
-  '留空时使用第一个可用模型': 'Use the first available model when empty',
-  '提供器默认': 'Provider default', '最少（默认、最快）': 'Minimal (default, fastest)',
-  '低（GLM-5.2 映射为高）': 'Low (mapped to high by GLM-5.2)',
-  '中等': 'Medium', '高': 'High', '更高': 'Extra high', '最大（最慢）': 'Maximum (slowest)',
-  '粗粒度：顶层功能阶段（默认）': 'Coarse: top-level functional phases (default)', '均衡：保留更多实现阶段': 'Balanced: preserve more implementation phases',
-  '留空时自动检测 RAD Studio': 'Auto-detect RAD Studio when empty', '本行': 'Current line', '上一行': 'Previous line',
-  '本行和上一行': 'Current and previous lines', '关闭': 'Disabled', '前后留空格': 'Before and after',
-  '仅前面': 'Before only', '仅后面': 'After only', '不留空格': 'No spaces', '总是换行': 'Always',
-  '不换行': 'Never', '保持原样': 'Keep as is', '小写': 'Lowercase', '大写': 'Uppercase',
-  '首字母大写': 'First letter uppercase', '始终构建': 'Always build', '仅缺失或过期时': 'When missing or outdated',
-  '从不构建': 'Never build', '独立 Windows 控制台': 'External Windows console',
-  '自动隔离': 'Automatic isolation', 'RAD Studio 风格': 'RAD Studio style',
-  '只展开 Project，显示全部 Package': 'Expand Project only and show all Packages', '展开 Project 和 Package': 'Expand Project and Package'
-});
-
-const GROUP_EN = Object.freeze({ '颜色方案': 'Color palette', '缩进': 'Indentation', '空格': 'Spacing', '换行': 'Line breaks', '大小写': 'Capitalization', '纵向对齐': 'Vertical alignment' });
-const UNIT_EN = Object.freeze({ '行': 'lines' });
-
-function languageCode(value) {
-  return String(value || '').toLowerCase().startsWith('en') ? 'en' : 'zh-CN';
+function languageCode() {
+  return 'en';
 }
 
-function localizeSections(sections, language) {
-  if (languageCode(language) !== 'en') return sections;
-  return sections.map(section => ({
-    ...section,
-    pageId: PAGE_GROUPS.find(page => page.sections.includes(section.title))?.id,
-    title: SECTION_EN[section.title]?.[0] || section.title,
-    description: SECTION_EN[section.title]?.[1] || section.description,
-    settings: section.settings.map(setting => ({
-      ...setting,
-      label: SETTING_EN[setting.key] || STYLE_EN[setting.key.replace(/^formatter\./, '')] || setting.label,
-      group: GROUP_EN[setting.group] || setting.group,
-      unit: UNIT_EN[setting.unit] || setting.unit,
-      placeholder: OPTION_EN[setting.placeholder] || setting.placeholder,
-      optionLabels: (setting.optionLabels || setting.options || []).map(label => OPTION_EN[label] || label)
-    })),
-    actions: (section.actions || []).map(action => ({ ...action, label: ACTION_EN[action.command] || action.label }))
-  }));
-}
-
-function localizedPages(language) {
-  const english = languageCode(language) === 'en';
-  return PAGE_GROUPS.map(page => ({ ...page, title: english ? page.en : page.zh }));
-}
-
-function sectionsWithPages(sections, language) {
-  if (languageCode(language) === 'en') return localizeSections(sections, language);
+function sectionsWithPages(sections) {
   return sections.map(section => ({
     ...section,
     pageId: PAGE_GROUPS.find(page => page.sections.includes(section.title))?.id
   }));
+}
+
+function localizeSections(sections) {
+  return sectionsWithPages(sections);
+}
+
+function localizedPages() {
+  return PAGE_GROUPS.map(page => ({ ...page, en: page.title }));
 }
 
 module.exports = { PAGE_GROUPS, languageCode, localizeSections, localizedPages, sectionsWithPages };

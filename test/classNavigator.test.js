@@ -221,7 +221,7 @@ test('expanded routine steps replace the whole-routine follow highlight', () => 
   const step = {
     id: 'ai-step:run-body',
     kind: 'ai-step',
-    label: '1. 执行计算',
+    label: '1. Evaluate calculation',
     startLine: bodyLine,
     endLine: bodyLine,
     children: [],
@@ -230,7 +230,7 @@ test('expanded routine steps replace the whole-routine follow highlight', () => 
   const substep = {
     id: 'ai-step:run-detail',
     kind: 'ai-step',
-    label: '1.1. 更新字段',
+    label: '1.1. Update field',
     startLine: bodyLine,
     endLine: bodyLine,
     children: [],
@@ -239,7 +239,7 @@ test('expanded routine steps replace the whole-routine follow highlight', () => 
   const deepStep = {
     id: 'ai-step:run-deep-detail',
     kind: 'ai-step',
-    label: '1.1.1. 写入字段',
+    label: '1.1.1. Write field',
     startLine: bodyLine,
     endLine: bodyLine,
     children: [],
@@ -794,7 +794,7 @@ test('navigator search is prefix-only unless an asterisk wildcard is used', () =
         { kind: 'property', label: 'SearchText', children: [] }
       ] },
       { kind: 'routine', label: 'RunSearch', children: [
-        { kind: 'ai-step', label: '搜索准备阶段', children: [] },
+        { kind: 'ai-step', label: 'Prepare search phase', children: [] },
         { kind: 'routine', label: 'LocalSearch', children: [] }
       ] }
     ]
@@ -811,7 +811,7 @@ test('navigator search is prefix-only unless an asterisk wildcard is used', () =
     'RunSearch', 'LocalSearch', 'TSearchArchive'
   ]);
   assert.equal(findNavigatorEntry(roots, 'SearchText'), undefined);
-  assert.equal(findNavigatorEntry(roots, '准备阶段'), undefined);
+  assert.equal(findNavigatorEntry(roots, 'preparation phase'), undefined);
   assert.equal(findNavigatorEntry(roots, '   '), undefined);
 });
 
@@ -908,8 +908,8 @@ test('navigator webview emits a syntactically valid self-contained client script
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(html, /id="search" hidden/);
   assert.match(html, /id="sort-panel" hidden/);
-  assert.match(html, /id="member-order"[\s\S]*?按分组排序[\s\S]*?按声明顺序[\s\S]*?按实现顺序/);
-  assert.match(html, /id="type-order"[\s\S]*?按声明顺序[\s\S]*?按字母顺序/);
+  assert.match(html, /id="member-order"[\s\S]*?By visibility[\s\S]*?Declaration order[\s\S]*?Implementation order/);
+  assert.match(html, /id="type-order"[\s\S]*?Declaration order[\s\S]*?Alphabetical order/);
   assert.match(html, /type:'sortUpdate', key, value/);
   assert.match(html, /event\.key === 'Escape'[\s\S]*?hideSort\(\)/);
   assert.match(html, /data\.type === 'hideSearch'\) hideSearch\(\)/);

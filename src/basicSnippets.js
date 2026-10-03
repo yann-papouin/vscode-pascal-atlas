@@ -7,67 +7,67 @@ const BASIC_SNIPPETS = Object.freeze([
     prefix: 'begin',
     label: 'begin/end block',
     body: 'begin\n\t$0\nend;',
-    description: '插入 begin/end 代码块'
+    description: 'Insert a begin/end block'
   },
   {
     prefix: 'if',
     label: 'if begin/end',
     body: 'if ${1:Condition} then\nbegin\n\t$0\nend;',
-    description: '插入带 begin/end 的 if 代码块'
+    description: 'Insert an if block with begin/end'
   },
   {
     prefix: 'ifelse',
     label: 'if/else begin/end',
     body: 'if ${1:Condition} then\nbegin\n\t${2}\nend\nelse\nbegin\n\t$0\nend;',
-    description: '插入带 begin/end 的 if/else 代码块'
+    description: 'Insert an if/else block with begin/end'
   },
   {
     prefix: 'for',
     label: 'for loop',
     body: 'for ${1:I} := ${2:0} to ${3:Count - 1} do\nbegin\n\t$0\nend;',
-    description: '插入带 begin/end 的 for 循环'
+    description: 'Insert a for loop with begin/end'
   },
   {
     prefix: 'forin',
     label: 'for-in loop',
     body: 'for ${1:Item} in ${2:Items} do\nbegin\n\t$0\nend;',
-    description: '插入带 begin/end 的 for-in 循环'
+    description: 'Insert a for-in loop with begin/end'
   },
   {
     prefix: 'while',
     label: 'while loop',
     body: 'while ${1:Condition} do\nbegin\n\t$0\nend;',
-    description: '插入带 begin/end 的 while 循环'
+    description: 'Insert a while loop with begin/end'
   },
   {
     prefix: 'tryexcept',
     label: 'try/except block',
     body: 'try\n\t${1}\nexcept\n\t$0\nend;',
-    description: '插入 try/except 代码块'
+    description: 'Insert a try/except block'
   },
   {
     prefix: 'tryfinally',
     label: 'try/finally block',
     body: 'try\n\t${1}\nfinally\n\t$0\nend;',
-    description: '插入 try/finally 代码块'
+    description: 'Insert a try/finally block'
   },
   {
     prefix: 'case',
     label: 'case/of block',
     body: 'case ${1:Value} of\n\t${2}: $0;\nend;',
-    description: '插入 case/of 代码块'
+    description: 'Insert a case/of block'
   },
   {
     prefix: 'procedure',
     label: 'procedure body',
     body: 'procedure ${1:ProcedureName}(${2});\nbegin\n\t$0\nend;',
-    description: '插入过程及 begin/end 实现'
+    description: 'Insert a procedure with begin/end implementation'
   },
   {
     prefix: 'function',
     label: 'function body',
     body: 'function ${1:FunctionName}(${2}): ${3:Boolean};\nbegin\n\t$0\nend;',
-    description: '插入函数及 begin/end 实现'
+    description: 'Insert a function with begin/end implementation'
   }
 ]);
 
