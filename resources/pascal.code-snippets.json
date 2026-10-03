@@ -1,0 +1,57 @@
+{
+  "Pascal Union: begin/end": {
+    "prefix": "begin",
+    "body": ["begin", "\t$0", "end;"],
+    "description": "插入 begin/end 代码块"
+  },
+  "Pascal Union: if begin/end": {
+    "prefix": "if",
+    "body": ["if ${1:Condition} then", "begin", "\t$0", "end;"],
+    "description": "插入带 begin/end 的 if 代码块"
+  },
+  "Pascal Union: if/else begin/end": {
+    "prefix": "ifelse",
+    "body": ["if ${1:Condition} then", "begin", "\t${2}", "end", "else", "begin", "\t$0", "end;"],
+    "description": "插入带 begin/end 的 if/else 代码块"
+  },
+  "Pascal Union: for loop": {
+    "prefix": "for",
+    "body": ["for ${1:I} := ${2:0} to ${3:Count - 1} do", "begin", "\t$0", "end;"],
+    "description": "插入带 begin/end 的 for 循环"
+  },
+  "Pascal Union: for-in loop": {
+    "prefix": "forin",
+    "body": ["for ${1:Item} in ${2:Items} do", "begin", "\t$0", "end;"],
+    "description": "插入带 begin/end 的 for-in 循环"
+  },
+  "Pascal Union: while loop": {
+    "prefix": "while",
+    "body": ["while ${1:Condition} do", "begin", "\t$0", "end;"],
+    "description": "插入带 begin/end 的 while 循环"
+  },
+  "Pascal Union: try/except": {
+    "prefix": "tryexcept",
+    "body": ["try", "\t${1}", "except", "\t$0", "end;"],
+    "description": "插入 try/except 代码块"
+  },
+  "Pascal Union: try/finally": {
+    "prefix": "tryfinally",
+    "body": ["try", "\t${1}", "finally", "\t$0", "end;"],
+    "description": "插入 try/finally 代码块"
+  },
+  "Pascal Union: case/of": {
+    "prefix": "case",
+    "body": ["case ${1:Value} of", "\t${2}: $0;", "end;"],
+    "description": "插入 case/of 代码块"
+  },
+  "Pascal Union: procedure": {
+    "prefix": "procedure",
+    "body": ["procedure ${1:ProcedureName}(${2});", "begin", "\t$0", "end;"],
+    "description": "插入过程及 begin/end 实现"
+  },
+  "Pascal Union: function": {
+    "prefix": "function",
+    "body": ["function ${1:FunctionName}(${2}): ${3:Boolean};", "begin", "\t$0", "end;"],
+    "description": "插入函数及 begin/end 实现"
+  }
+}
