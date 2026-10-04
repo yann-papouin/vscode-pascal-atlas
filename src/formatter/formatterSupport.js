@@ -663,6 +663,30 @@ function registerFormatter(context) {
           return [];
         }
       }
+    }),
+    vscode.workspace.onWillSaveTextDocument((event) => {
+      const document = event.document;
+      if (!formatterEnabled(document)
+        || !formatterConfiguration(document).get("formatOnSave", true)) return;
+
+      const cancellation = new vscode.CancellationTokenSource();
+      event.waitUntil((async () => {
+        try {
+          const result = await formatDocument(context, document, cancellation.token, output);
+          if (!result || result.text === document.getText()) return [];
+          const lastLine = document.lineAt(document.lineCount - 1);
+          const range = new vscode.Range(0, 0, document.lineCount - 1, lastLine.text.length);
+          return [vscode.TextEdit.replace(range, result.text)];
+        } catch (error) {
+          if (!(error instanceof vscode.CancellationError)) {
+            output.error(error);
+            void vscode.window.showErrorMessage(`Delphi formatting failed: ${error.message ?? error}`);
+          }
+          return [];
+        } finally {
+          cancellation.dispose();
+        }
+      })());
     })
   );
 

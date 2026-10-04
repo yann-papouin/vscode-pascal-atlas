@@ -1481,6 +1481,11 @@
 					"default": true,
 					"description": "Enables document and on-type formatting with the built-in Delphi Personal Formatter."
 				},
+				"pascalAtlas.formatter.formatOnSave": {
+					"type": "boolean",
+					"default": false,
+					"description": "Formats Pascal and Object Pascal documents when they are saved."
+				},
 				"pascalAtlas.formatter.executablePath": {
 					"type": "string",
 					"default": "",
@@ -2295,7 +2300,6 @@
 				},
 				"editor.quickSuggestionsDelay": 0,
 				"editor.suggest.preview": true,
-				"editor.formatOnSave": true,
 				"editor.formatOnType": true,
 				"editor.rulers": [
 					120
@@ -2319,7 +2323,6 @@
 				},
 				"editor.quickSuggestionsDelay": 0,
 				"editor.suggest.preview": true,
-				"editor.formatOnSave": true,
 				"editor.formatOnType": true,
 				"editor.rulers": [
 					120
