@@ -1,0 +1,27 @@
+{
+  "semi": false,
+  "singleQuote": false,
+  "singleAttributePerLine": true,
+  "useTabs": false,
+  "tabWidth": 2,
+  "trailingComma": "all",
+  "printWidth": 88,
+  "plugins": [],
+  "overrides": [
+    {
+      "files": [
+        "*.yml",
+        "*.yaml"
+      ],
+      "options": {
+        "singleQuote": false
+      }
+    },
+    {
+      "files": "*.json",
+      "options": {
+        "parser": "json-stringify"
+      }
+    }
+  ]
+}
