@@ -123,9 +123,9 @@ When dependency auto-installation is enabled, Pascal Atlas checks Vallenta Studi
 
 ### Privacy and independence
 
-Pascal Atlas contains no telemetry and does not upload source code to a service operated by BORING. Project analysis, formatting, compilation, and symbol recovery run locally. Only the explicitly invoked AI routine-steps feature sends the selected routine to the language-model provider chosen by the user in VS Code.
+Pascal Atlas contains no telemetry and does not upload source code. Project analysis, formatting, compilation, and symbol recovery run locally. Only the explicitly invoked AI routine-steps feature sends the selected routine to the language-model provider chosen by the user in VS Code.
 
-Pascal Atlas is independently developed by **BORING** and is not affiliated with, authorized by, endorsed by, or maintained by Vallenta or Embarcadero Technologies. Vallenta Studio, RAD Studio, and related tools are installed separately and remain subject to their own licenses. See `NOTICE.md` for the complete notice.
+Pascal Atlas is independently developed by **Yann Papouin** and is not affiliated with, authorized by, endorsed by, or maintained by Vallenta or Embarcadero Technologies. Vallenta Studio, RAD Studio, and related tools are installed separately and remain subject to their own licenses. See `NOTICE.md` for the complete notice.
 
 ### Development and publishing
 

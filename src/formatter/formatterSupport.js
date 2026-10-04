@@ -31,7 +31,7 @@ const {
   parseStyleProfile
 } = require("./styleRules");
 
-const EXTENSION_ID = "BoringLi.pascal-atlas";
+const EXTENSION_ID = "yannpapouin.pascal-atlas";
 const LEGACY_FORMATTER_EXTENSION_IDS = new Set([
   "local.pascal-on-type-formatter"
 ]);

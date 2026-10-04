@@ -394,7 +394,7 @@ class PascalAtlasControlCenterProvider {
       }),
       vscode.commands.registerCommand('pascalAtlas.openSettings', () => this.openMainSettings()),
       vscode.commands.registerCommand('pascalAtlas.openNativeSettings', () => {
-        return vscode.commands.executeCommand('workbench.action.openSettings', '@ext:BoringLi.pascal-atlas');
+        return vscode.commands.executeCommand('workbench.action.openSettings', '@ext:yannpapouin.pascal-atlas');
       }),
       vscode.commands.registerCommand('pascalAtlas.controlCenter.refresh', () => this.refresh()),
       vscode.commands.registerCommand('pascalAtlas.coloring.colors.reset', async () => {

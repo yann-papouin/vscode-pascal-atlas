@@ -3,8 +3,8 @@
 	"displayName": "Pascal Atlas",
 	"description": "%pascalAtlas.description%",
 	"version": "0.8.116",
-	"publisher": "BoringLi",
-	"author": "BORING",
+	"publisher": "yannpapouin",
+	"author": "Yann Papouin",
 	"icon": "media/pascal-atlas-icon.png",
 	"license": "MIT",
 	"engines": {
@@ -2278,7 +2278,7 @@
 		},
 		"configurationDefaults": {
 			"[pascal]": {
-				"editor.defaultFormatter": "BoringLi.pascal-atlas",
+				"editor.defaultFormatter": "yannpapouin.pascal-atlas",
 				"editor.bracketPairColorization.independentColorPoolPerBracketType": true,
 				"editor.gotoLocation.multipleDefinitions": "goto",
 				"editor.definitionLinkOpensInPeek": false,
@@ -2302,7 +2302,7 @@
 				]
 			},
 			"[objectpascal]": {
-				"editor.defaultFormatter": "BoringLi.pascal-atlas",
+				"editor.defaultFormatter": "yannpapouin.pascal-atlas",
 				"editor.bracketPairColorization.independentColorPoolPerBracketType": true,
 				"editor.gotoLocation.multipleDefinitions": "goto",
 				"editor.definitionLinkOpensInPeek": false,

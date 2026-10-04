@@ -1,6 +1,7 @@
 # Notices
 
 Copyright (c) 2026 BORING.
+Copyright (c) 2026 Yann Papouin.
 
 Pascal Atlas is an independent companion extension. It is not affiliated with,
 authorized by, endorsed by, or maintained by Vallenta or Embarcadero Technologies.
