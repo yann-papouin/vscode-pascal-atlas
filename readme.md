@@ -15,7 +15,7 @@ Pascal Union is designed for real Delphi workspaces made up of `.groupproj`, `.d
 - Automatically discovers `.groupproj` files and loads every referenced Project and Package instead of limiting analysis to Vallenta's currently selected project.
 - Merges project directories, Unit Search Paths, and source roots so types, variables, properties, and routines can be highlighted, completed, and navigated across packages.
 - Prioritizes the active document and uses persistent caches and background workers for indexing, source analysis, and compiled-symbol recovery.
-- Ctrl+Click and `F12` choose one best destination: routines prefer their implementation, while types and variables go to their declaration.
+- Ctrl+Click and `F12` move between a routine's interface declaration and implementation: clicking the declaration opens the implementation, and clicking the implementation opens the declaration. Types and variables go to their declaration.
 - `Alt+F12` explicitly opens the full definition/implementation candidate list.
 - Adds fallback support for `Self.Member`, multi-level member chains, generics, interfaces, records, class routines, and local scopes.
 - Provides member completion after `.` and signature help while entering routine arguments.

@@ -2432,7 +2432,12 @@ class CompiledSymbolSupport {
     } else {
       definitions = unique;
     }
-    const preferImplementation = this.featureEnabled(
+    const implementationOffset = document.offsetAt(token.range.start);
+    const clickedImplementation = definitions.some(definition =>
+      definition.kind === 'routine'
+      && normalizeKey(definition.filePath) === normalizeKey(document.fileName)
+      && definition.implementationOffset === implementationOffset);
+    const preferImplementation = !clickedImplementation && this.featureEnabled(
       'navigation.preferImplementation', true, document
     );
     const implementationDefinitions = preferImplementation
@@ -2584,7 +2589,10 @@ class CompiledSymbolSupport {
       if (currentFile.length > 0) definitions = currentFile;
     }
 
-    const preferImplementation = this.featureEnabled(
+    const clickedImplementation = exact.some(definition =>
+      definition.kind === 'routine'
+      && definition.implementationOffset === clickOffset);
+    const preferImplementation = !clickedImplementation && this.featureEnabled(
       'navigation.preferImplementation', true, document
     );
     const singleTarget = this.featureEnabled(

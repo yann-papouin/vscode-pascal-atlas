@@ -1356,7 +1356,7 @@
 				"pascalUnion.navigation.preferImplementation": {
 					"type": "boolean",
 					"default": true,
-					"description": "Ctrl+Click and F12 go directly to routine implementations when available. Alt+F12 shows all declaration and implementation candidates."
+					"description": "With this enabled, Ctrl+Click/F12 go from a routine declaration to its implementation, and from an implementation back to its declaration. Alt+F12 shows all candidates."
 				},
 				"pascalUnion.navigation.singleTargetByDefault": {
 					"type": "boolean",
