@@ -1,7 +1,7 @@
 const CONTROL_WORDS = new Set(["case", "for", "if", "repeat", "while", "with"]);
 const { normalizeGenericTypeSpacing } = require("./generics");
 
-function formatCodeSegment(code) {
+function formatCodeSegment(code, options = {}) {
   const formatted = code
     .replace(/\b([A-Za-z_]\w*)[ \t]+\(/g, (match, word) =>
       CONTROL_WORDS.has(word.toLowerCase()) ? match : `${word}(`
@@ -12,17 +12,19 @@ function formatCodeSegment(code) {
     .replace(/[ \t]*(?::=|<=|>=|<>|=)[ \t]*/g, (operator) => ` ${operator.trim()} `)
     .replace(/[ \t]*:(?!=)[ \t]*/g, ": ")
     .replace(/[ \t]*;[ \t]*/g, "; ");
-  return normalizeGenericTypeSpacing(formatted);
+  return options.normalizeGenericTypeSpacing === false
+    ? formatted
+    : normalizeGenericTypeSpacing(formatted);
 }
 
-function scanPascalLine(line, initialState = "code", shouldFormat = false) {
+function scanPascalLine(line, initialState = "code", shouldFormat = false, options = {}) {
   let state = initialState;
   let result = "";
   let code = "";
   let index = 0;
 
   const flushCode = () => {
-    result += shouldFormat ? formatCodeSegment(code) : code;
+    result += shouldFormat ? formatCodeSegment(code, options) : code;
     code = "";
   };
 
@@ -118,8 +120,8 @@ function commentStateBeforeLine(lines, lineNumber) {
   return state;
 }
 
-function formatPascalLine(line, initialState = "code") {
-  return scanPascalLine(line, initialState, true).text;
+function formatPascalLine(line, initialState = "code", options = {}) {
+  return scanPascalLine(line, initialState, true, options).text;
 }
 
 function onTypeLineRequests(lineNumber, character, scope) {

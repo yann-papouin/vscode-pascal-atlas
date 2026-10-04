@@ -263,6 +263,10 @@ async function formatDocument(context, document, cancellationToken, output) {
 
     formatted = postprocessPascal(formatted, {
       preserveInlineVariables: configuration.get("preserveInlineVariables", true),
+      normalizeTypeNameCapitalization: configuration.get("normalizeTypeNameCapitalization", true),
+      normalizeVariableNameCapitalization: configuration.get("normalizeVariableNameCapitalization", true),
+      normalizeGenericTypeSpacing: configuration.get("normalizeGenericTypeSpacing", true),
+      normalizeInlineVariableContinuations: configuration.get("normalizeInlineVariableContinuations", true),
       alignWrappedParameters: configuration.get("alignWrappedParameters", true)
     });
     formatted = restoreProtectedBlankLines(formatted, protectedBlankLines);
@@ -293,13 +297,23 @@ function lineFormattingEdit(document, lineNumber, options = {}) {
   const isContinuationSlotLine = options.alignBlankContinuationLine &&
     (trimmedTarget === "" || trimmedTarget.startsWith(")"));
   if (!isContinuationSlotLine) {
-    lines[lineNumber] = formatPascalLine(lines[lineNumber], initialCommentState);
+    lines[lineNumber] = formatPascalLine(lines[lineNumber], initialCommentState, {
+      normalizeGenericTypeSpacing: formatterConfiguration(document)
+        .get("normalizeGenericTypeSpacing", true)
+    });
   }
-  lines = normalizeTypeNameCapitalization(lines);
-  lines = normalizeVariableNameCapitalization(lines);
-  lines = normalizeGenericTypeSpacing(lines);
+  const configuration = formatterConfiguration(document);
+  if (configuration.get("normalizeTypeNameCapitalization", false)) {
+    lines = normalizeTypeNameCapitalization(lines);
+  }
+  if (configuration.get("normalizeVariableNameCapitalization", false)) {
+    lines = normalizeVariableNameCapitalization(lines);
+  }
+  if (configuration.get("normalizeGenericTypeSpacing", true)) {
+    lines = normalizeGenericTypeSpacing(lines);
+  }
 
-  if (formatterConfiguration(document).get("alignWrappedParameters", true)) {
+  if (configuration.get("alignWrappedParameters", true)) {
     const alignedLines = alignWrappedParameters(lines, {
       alignBlankLineIndexes: isContinuationSlotLine ? [lineNumber] : []
     });
@@ -313,9 +327,11 @@ function lineFormattingEdit(document, lineNumber, options = {}) {
       lines[lineNumber] = alignWrappedArgumentLine(lines, lineNumber, indentSize)[lineNumber];
     }
   }
-  lines = normalizeInlineVariableContinuations(lines, {
-    includeBlankLineIndexes: isContinuationSlotLine ? [lineNumber] : []
-  });
+  if (configuration.get("normalizeInlineVariableContinuations", true)) {
+    lines = normalizeInlineVariableContinuations(lines, {
+      includeBlankLineIndexes: isContinuationSlotLine ? [lineNumber] : []
+    });
+  }
 
   const line = document.lineAt(lineNumber);
   if (isContinuationSlotLine) {
@@ -361,9 +377,11 @@ function continuationFormattingEdit(document, lineNumber) {
     .get("tabSize", 2);
   const indentSize = Number.isInteger(configuredTabSize) ? configuredTabSize : 2;
   lines = alignWrappedArgumentLine(lines, lineNumber, indentSize);
-  lines = normalizeInlineVariableContinuations(lines, {
-    includeBlankLineIndexes: [lineNumber]
-  });
+  if (formatterConfiguration(document).get("normalizeInlineVariableContinuations", true)) {
+    lines = normalizeInlineVariableContinuations(lines, {
+      includeBlankLineIndexes: [lineNumber]
+    });
+  }
 
   const line = document.lineAt(lineNumber);
   const currentIndentLength = line.text.length - line.text.trimStart().length;

@@ -784,7 +784,7 @@ function alignWrappedArgumentLine(lines, lineIndex, indentSize = 2) {
 /**
  * Runs the extension's capitalization, generic-spacing, and alignment passes.
  * @param {string} text Formatter output to postprocess.
- * @param {{preserveInlineVariables?:boolean, alignWrappedParameters?:boolean}} [options] Optional passes to disable.
+ * @param {{preserveInlineVariables?:boolean, normalizeTypeNameCapitalization?:boolean, normalizeVariableNameCapitalization?:boolean, normalizeGenericTypeSpacing?:boolean, normalizeInlineVariableContinuations?:boolean, alignWrappedParameters?:boolean}} [options] Set a pass to `false` to disable it.
  * @returns {string} Postprocessed source with its original newline style.
  * @example
  * postprocessPascal("var\n  value: point;"); // "var\n  Value: Point;"
@@ -796,10 +796,18 @@ function postprocessPascal(text, options = {}) {
   if (options.preserveInlineVariables !== false) {
     lines = preserveInlineVariables(lines);
   }
-  lines = normalizeTypeNameCapitalization(lines);
-  lines = normalizeVariableNameCapitalization(lines);
-  lines = normalizeGenericTypeSpacing(lines);
-  lines = normalizeInlineVariableContinuations(lines);
+  if (options.normalizeTypeNameCapitalization !== false) {
+    lines = normalizeTypeNameCapitalization(lines);
+  }
+  if (options.normalizeVariableNameCapitalization !== false) {
+    lines = normalizeVariableNameCapitalization(lines);
+  }
+  if (options.normalizeGenericTypeSpacing !== false) {
+    lines = normalizeGenericTypeSpacing(lines);
+  }
+  if (options.normalizeInlineVariableContinuations !== false) {
+    lines = normalizeInlineVariableContinuations(lines);
+  }
   if (options.alignWrappedParameters !== false) {
     lines = alignWrappedParameters(lines);
   }

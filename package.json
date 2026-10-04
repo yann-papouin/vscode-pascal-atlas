@@ -1506,6 +1506,26 @@
 					"default": true,
 					"description": "Preserves inline variable declarations such as var Value := CreateValue()."
 				},
+				"pascalAtlas.formatter.normalizeTypeNameCapitalization": {
+					"type": "boolean",
+					"default": false,
+					"description": "Capitalizes recognized Pascal type declarations and references after formatting."
+				},
+				"pascalAtlas.formatter.normalizeVariableNameCapitalization": {
+					"type": "boolean",
+					"default": false,
+					"description": "Capitalizes declared variable references after formatting."
+				},
+				"pascalAtlas.formatter.normalizeGenericTypeSpacing": {
+					"type": "boolean",
+					"default": true,
+					"description": "Removes unnecessary spaces around recognized generic type delimiters."
+				},
+				"pascalAtlas.formatter.normalizeInlineVariableContinuations": {
+					"type": "boolean",
+					"default": true,
+					"description": "Aligns lines following multiline inline variable declarations."
+				},
 				"pascalAtlas.formatter.alignWrappedParameters": {
 					"type": "boolean",
 					"default": true,

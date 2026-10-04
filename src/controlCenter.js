@@ -210,6 +210,10 @@ const SECTIONS = [
       { key: 'formatter.enabled', label: 'Enable Pascal Atlas Formatter', type: 'boolean' },
       { key: 'formatter.executablePath', label: 'Formatter.exe path', type: 'text', target: 'global', placeholder: 'Auto-detect RAD Studio when empty' },
       { key: 'formatter.preserveInlineVariables', label: 'Preserve inline variable declarations', type: 'boolean' },
+      { key: 'formatter.normalizeTypeNameCapitalization', label: 'Capitalize type names', type: 'boolean' },
+      { key: 'formatter.normalizeVariableNameCapitalization', label: 'Capitalize variable names', type: 'boolean' },
+      { key: 'formatter.normalizeGenericTypeSpacing', label: 'Normalize generic type spacing', type: 'boolean' },
+      { key: 'formatter.normalizeInlineVariableContinuations', label: 'Align inline variable continuations', type: 'boolean' },
       { key: 'formatter.alignWrappedParameters', label: 'Align wrapped parameters', type: 'boolean' },
       {
         key: 'formatter.shortcut', label: 'Format-document shortcut', type: 'select',

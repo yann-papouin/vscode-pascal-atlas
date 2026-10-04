@@ -1,6 +1,6 @@
 'use strict';
 
-const FIRST_RUN_PROFILE_VERSION = 3;
+const FIRST_RUN_PROFILE_VERSION = 4;
 const FIRST_RUN_PROFILE_STATE_KEY = 'pascalAtlas.firstRunProfileVersion';
 
 // This is the baseline color scheme captured from the working Delphi setup.
@@ -99,6 +99,10 @@ const FIRST_RUN_SETTINGS = Object.freeze({
   'formatter.executablePath': '',
   'formatter.shortcut': 'shiftAltF',
   'formatter.preserveInlineVariables': true,
+  'formatter.normalizeTypeNameCapitalization': false,
+  'formatter.normalizeVariableNameCapitalization': false,
+  'formatter.normalizeGenericTypeSpacing': true,
+  'formatter.normalizeInlineVariableContinuations': true,
   'formatter.alignWrappedParameters': true,
   'formatter.onType.enabled': true,
   'formatter.onType.semicolon.scope': 'currentLine',
