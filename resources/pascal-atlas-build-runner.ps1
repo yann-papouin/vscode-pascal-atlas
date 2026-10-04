@@ -36,8 +36,8 @@ Write-Host ''
   # MSBuild appends the owning DPROJ in square brackets. It is already known
   # from the target and makes the useful diagnostic wrap in narrow terminals.
   $displayLine = $line -replace '\s+\[[^\]]+\.dproj\]\s*$', ''
-  $isError = $line -match '(?i)(?:\[dcc\w*\s+(?:fatal error|fatal|error)\]|(?:^|[:\s])(?:fatal error|fatal|error)\s*:?\s*[A-Z]+\d+\s*:)' 
-  $isWarning = $line -match '(?i)(?:\[dcc\w*\s+warning\]|(?:^|[:\s])warning\s*:?\s*[A-Z]+\d+\s*:)' 
+  $isError = $line -match '(?i)(?:\[dcc\w*\s+(?:fatal error|fatal|error)\]|(?:^|[:\s])(?:fatal error|fatal|error)\s*:?\s*[A-Z]+\d+\s*:)'
+  $isWarning = $line -match '(?i)(?:\[dcc\w*\s+warning\]|(?:^|[:\s])warning\s*:?\s*[A-Z]+\d+\s*:)'
   if ($isError) {
     $errorCount++
     $diagnosticLine = '[ERROR] ' + $displayLine

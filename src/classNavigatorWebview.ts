@@ -1,26 +1,67 @@
-import { WebviewMessageKind, WebviewResource } from './shared/webviewProtocols';
-import type * as vscode from 'vscode';
-import type { NavigatorTarget } from './shared/models';
-import type { NavigatorTreePresentation, NavigatorFlatPresentation, NavigatorHostMessage, NavigatorClientMessage, NavigatorSearchOptions, NavigatorSortSettings, NavigatorTreeState, NavigatorSearchResult, NavigatorCapabilities } from './shared/webviewProtocols';
-import { isNavigatorClientMessage } from './shared/webviewProtocols';
-interface Emitter<T> { event(listener: (event: T) => unknown): vscode.Disposable; fire(event: T): void; dispose(): void; }
-interface NavigatorVscodeApi { EventEmitter: new <T>() => Emitter<T>; window?: Pick<typeof vscode.window, 'registerWebviewViewProvider'>; Uri?: Pick<typeof vscode.Uri, 'joinPath'>; commands?: Pick<typeof vscode.commands, 'executeCommand'>; }
-interface NavigatorWebviewOptions {
- getRoots?: () => NavigatorTarget[];
- serializeNode?: (node: NavigatorTarget) => NavigatorTreePresentation;
- nodePath?: (node: NavigatorTarget | undefined) => string[];
- capabilities?: () => NavigatorCapabilities;
- onOpen?: (node: NavigatorTarget) => unknown;
- onSearch?: (message: Extract<NavigatorClientMessage, { type: typeof WebviewMessageKind.Search }>) => unknown;
- onSearchOptions?: (options: NavigatorSearchOptions) => unknown;
- onSearchActivate?: (message: Extract<NavigatorClientMessage, { type: typeof WebviewMessageKind.SearchActivate }>) => unknown;
- onSearchClosed?: (state: NavigatorTreeState | undefined) => unknown;
- onSortUpdate?: (message: Extract<NavigatorClientMessage, { type: typeof WebviewMessageKind.SortUpdate }>) => unknown;
- onFocusChanged?: (focused: boolean) => unknown;
+import { WebviewMessageKind, WebviewResource } from "./shared/webviewProtocols"
+import type * as vscode from "vscode"
+import type { NavigatorTarget } from "./shared/models"
+import type {
+  NavigatorTreePresentation,
+  NavigatorFlatPresentation,
+  NavigatorHostMessage,
+  NavigatorClientMessage,
+  NavigatorSearchOptions,
+  NavigatorSortSettings,
+  NavigatorTreeState,
+  NavigatorSearchResult,
+  NavigatorCapabilities,
+} from "./shared/webviewProtocols"
+import { isNavigatorClientMessage } from "./shared/webviewProtocols"
+interface Emitter<T> {
+  event(listener: (event: T) => unknown): vscode.Disposable
+  fire(event: T): void
+  dispose(): void
 }
-function navigatorWebviewHtml(webview: Pick<vscode.Webview, "cspSource">, codiconFontUri: string | vscode.Uri = '', scriptUri: string | vscode.Uri = '') {
-  const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const safeCodiconFontUri = String(codiconFontUri).replace(/["'()\\\r\n]/g, character => `\\${character}`);
+interface NavigatorVscodeApi {
+  EventEmitter: new <T>() => Emitter<T>
+  window?: Pick<typeof vscode.window, "registerWebviewViewProvider">
+  Uri?: Pick<typeof vscode.Uri, "joinPath">
+  commands?: Pick<typeof vscode.commands, "executeCommand">
+}
+interface NavigatorWebviewOptions {
+  getRoots?: () => NavigatorTarget[]
+  serializeNode?: (node: NavigatorTarget) => NavigatorTreePresentation
+  nodePath?: (node: NavigatorTarget | undefined) => string[]
+  capabilities?: () => NavigatorCapabilities
+  onOpen?: (node: NavigatorTarget) => unknown
+  onSearch?: (
+    message: Extract<
+      NavigatorClientMessage,
+      { type: typeof WebviewMessageKind.Search }
+    >,
+  ) => unknown
+  onSearchOptions?: (options: NavigatorSearchOptions) => unknown
+  onSearchActivate?: (
+    message: Extract<
+      NavigatorClientMessage,
+      { type: typeof WebviewMessageKind.SearchActivate }
+    >,
+  ) => unknown
+  onSearchClosed?: (state: NavigatorTreeState | undefined) => unknown
+  onSortUpdate?: (
+    message: Extract<
+      NavigatorClientMessage,
+      { type: typeof WebviewMessageKind.SortUpdate }
+    >,
+  ) => unknown
+  onFocusChanged?: (focused: boolean) => unknown
+}
+function navigatorWebviewHtml(
+  webview: Pick<vscode.Webview, "cspSource">,
+  codiconFontUri: string | vscode.Uri = "",
+  scriptUri: string | vscode.Uri = "",
+) {
+  const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const safeCodiconFontUri = String(codiconFontUri).replace(
+    /["'()\\\r\n]/g,
+    (character) => `\\${character}`,
+  )
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
@@ -119,122 +160,344 @@ function navigatorWebviewHtml(webview: Pick<vscode.Webview, "cspSource">, codico
 </section>
 <div id="tree" role="tree" tabindex="0"></div>
 <div id="results" role="listbox" tabindex="-1" hidden></div>
-<script nonce="${nonce}" src="${scriptUri}"></script></body></html>`;
+<script nonce="${nonce}" src="${scriptUri}"></script></body></html>`
 }
 
 class ClassNavigatorWebview {
- view: vscode.WebviewView | undefined;
- webview: Pick<vscode.Webview, 'postMessage'> | undefined;
- nodeById = new Map<string, NavigatorTarget>();
- snapshot: Map<string, NavigatorFlatPresentation> | undefined;
- webviewReady = false;
- selection: NavigatorTarget[] = [];
- mode: string = 'class';
- _description: string | undefined;
- _message: string | undefined;
- pendingSearchOptions: NavigatorSearchOptions | undefined;
- pendingSortSettings: NavigatorSortSettings | undefined;
- extensionUri: vscode.Uri | undefined;
- lastSelectedId: string | null | undefined;
- rootIds: string[] = [];
- metadataKey = '';
- expandEmitter: Emitter<{ element: NavigatorTarget }>;
- collapseEmitter: Emitter<{ element: NavigatorTarget }>;
- visibilityEmitter: Emitter<{ visible: boolean }>;
- constructor(readonly vscode: NavigatorVscodeApi, readonly viewId: string, readonly options: NavigatorWebviewOptions = {}) {
-  this.expandEmitter = new vscode.EventEmitter(); this.collapseEmitter = new vscode.EventEmitter(); this.visibilityEmitter = new vscode.EventEmitter();
- }
- get visible() { return Boolean(this.view?.visible); }
- get description() { return this._description; }
- set description(value: string | undefined) { this._description = value; if (this.view) this.view.description = value; }
- get message() { return this._message; }
- set message(value: string | undefined) { if (this._message === value) return; this._message = value; this.refresh(); }
- onDidExpandElement(listener: (event: { element: NavigatorTarget }) => unknown) { return this.expandEmitter.event(listener); }
- onDidCollapseElement(listener: (event: { element: NavigatorTarget }) => unknown) { return this.collapseEmitter.event(listener); }
- onDidChangeVisibility(listener: (event: { visible: boolean }) => unknown) { return this.visibilityEmitter.event(listener); }
- register(context: Pick<vscode.ExtensionContext, 'extensionUri'>) {
-  this.extensionUri = context.extensionUri;
-  return this.vscode.window?.registerWebviewViewProvider(this.viewId, this, { webviewOptions: { retainContextWhenHidden: true } });
- }
- resolveWebviewView(view: vscode.WebviewView) {
-  this.webviewReady = false; this.snapshot = undefined; this.view = view; this.webview = view.webview; view.description = this._description;
-  if (!this.extensionUri || !this.vscode.Uri) throw new Error('Navigator must be registered before resolving its view');
-  const mediaRoot = this.vscode.Uri.joinPath(this.extensionUri, WebviewResource.MediaDirectory);
-  const scriptRoot = this.vscode.Uri.joinPath(this.extensionUri, WebviewResource.ScriptDirectory);
-  const codiconFontUri = view.webview.asWebviewUri(this.vscode.Uri.joinPath(this.extensionUri, WebviewResource.CodiconFont));
-  const scriptUri = view.webview.asWebviewUri(this.vscode.Uri.joinPath(this.extensionUri, WebviewResource.NavigatorScript));
-  view.webview.options = { enableScripts: true, localResourceRoots: [mediaRoot, scriptRoot] };
-  view.webview.html = navigatorWebviewHtml(view.webview, codiconFontUri, scriptUri);
-  view.onDidChangeVisibility(() => { if (!view.visible) void this.options.onFocusChanged?.(false); this.visibilityEmitter.fire({ visible: view.visible }); });
-  view.onDidDispose(() => { void this.options.onFocusChanged?.(false); this.view = undefined; this.webview = undefined; this.webviewReady = false; this.snapshot = undefined; });
-  view.webview.onDidReceiveMessage((message: unknown) => this.handleMessage(message));
-  queueMicrotask(() => this.visibilityEmitter.fire({ visible: view.visible }));
- }
- handleMessage(value: unknown) {
-  if (!isNavigatorClientMessage(value)) return;
-  const message = value; const node = 'id' in message ? this.nodeById.get(message.id) : undefined;
-  switch (message.type) {
-  case WebviewMessageKind.Ready: this.webviewReady = true; this.snapshot = undefined; this.refresh(); if (this.pendingSearchOptions) void this.postMessage({ type: WebviewMessageKind.ShowSearch, options: this.pendingSearchOptions }); else if (this.pendingSortSettings) void this.postMessage({ type: WebviewMessageKind.ShowSort, settings: this.pendingSortSettings }); break;
-  case WebviewMessageKind.FocusChanged: void this.options.onFocusChanged?.(message.focused); break;
-  case WebviewMessageKind.Open: if (node) { this.selection = [node]; this.lastSelectedId = node.id; void this.options.onOpen?.(node); } break;
-  case WebviewMessageKind.SelectNode: if (node) { this.selection = [node]; this.lastSelectedId = node.id; } break;
-  case WebviewMessageKind.Expand: if (node) this.expandEmitter.fire({ element: node }); break;
-  case WebviewMessageKind.Collapse: if (node) this.collapseEmitter.fire({ element: node }); break;
-  case WebviewMessageKind.Search: void this.options.onSearch?.(message); break;
-  case WebviewMessageKind.SearchOptions: void this.options.onSearchOptions?.(message.options); break;
-  case WebviewMessageKind.SearchActivate: void this.options.onSearchActivate?.(message); break;
-  case WebviewMessageKind.SearchClosed: this.pendingSearchOptions = undefined; void this.options.onSearchClosed?.(message.restoreState); break;
-  case WebviewMessageKind.SortUpdate: void this.options.onSortUpdate?.(message); break;
-  case WebviewMessageKind.SortClosed: this.pendingSortSettings = undefined; break;
+  view: vscode.WebviewView | undefined
+  webview: Pick<vscode.Webview, "postMessage"> | undefined
+  nodeById = new Map<string, NavigatorTarget>()
+  snapshot: Map<string, NavigatorFlatPresentation> | undefined
+  webviewReady = false
+  selection: NavigatorTarget[] = []
+  mode: string = "class"
+  _description: string | undefined
+  _message: string | undefined
+  pendingSearchOptions: NavigatorSearchOptions | undefined
+  pendingSortSettings: NavigatorSortSettings | undefined
+  extensionUri: vscode.Uri | undefined
+  lastSelectedId: string | null | undefined
+  rootIds: string[] = []
+  metadataKey = ""
+  expandEmitter: Emitter<{ element: NavigatorTarget }>
+  collapseEmitter: Emitter<{ element: NavigatorTarget }>
+  visibilityEmitter: Emitter<{ visible: boolean }>
+  constructor(
+    readonly vscode: NavigatorVscodeApi,
+    readonly viewId: string,
+    readonly options: NavigatorWebviewOptions = {},
+  ) {
+    this.expandEmitter = new vscode.EventEmitter()
+    this.collapseEmitter = new vscode.EventEmitter()
+    this.visibilityEmitter = new vscode.EventEmitter()
   }
- }
- collectNodes(nodes: NavigatorTarget[]) {
-  this.nodeById.clear(); const visit = (entries: NavigatorTarget[]) => { for (const node of entries) { if (node.id) this.nodeById.set(node.id, node); visit(node.children || []); } }; visit(nodes);
- }
- /** Rebind targets after edits while transmitting only changed presentation data. */
- refresh() {
-  if (!this.webviewReady) return;
-  const roots = this.options.getRoots?.() || []; this.collectNodes(roots);
-  let selected: NavigatorTarget | undefined = this.selection[0];
-  while (selected && (!selected.id || !this.nodeById.has(selected.id))) selected = selected.parent;
-  selected = selected?.id ? this.nodeById.get(selected.id) : undefined; this.selection = selected ? [selected] : [];
-  const selectedId = selected?.id || null; const nodes = new Map<string, NavigatorFlatPresentation>();
-  const collect = (node: NavigatorTreePresentation) => { nodes.set(node.id, { ...node, children: node.children.map(child => child.id) }); node.children.forEach(collect); };
-  const serialize = this.options.serializeNode;
-  if (serialize) roots.map(node => serialize(node)).forEach(collect);
-  const rootIds = roots.flatMap(node => node.id ? [node.id] : []);
-  const metadata = { mode: this.mode, message: this._message || '', capabilities: this.options.capabilities?.() || {} };
-  const metadataKey = JSON.stringify(metadata); const previous = this.snapshot; this.snapshot = nodes;
-  let message: NavigatorHostMessage | undefined;
-  if (!previous) message = { type: WebviewMessageKind.Model, nodes: [...nodes.values()], rootIds, selectedId, selectedPath: this.options.nodePath?.(selected) || [], ...metadata };
-  else {
-   const upsert = [...nodes.values()].filter(node => JSON.stringify(node) !== JSON.stringify(previous.get(node.id)));
-   const removed = [...previous.keys()].filter(id => !nodes.has(id)); const rootsChanged = JSON.stringify(rootIds) !== JSON.stringify(this.rootIds);
-   if (upsert.length || removed.length || rootsChanged || selectedId !== this.lastSelectedId || metadataKey !== this.metadataKey) {
-    message = { type: WebviewMessageKind.Patch, upsert, removed }; if (rootsChanged) message.rootIds = rootIds; if (selectedId !== this.lastSelectedId) message.selectedId = selectedId; if (metadataKey !== this.metadataKey) Object.assign(message, metadata);
-   }
+  get visible() {
+    return Boolean(this.view?.visible)
   }
-  this.rootIds = rootIds; this.metadataKey = metadataKey; this.lastSelectedId = selectedId; if (message) void this.postMessage(message);
- }
- setMode(mode: string) { if (this.mode === mode) return; this.mode = mode; this.refresh(); }
- async reveal(node: NavigatorTarget | undefined, options: { select?: boolean; focus?: boolean; expand?: boolean | number } = {}) {
-  if (!node?.id) return; if (this.nodeById.get(node.id) !== node) this.refresh(); node = this.nodeById.get(node.id) || node; if (!node.id) return;
-  if (options.select) this.selection = [node]; this.lastSelectedId = this.selection[0]?.id || null;
-  if (options.focus) { if (this.view) this.view.show(false); else { try { await this.vscode.commands?.executeCommand(`${this.viewId}.focus`); } catch {} } }
-  await this.postMessage({ type: WebviewMessageKind.Select, id: node.id, select: Boolean(options.select), focus: Boolean(options.focus), path: this.options.nodePath?.(node) || [], expandId: options.expand ? node.id : undefined });
- }
- showSearch(options: NavigatorSearchOptions) { this.pendingSearchOptions = options; this.pendingSortSettings = undefined; this.view?.show(false); void this.postMessage({ type: WebviewMessageKind.ShowSearch, options }); }
- hideSearch() { return this.postMessage({ type: WebviewMessageKind.HideSearch }); }
- showSort(settings: NavigatorSortSettings) { this.pendingSortSettings = settings; this.pendingSearchOptions = undefined; this.view?.show(false); void this.postMessage({ type: WebviewMessageKind.ShowSort, settings }); }
- get sortPanelOpen() { return this.pendingSortSettings !== undefined; }
- hideSort() { return this.postMessage({ type: WebviewMessageKind.HideSort }); }
- updateSortSettings(settings: NavigatorSortSettings) { if (this.pendingSortSettings) this.pendingSortSettings = settings; return this.postMessage({ type: WebviewMessageKind.SortSettings, settings }); }
- searchClosed() { this.pendingSearchOptions = undefined; }
- restoreSearchState(node: NavigatorTarget | undefined, state: NavigatorTreeState | undefined) { this.selection = node ? [node] : []; return this.postMessage({ type: WebviewMessageKind.RestoreSearchState, state: { ...state, selectedId: node?.id || null } }); }
- postSearchResults(requestId: number, results: NavigatorSearchResult[], status?: string) { return this.postMessage({ type: WebviewMessageKind.SearchResults, requestId, results, status }); }
- finishSearch() { this.pendingSearchOptions = undefined; return this.postMessage({ type: WebviewMessageKind.FinishSearch }); }
- updateCapabilities() { return this.postMessage({ type: WebviewMessageKind.Capabilities, capabilities: this.options.capabilities?.() || {} }); }
- postMessage(message: NavigatorHostMessage) { return this.webview?.postMessage(message) || Promise.resolve(false); }
- dispose() { this.expandEmitter.dispose(); this.collapseEmitter.dispose(); this.visibilityEmitter.dispose(); }
+  get description() {
+    return this._description
+  }
+  set description(value: string | undefined) {
+    this._description = value
+    if (this.view) this.view.description = value
+  }
+  get message() {
+    return this._message
+  }
+  set message(value: string | undefined) {
+    if (this._message === value) return
+    this._message = value
+    this.refresh()
+  }
+  onDidExpandElement(listener: (event: { element: NavigatorTarget }) => unknown) {
+    return this.expandEmitter.event(listener)
+  }
+  onDidCollapseElement(listener: (event: { element: NavigatorTarget }) => unknown) {
+    return this.collapseEmitter.event(listener)
+  }
+  onDidChangeVisibility(listener: (event: { visible: boolean }) => unknown) {
+    return this.visibilityEmitter.event(listener)
+  }
+  register(context: Pick<vscode.ExtensionContext, "extensionUri">) {
+    this.extensionUri = context.extensionUri
+    return this.vscode.window?.registerWebviewViewProvider(this.viewId, this, {
+      webviewOptions: { retainContextWhenHidden: true },
+    })
+  }
+  resolveWebviewView(view: vscode.WebviewView) {
+    this.webviewReady = false
+    this.snapshot = undefined
+    this.view = view
+    this.webview = view.webview
+    view.description = this._description
+    if (!this.extensionUri || !this.vscode.Uri)
+      throw new Error("Navigator must be registered before resolving its view")
+    const mediaRoot = this.vscode.Uri.joinPath(
+      this.extensionUri,
+      WebviewResource.MediaDirectory,
+    )
+    const scriptRoot = this.vscode.Uri.joinPath(
+      this.extensionUri,
+      WebviewResource.ScriptDirectory,
+    )
+    const codiconFontUri = view.webview.asWebviewUri(
+      this.vscode.Uri.joinPath(this.extensionUri, WebviewResource.CodiconFont),
+    )
+    const scriptUri = view.webview.asWebviewUri(
+      this.vscode.Uri.joinPath(this.extensionUri, WebviewResource.NavigatorScript),
+    )
+    view.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [mediaRoot, scriptRoot],
+    }
+    view.webview.html = navigatorWebviewHtml(view.webview, codiconFontUri, scriptUri)
+    view.onDidChangeVisibility(() => {
+      if (!view.visible) void this.options.onFocusChanged?.(false)
+      this.visibilityEmitter.fire({ visible: view.visible })
+    })
+    view.onDidDispose(() => {
+      void this.options.onFocusChanged?.(false)
+      this.view = undefined
+      this.webview = undefined
+      this.webviewReady = false
+      this.snapshot = undefined
+    })
+    view.webview.onDidReceiveMessage((message: unknown) => this.handleMessage(message))
+    queueMicrotask(() => this.visibilityEmitter.fire({ visible: view.visible }))
+  }
+  handleMessage(value: unknown) {
+    if (!isNavigatorClientMessage(value)) return
+    const message = value
+    const node = "id" in message ? this.nodeById.get(message.id) : undefined
+    switch (message.type) {
+      case WebviewMessageKind.Ready:
+        this.webviewReady = true
+        this.snapshot = undefined
+        this.refresh()
+        if (this.pendingSearchOptions)
+          void this.postMessage({
+            type: WebviewMessageKind.ShowSearch,
+            options: this.pendingSearchOptions,
+          })
+        else if (this.pendingSortSettings)
+          void this.postMessage({
+            type: WebviewMessageKind.ShowSort,
+            settings: this.pendingSortSettings,
+          })
+        break
+      case WebviewMessageKind.FocusChanged:
+        void this.options.onFocusChanged?.(message.focused)
+        break
+      case WebviewMessageKind.Open:
+        if (node) {
+          this.selection = [node]
+          this.lastSelectedId = node.id
+          void this.options.onOpen?.(node)
+        }
+        break
+      case WebviewMessageKind.SelectNode:
+        if (node) {
+          this.selection = [node]
+          this.lastSelectedId = node.id
+        }
+        break
+      case WebviewMessageKind.Expand:
+        if (node) this.expandEmitter.fire({ element: node })
+        break
+      case WebviewMessageKind.Collapse:
+        if (node) this.collapseEmitter.fire({ element: node })
+        break
+      case WebviewMessageKind.Search:
+        void this.options.onSearch?.(message)
+        break
+      case WebviewMessageKind.SearchOptions:
+        void this.options.onSearchOptions?.(message.options)
+        break
+      case WebviewMessageKind.SearchActivate:
+        void this.options.onSearchActivate?.(message)
+        break
+      case WebviewMessageKind.SearchClosed:
+        this.pendingSearchOptions = undefined
+        void this.options.onSearchClosed?.(message.restoreState)
+        break
+      case WebviewMessageKind.SortUpdate:
+        void this.options.onSortUpdate?.(message)
+        break
+      case WebviewMessageKind.SortClosed:
+        this.pendingSortSettings = undefined
+        break
+    }
+  }
+  collectNodes(nodes: NavigatorTarget[]) {
+    this.nodeById.clear()
+    const visit = (entries: NavigatorTarget[]) => {
+      for (const node of entries) {
+        if (node.id) this.nodeById.set(node.id, node)
+        visit(node.children || [])
+      }
+    }
+    visit(nodes)
+  }
+  /** Rebind targets after edits while transmitting only changed presentation data. */
+  refresh() {
+    if (!this.webviewReady) return
+    const roots = this.options.getRoots?.() || []
+    this.collectNodes(roots)
+    let selected: NavigatorTarget | undefined = this.selection[0]
+    while (selected && (!selected.id || !this.nodeById.has(selected.id)))
+      selected = selected.parent
+    selected = selected?.id ? this.nodeById.get(selected.id) : undefined
+    this.selection = selected ? [selected] : []
+    const selectedId = selected?.id || null
+    const nodes = new Map<string, NavigatorFlatPresentation>()
+    const collect = (node: NavigatorTreePresentation) => {
+      nodes.set(node.id, { ...node, children: node.children.map((child) => child.id) })
+      node.children.forEach(collect)
+    }
+    const serialize = this.options.serializeNode
+    if (serialize) roots.map((node) => serialize(node)).forEach(collect)
+    const rootIds = roots.flatMap((node) => (node.id ? [node.id] : []))
+    const metadata = {
+      mode: this.mode,
+      message: this._message || "",
+      capabilities: this.options.capabilities?.() || {},
+    }
+    const metadataKey = JSON.stringify(metadata)
+    const previous = this.snapshot
+    this.snapshot = nodes
+    let message: NavigatorHostMessage | undefined
+    if (!previous)
+      message = {
+        type: WebviewMessageKind.Model,
+        nodes: [...nodes.values()],
+        rootIds,
+        selectedId,
+        selectedPath: this.options.nodePath?.(selected) || [],
+        ...metadata,
+      }
+    else {
+      const upsert = [...nodes.values()].filter(
+        (node) => JSON.stringify(node) !== JSON.stringify(previous.get(node.id)),
+      )
+      const removed = [...previous.keys()].filter((id) => !nodes.has(id))
+      const rootsChanged = JSON.stringify(rootIds) !== JSON.stringify(this.rootIds)
+      if (
+        upsert.length ||
+        removed.length ||
+        rootsChanged ||
+        selectedId !== this.lastSelectedId ||
+        metadataKey !== this.metadataKey
+      ) {
+        message = { type: WebviewMessageKind.Patch, upsert, removed }
+        if (rootsChanged) message.rootIds = rootIds
+        if (selectedId !== this.lastSelectedId) message.selectedId = selectedId
+        if (metadataKey !== this.metadataKey) Object.assign(message, metadata)
+      }
+    }
+    this.rootIds = rootIds
+    this.metadataKey = metadataKey
+    this.lastSelectedId = selectedId
+    if (message) void this.postMessage(message)
+  }
+  setMode(mode: string) {
+    if (this.mode === mode) return
+    this.mode = mode
+    this.refresh()
+  }
+  async reveal(
+    node: NavigatorTarget | undefined,
+    options: { select?: boolean; focus?: boolean; expand?: boolean | number } = {},
+  ) {
+    if (!node?.id) return
+    if (this.nodeById.get(node.id) !== node) this.refresh()
+    node = this.nodeById.get(node.id) || node
+    if (!node.id) return
+    if (options.select) this.selection = [node]
+    this.lastSelectedId = this.selection[0]?.id || null
+    if (options.focus) {
+      if (this.view) this.view.show(false)
+      else {
+        try {
+          await this.vscode.commands?.executeCommand(`${this.viewId}.focus`)
+        } catch {}
+      }
+    }
+    await this.postMessage({
+      type: WebviewMessageKind.Select,
+      id: node.id,
+      select: Boolean(options.select),
+      focus: Boolean(options.focus),
+      path: this.options.nodePath?.(node) || [],
+      expandId: options.expand ? node.id : undefined,
+    })
+  }
+  showSearch(options: NavigatorSearchOptions) {
+    this.pendingSearchOptions = options
+    this.pendingSortSettings = undefined
+    this.view?.show(false)
+    void this.postMessage({ type: WebviewMessageKind.ShowSearch, options })
+  }
+  hideSearch() {
+    return this.postMessage({ type: WebviewMessageKind.HideSearch })
+  }
+  showSort(settings: NavigatorSortSettings) {
+    this.pendingSortSettings = settings
+    this.pendingSearchOptions = undefined
+    this.view?.show(false)
+    void this.postMessage({ type: WebviewMessageKind.ShowSort, settings })
+  }
+  get sortPanelOpen() {
+    return this.pendingSortSettings !== undefined
+  }
+  hideSort() {
+    return this.postMessage({ type: WebviewMessageKind.HideSort })
+  }
+  updateSortSettings(settings: NavigatorSortSettings) {
+    if (this.pendingSortSettings) this.pendingSortSettings = settings
+    return this.postMessage({ type: WebviewMessageKind.SortSettings, settings })
+  }
+  searchClosed() {
+    this.pendingSearchOptions = undefined
+  }
+  restoreSearchState(
+    node: NavigatorTarget | undefined,
+    state: NavigatorTreeState | undefined,
+  ) {
+    this.selection = node ? [node] : []
+    return this.postMessage({
+      type: WebviewMessageKind.RestoreSearchState,
+      state: { ...state, selectedId: node?.id || null },
+    })
+  }
+  postSearchResults(
+    requestId: number,
+    results: NavigatorSearchResult[],
+    status?: string,
+  ) {
+    return this.postMessage({
+      type: WebviewMessageKind.SearchResults,
+      requestId,
+      results,
+      status,
+    })
+  }
+  finishSearch() {
+    this.pendingSearchOptions = undefined
+    return this.postMessage({ type: WebviewMessageKind.FinishSearch })
+  }
+  updateCapabilities() {
+    return this.postMessage({
+      type: WebviewMessageKind.Capabilities,
+      capabilities: this.options.capabilities?.() || {},
+    })
+  }
+  postMessage(message: NavigatorHostMessage) {
+    return this.webview?.postMessage(message) || Promise.resolve(false)
+  }
+  dispose() {
+    this.expandEmitter.dispose()
+    this.collapseEmitter.dispose()
+    this.visibilityEmitter.dispose()
+  }
 }
-export { ClassNavigatorWebview, navigatorWebviewHtml };
+export { ClassNavigatorWebview, navigatorWebviewHtml }

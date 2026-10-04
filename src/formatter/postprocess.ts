@@ -1,27 +1,100 @@
-import { LexerState } from '../shared/identifiers';
-type PascalLexerState = (typeof LexerState)[keyof typeof LexerState];
-export interface BlankLineProtection { lineNumber: number; marker: string; indentation?: string; selectionIndexes?: number[]; resolvedLineNumber?: number; resolvedCharacter?: number; }
-import { isInteger } from '../shared/guards';
-import { PascalKeyword } from '../shared/pascal';
-const DECLARATION_PATTERN = /\b(?:procedure|function|constructor|destructor|operator)\b/i;
-import { findGenericTypeSpans, normalizeGenericTypeSpacingOnMaskedLine } from './generics';
+import { LexerState } from "../shared/identifiers"
+type PascalLexerState = (typeof LexerState)[keyof typeof LexerState]
+export interface BlankLineProtection {
+  lineNumber: number
+  marker: string
+  indentation?: string
+  selectionIndexes?: number[]
+  resolvedLineNumber?: number
+  resolvedCharacter?: number
+}
+import { isInteger } from "../shared/guards"
+import { PascalKeyword } from "../shared/pascal"
+const DECLARATION_PATTERN =
+  /\b(?:procedure|function|constructor|destructor|operator)\b/i
+import {
+  findGenericTypeSpans,
+  normalizeGenericTypeSpacingOnMaskedLine,
+} from "./generics"
 const TYPE_SYNTAX_KEYWORDS = new Set<string>([
-  PascalKeyword.Array, PascalKeyword.Class, PascalKeyword.Const, PascalKeyword.Constref, PascalKeyword.Dispinterface, PascalKeyword.File, PascalKeyword.Function,
-  PascalKeyword.Interface, PascalKeyword.Object, PascalKeyword.Of, PascalKeyword.Out, PascalKeyword.Packed, PascalKeyword.Procedure, PascalKeyword.Record,
-  PascalKeyword.Reference, PascalKeyword.Set, PascalKeyword.Specialize, PascalKeyword.To, PascalKeyword.Type, PascalKeyword.Var
-]);
+  PascalKeyword.Array,
+  PascalKeyword.Class,
+  PascalKeyword.Const,
+  PascalKeyword.Constref,
+  PascalKeyword.Dispinterface,
+  PascalKeyword.File,
+  PascalKeyword.Function,
+  PascalKeyword.Interface,
+  PascalKeyword.Object,
+  PascalKeyword.Of,
+  PascalKeyword.Out,
+  PascalKeyword.Packed,
+  PascalKeyword.Procedure,
+  PascalKeyword.Record,
+  PascalKeyword.Reference,
+  PascalKeyword.Set,
+  PascalKeyword.Specialize,
+  PascalKeyword.To,
+  PascalKeyword.Type,
+  PascalKeyword.Var,
+])
 const TYPE_SPAN_TERMINATORS = new Set<string>([
-  PascalKeyword.Absolute, PascalKeyword.Abstract, PascalKeyword.Assembler, PascalKeyword.Cdecl, PascalKeyword.Default, PascalKeyword.Deprecated, PascalKeyword.Dispid,
-  PascalKeyword.Do, PascalKeyword.Dynamic, PascalKeyword.Experimental, PascalKeyword.External, PascalKeyword.Final, PascalKeyword.Forward, PascalKeyword.Implements,
-  PascalKeyword.Index, PascalKeyword.Inline, PascalKeyword.Message, PascalKeyword.Name, PascalKeyword.Nodefault, PascalKeyword.Overload, PascalKeyword.Override,
-  PascalKeyword.Platform, PascalKeyword.Read, PascalKeyword.Register, PascalKeyword.Reintroduce, PascalKeyword.Safecall, PascalKeyword.Sealed, PascalKeyword.Static,
-  PascalKeyword.Stdcall, PascalKeyword.Stored, PascalKeyword.Unsafe, PascalKeyword.Varargs, PascalKeyword.Virtual, PascalKeyword.Write
-]);
+  PascalKeyword.Absolute,
+  PascalKeyword.Abstract,
+  PascalKeyword.Assembler,
+  PascalKeyword.Cdecl,
+  PascalKeyword.Default,
+  PascalKeyword.Deprecated,
+  PascalKeyword.Dispid,
+  PascalKeyword.Do,
+  PascalKeyword.Dynamic,
+  PascalKeyword.Experimental,
+  PascalKeyword.External,
+  PascalKeyword.Final,
+  PascalKeyword.Forward,
+  PascalKeyword.Implements,
+  PascalKeyword.Index,
+  PascalKeyword.Inline,
+  PascalKeyword.Message,
+  PascalKeyword.Name,
+  PascalKeyword.Nodefault,
+  PascalKeyword.Overload,
+  PascalKeyword.Override,
+  PascalKeyword.Platform,
+  PascalKeyword.Read,
+  PascalKeyword.Register,
+  PascalKeyword.Reintroduce,
+  PascalKeyword.Safecall,
+  PascalKeyword.Sealed,
+  PascalKeyword.Static,
+  PascalKeyword.Stdcall,
+  PascalKeyword.Stored,
+  PascalKeyword.Unsafe,
+  PascalKeyword.Varargs,
+  PascalKeyword.Virtual,
+  PascalKeyword.Write,
+])
 const NON_TYPE_AFTER_COLON = new Set<string>([
-  PascalKeyword.Asm, PascalKeyword.Begin, PascalKeyword.Break, PascalKeyword.Case, PascalKeyword.Continue, PascalKeyword.Else, PascalKeyword.End, PascalKeyword.Except, PascalKeyword.Exit,
-  PascalKeyword.Finally, PascalKeyword.For, PascalKeyword.Goto, PascalKeyword.If, PascalKeyword.Inherited, PascalKeyword.Raise, PascalKeyword.Repeat, PascalKeyword.Try, PascalKeyword.While,
-  PascalKeyword.With
-]);
+  PascalKeyword.Asm,
+  PascalKeyword.Begin,
+  PascalKeyword.Break,
+  PascalKeyword.Case,
+  PascalKeyword.Continue,
+  PascalKeyword.Else,
+  PascalKeyword.End,
+  PascalKeyword.Except,
+  PascalKeyword.Exit,
+  PascalKeyword.Finally,
+  PascalKeyword.For,
+  PascalKeyword.Goto,
+  PascalKeyword.If,
+  PascalKeyword.Inherited,
+  PascalKeyword.Raise,
+  PascalKeyword.Repeat,
+  PascalKeyword.Try,
+  PascalKeyword.While,
+  PascalKeyword.With,
+])
 
 /**
  * Replaces comments and string contents with spaces while preserving code columns.
@@ -32,78 +105,78 @@ const NON_TYPE_AFTER_COLON = new Set<string>([
  * maskPascalLines(["begin {x}"]); // ["begin    "]
  */
 function maskPascalLines(lines: string[]) {
-  let state: PascalLexerState = LexerState.Code;
+  let state: PascalLexerState = LexerState.Code
 
   return lines.map((line) => {
-    const characters = [...line];
-    let index = 0;
+    const characters = [...line]
+    let index = 0
 
     while (index < characters.length) {
       if (state === LexerState.BraceComment) {
-        const original = characters[index];
-        characters[index] = " ";
+        const original = characters[index]
+        characters[index] = " "
         if (original === "}") {
-          state = LexerState.Code;
+          state = LexerState.Code
         }
-        index += 1;
-        continue;
+        index += 1
+        continue
       }
 
       if (state === LexerState.ParenComment) {
         if (line.startsWith("*)", index)) {
-          characters[index] = " ";
-          characters[index + 1] = " ";
-          index += 2;
-          state = LexerState.Code;
+          characters[index] = " "
+          characters[index + 1] = " "
+          index += 2
+          state = LexerState.Code
         } else {
-          characters[index] = " ";
-          index += 1;
+          characters[index] = " "
+          index += 1
         }
-        continue;
+        continue
       }
 
       if (state === LexerState.String) {
-        characters[index] = " ";
+        characters[index] = " "
         if (line[index] === "'") {
           if (line[index + 1] === "'") {
-            characters[index + 1] = " ";
-            index += 2;
+            characters[index + 1] = " "
+            index += 2
           } else {
-            index += 1;
-            state = LexerState.Code;
+            index += 1
+            state = LexerState.Code
           }
         } else {
-          index += 1;
+          index += 1
         }
-        continue;
+        continue
       }
 
       if (line.startsWith("//", index)) {
-        characters.fill(" ", index);
-        break;
+        characters.fill(" ", index)
+        break
       }
       if (line[index] === "{") {
-        characters[index] = " ";
-        state = LexerState.BraceComment;
-        index += 1;
-        continue;
+        characters[index] = " "
+        state = LexerState.BraceComment
+        index += 1
+        continue
       }
       if (line.startsWith("(*", index)) {
-        characters[index] = " ";
-        characters[index + 1] = " ";
-        state = LexerState.ParenComment;
-        index += 2;
-        continue;
+        characters[index] = " "
+        characters[index + 1] = " "
+        state = LexerState.ParenComment
+        index += 2
+        continue
       }
       if (line[index] === "'") {
-        characters[index] = " ";
-        state = LexerState.String;
+        characters[index] = " "
+        state = LexerState.String
       }
-      index += 1;
+      index += 1
     }
 
-    return characters.join("");
-  });
+    return characters.join("")
+  })
 }
 
 /**
@@ -118,25 +191,32 @@ function maskPascalLines(lines: string[]) {
  * capitalizeIdentifierCharacters(chars, "value: point", 7, 12);
  * chars.join(""); // "value: Point"
  */
-function capitalizeIdentifierCharacters(characters: string[], codeLine: string, start: number, end: number) {
-  const identifier = /\b[A-Za-z_]\w*\b/g;
-  identifier.lastIndex = start;
-  let match;
+function capitalizeIdentifierCharacters(
+  characters: string[],
+  codeLine: string,
+  start: number,
+  end: number,
+) {
+  const identifier = /\b[A-Za-z_]\w*\b/g
+  identifier.lastIndex = start
+  let match
 
   while ((match = identifier.exec(codeLine)) !== null && match.index < end) {
-    const remainder = codeLine.slice(match.index + match[0].length, end);
-    const isParameterName = /^(?:\s*,\s*[A-Za-z_]\w*)*\s*:/.test(remainder);
-    const openSquareBracket = codeLine.lastIndexOf("[", match.index);
-    const closeSquareBracket = codeLine.lastIndexOf("]", match.index);
+    const remainder = codeLine.slice(match.index + match[0].length, end)
+    const isParameterName = /^(?:\s*,\s*[A-Za-z_]\w*)*\s*:/.test(remainder)
+    const openSquareBracket = codeLine.lastIndexOf("[", match.index)
+    const closeSquareBracket = codeLine.lastIndexOf("]", match.index)
     const isRangeBound =
       openSquareBracket > closeSquareBracket &&
-      codeLine.slice(openSquareBracket, codeLine.indexOf("]", match.index) + 1).includes("..");
+      codeLine
+        .slice(openSquareBracket, codeLine.indexOf("]", match.index) + 1)
+        .includes("..")
     if (
       !isParameterName &&
       !isRangeBound &&
       !TYPE_SYNTAX_KEYWORDS.has(match[0].toLowerCase())
     ) {
-      characters[match.index] = characters[match.index].toUpperCase();
+      characters[match.index] = characters[match.index].toUpperCase()
     }
   }
 }
@@ -151,61 +231,61 @@ function capitalizeIdentifierCharacters(characters: string[], codeLine: string, 
  * findTypeSpanEnd("Point; Value", 0); // { end: 5, terminator: ";" }
  */
 function findTypeSpanEnd(codeLine: string, start: number) {
-  let angleDepth = 0;
-  let parenthesisDepth = 0;
-  let squareDepth = 0;
+  let angleDepth = 0
+  let parenthesisDepth = 0
+  let squareDepth = 0
 
   for (let index = start; index < codeLine.length; index += 1) {
-    const character = codeLine[index];
+    const character = codeLine[index]
     if (character === "<") {
-      angleDepth += 1;
-      continue;
+      angleDepth += 1
+      continue
     }
     if (character === ">" && angleDepth > 0) {
-      angleDepth -= 1;
-      continue;
+      angleDepth -= 1
+      continue
     }
     if (character === "[") {
-      squareDepth += 1;
-      continue;
+      squareDepth += 1
+      continue
     }
     if (character === "]" && squareDepth > 0) {
-      squareDepth -= 1;
-      continue;
+      squareDepth -= 1
+      continue
     }
     if (character === "(") {
-      parenthesisDepth += 1;
-      continue;
+      parenthesisDepth += 1
+      continue
     }
     if (character === ")") {
       if (parenthesisDepth === 0 && angleDepth === 0 && squareDepth === 0) {
-        return { end: index, terminator: ")" };
+        return { end: index, terminator: ")" }
       }
-      parenthesisDepth = Math.max(0, parenthesisDepth - 1);
-      continue;
+      parenthesisDepth = Math.max(0, parenthesisDepth - 1)
+      continue
     }
 
     if (angleDepth === 0 && parenthesisDepth === 0 && squareDepth === 0) {
       if (character === ";") {
-        return { end: index, terminator: ";" };
+        return { end: index, terminator: ";" }
       }
       if (character === ":" && codeLine[index + 1] === "=") {
-        return { end: index, terminator: ":=" };
+        return { end: index, terminator: ":=" }
       }
       if (character === "=") {
-        return { end: index, terminator: "=" };
+        return { end: index, terminator: "=" }
       }
       if (/[A-Za-z_]/.test(character)) {
-        const wordMatch = codeLine.slice(index).match(/^[A-Za-z_]\w*/);
+        const wordMatch = codeLine.slice(index).match(/^[A-Za-z_]\w*/)
         if (wordMatch && TYPE_SPAN_TERMINATORS.has(wordMatch[0].toLowerCase())) {
-          return { end: index, terminator: wordMatch[0].toLowerCase() };
+          return { end: index, terminator: wordMatch[0].toLowerCase() }
         }
-        index += (wordMatch?.[0].length ?? 1) - 1;
+        index += (wordMatch?.[0].length ?? 1) - 1
       }
     }
   }
 
-  return { end: codeLine.length, terminator: PascalKeyword.End };
+  return { end: codeLine.length, terminator: PascalKeyword.End }
 }
 
 /**
@@ -219,20 +299,25 @@ function findTypeSpanEnd(codeLine: string, start: number) {
  * isDeclarationColon("Value: Integer", 5, { end: 14, terminator: "end" },
  *   { section: "var", typeBlockDepth: 0 }); // true
  */
-function isDeclarationColon(codeLine: string, colonIndex: number, span: { end: number; terminator: string }, context: { section: string | undefined; typeBlockDepth: number; }) {
-  const prefix = codeLine.slice(0, colonIndex);
-  const segmentStart = Math.max(prefix.lastIndexOf(";"), prefix.lastIndexOf("("));
-  const segment = prefix.slice(segmentStart + 1).trim();
+function isDeclarationColon(
+  codeLine: string,
+  colonIndex: number,
+  span: { end: number; terminator: string },
+  context: { section: string | undefined; typeBlockDepth: number },
+) {
+  const prefix = codeLine.slice(0, colonIndex)
+  const segmentStart = Math.max(prefix.lastIndexOf(";"), prefix.lastIndexOf("("))
+  const segment = prefix.slice(segmentStart + 1).trim()
   if (/^(?:[-+]?\d|[$%&][0-9A-Fa-f])/.test(segment)) {
-    return false;
+    return false
   }
 
   const declarationContext =
     context.section === PascalKeyword.Var ||
     context.section === PascalKeyword.Const ||
     context.typeBlockDepth > 0 ||
-    /\b(?:const|constref|function|operator|out|procedure|property|var)\b/i.test(prefix);
-  return span.terminator !== ":=" || declarationContext;
+    /\b(?:const|constref|function|operator|out|procedure|property|var)\b/i.test(prefix)
+  return span.terminator !== ":=" || declarationContext
 }
 
 /**
@@ -245,82 +330,97 @@ function isDeclarationColon(codeLine: string, colonIndex: number, span: { end: n
  * capitalizeTypeNamesOnLine("value: point", "value: point",
  *   { section: "var", typeBlockDepth: 0 }); // "value: Point"
  */
-function capitalizeTypeNamesOnLine(line: string, codeLine: string, context: { section: string | undefined; typeBlockDepth: number }) {
-  const characters = [...line];
-  const inlineTypeDeclaration = /^\s*type\b/i.test(codeLine);
-  const declarationMatch = codeLine.match(/^\s*(?:type\s+)?([A-Za-z_]\w*)(?:\s*<[^>]*>)?\s*=\s*/i);
+function capitalizeTypeNamesOnLine(
+  line: string,
+  codeLine: string,
+  context: { section: string | undefined; typeBlockDepth: number },
+) {
+  const characters = [...line]
+  const inlineTypeDeclaration = /^\s*type\b/i.test(codeLine)
+  const declarationMatch = codeLine.match(
+    /^\s*(?:type\s+)?([A-Za-z_]\w*)(?:\s*<[^>]*>)?\s*=\s*/i,
+  )
   const rightHandSide = declarationMatch
     ? codeLine.slice((declarationMatch.index ?? 0) + declarationMatch[0].length)
-    : "";
-  const clearlyTypeDeclaration = /^(?:packed\s+)?(?:array|class|dispinterface|file|interface|object|record|reference|set)\b|^\^/i
-    .test(rightHandSide);
+    : ""
+  const clearlyTypeDeclaration =
+    /^(?:packed\s+)?(?:array|class|dispinterface|file|interface|object|record|reference|set)\b|^\^/i.test(
+      rightHandSide,
+    )
 
   if (
     declarationMatch &&
-    (context.section === PascalKeyword.Type || inlineTypeDeclaration || clearlyTypeDeclaration)
+    (context.section === PascalKeyword.Type ||
+      inlineTypeDeclaration ||
+      clearlyTypeDeclaration)
   ) {
-    const nameStart = codeLine.indexOf(declarationMatch[1], declarationMatch.index);
-    characters[nameStart] = characters[nameStart].toUpperCase();
+    const nameStart = codeLine.indexOf(declarationMatch[1], declarationMatch.index)
+    characters[nameStart] = characters[nameStart].toUpperCase()
 
-    const simpleAliasMatch = rightHandSide.match(/^\s*\^?\s*([A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*(?:\s*<[^;]+>)?)/);
+    const simpleAliasMatch = rightHandSide.match(
+      /^\s*\^?\s*([A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*(?:\s*<[^;]+>)?)/,
+    )
     if (
       simpleAliasMatch &&
       !TYPE_SYNTAX_KEYWORDS.has(simpleAliasMatch[1].trim().toLowerCase())
     ) {
-      const aliasStart = (declarationMatch.index ?? 0) + declarationMatch[0].length + (simpleAliasMatch.index ?? 0);
-      const aliasEnd = aliasStart + simpleAliasMatch[0].length;
-      capitalizeIdentifierCharacters(characters, codeLine, aliasStart, aliasEnd);
+      const aliasStart =
+        (declarationMatch.index ?? 0) +
+        declarationMatch[0].length +
+        (simpleAliasMatch.index ?? 0)
+      const aliasEnd = aliasStart + simpleAliasMatch[0].length
+      capitalizeIdentifierCharacters(characters, codeLine, aliasStart, aliasEnd)
     }
   }
 
-  const colon = /:/g;
-  let colonMatch;
+  const colon = /:/g
+  let colonMatch
   while ((colonMatch = colon.exec(codeLine)) !== null) {
-    const colonIndex = colonMatch.index;
+    const colonIndex = colonMatch.index
     if (codeLine[colonIndex + 1] === "=") {
-      continue;
+      continue
     }
 
-    const start = colonIndex + 1;
-    const candidate = codeLine.slice(start).match(/^\s*\^?\s*([A-Za-z_]\w*)/);
+    const start = colonIndex + 1
+    const candidate = codeLine.slice(start).match(/^\s*\^?\s*([A-Za-z_]\w*)/)
     if (!candidate || NON_TYPE_AFTER_COLON.has(candidate[1].toLowerCase())) {
-      continue;
+      continue
     }
 
-    const span = findTypeSpanEnd(codeLine, start);
+    const span = findTypeSpanEnd(codeLine, start)
     if (!isDeclarationColon(codeLine, colonIndex, span, context)) {
-      continue;
+      continue
     }
-    capitalizeIdentifierCharacters(characters, codeLine, start, span.end);
+    capitalizeIdentifierCharacters(characters, codeLine, start, span.end)
   }
 
-  const classParent = /\bclass\s*\(/gi;
-  let classMatch;
+  const classParent = /\bclass\s*\(/gi
+  let classMatch
   while ((classMatch = classParent.exec(codeLine)) !== null) {
-    const start = classMatch.index + classMatch[0].length;
-    const closingParenthesis = codeLine.indexOf(")", start);
+    const start = classMatch.index + classMatch[0].length
+    const closingParenthesis = codeLine.indexOf(")", start)
     capitalizeIdentifierCharacters(
       characters,
       codeLine,
       start,
-      closingParenthesis < 0 ? codeLine.length : closingParenthesis
-    );
+      closingParenthesis < 0 ? codeLine.length : closingParenthesis,
+    )
   }
 
-  const typeOperator = /\b(?:as|is)\s+/gi;
-  let operatorMatch;
+  const typeOperator = /\b(?:as|is)\s+/gi
+  let operatorMatch
   while ((operatorMatch = typeOperator.exec(codeLine)) !== null) {
-    const start = operatorMatch.index + operatorMatch[0].length;
-    const span = findTypeSpanEnd(codeLine, start);
-    capitalizeIdentifierCharacters(characters, codeLine, start, span.end);
+    const start = operatorMatch.index + operatorMatch[0].length
+    const span = findTypeSpanEnd(codeLine, start)
+    capitalizeIdentifierCharacters(characters, codeLine, start, span.end)
   }
 
-  const compoundType = /\b(?:array(?:\s*\[[^\]]*\])?|class|file|set)\s+of\s+/gi;
-  let compoundMatch;
+  const compoundType = /\b(?:array(?:\s*\[[^\]]*\])?|class|file|set)\s+of\s+/gi
+  let compoundMatch
   while ((compoundMatch = compoundType.exec(codeLine)) !== null) {
-    const start = compoundMatch.index + compoundMatch[0].length;
-    const span = findTypeSpanEnd(codeLine, start);
-    capitalizeIdentifierCharacters(characters, codeLine, start, span.end);
+    const start = compoundMatch.index + compoundMatch[0].length
+    const span = findTypeSpanEnd(codeLine, start)
+    capitalizeIdentifierCharacters(characters, codeLine, start, span.end)
   }
 
   for (const genericSpan of findGenericTypeSpans(codeLine)) {
@@ -328,11 +428,11 @@ function capitalizeTypeNamesOnLine(line: string, codeLine: string, context: { se
       characters,
       codeLine,
       genericSpan.start,
-      genericSpan.end
-    );
+      genericSpan.end,
+    )
   }
 
-  return characters.join("");
+  return characters.join("")
 }
 
 /**
@@ -343,39 +443,50 @@ function capitalizeTypeNamesOnLine(line: string, codeLine: string, context: { se
  * normalizeTypeNameCapitalization(["var", "  value: point;"]); // type becomes "Point"
  */
 function normalizeTypeNameCapitalization(lines: string[]) {
-  const codeLines = maskPascalLines(lines);
-  const result = [...lines];
-  const context: { section: string | undefined; typeBlockDepth: number } = { section: undefined, typeBlockDepth: 0 };
+  const codeLines = maskPascalLines(lines)
+  const result = [...lines]
+  const context: { section: string | undefined; typeBlockDepth: number } = {
+    section: undefined,
+    typeBlockDepth: 0,
+  }
 
   for (let index = 0; index < codeLines.length; index += 1) {
-    const codeLine = codeLines[index];
-    const trimmedCode = codeLine.trim();
-    const sectionMatch = trimmedCode.match(/^(type|const|var|threadvar|resourcestring|label)$/i);
+    const codeLine = codeLines[index]
+    const trimmedCode = codeLine.trim()
+    const sectionMatch = trimmedCode.match(
+      /^(type|const|var|threadvar|resourcestring|label)$/i,
+    )
 
     if (sectionMatch && context.typeBlockDepth === 0) {
-      context.section = sectionMatch[1].toLowerCase();
+      context.section = sectionMatch[1].toLowerCase()
     } else if (
       context.typeBlockDepth === 0 &&
-      /^(?:begin|constructor|destructor|exports|finalization|function|implementation|initialization|operator|procedure|uses)\b/i.test(trimmedCode)
+      /^(?:begin|constructor|destructor|exports|finalization|function|implementation|initialization|operator|procedure|uses)\b/i.test(
+        trimmedCode,
+      )
     ) {
-      context.section = undefined;
+      context.section = undefined
     }
 
-    result[index] = capitalizeTypeNamesOnLine(result[index], codeLine, context);
+    result[index] = capitalizeTypeNamesOnLine(result[index], codeLine, context)
 
-    const typeBlockMatch = codeLine.match(/=\s*(?:packed\s+)?(class|dispinterface|interface|object|record)\b/i);
+    const typeBlockMatch = codeLine.match(
+      /=\s*(?:packed\s+)?(class|dispinterface|interface|object|record)\b/i,
+    )
     if (typeBlockMatch) {
-      const afterKeyword = codeLine.slice((typeBlockMatch.index ?? 0) + typeBlockMatch[0].length);
+      const afterKeyword = codeLine.slice(
+        (typeBlockMatch.index ?? 0) + typeBlockMatch[0].length,
+      )
       if (!/^\s*;/.test(afterKeyword)) {
-        context.typeBlockDepth += 1;
+        context.typeBlockDepth += 1
       }
     }
     if (/^\s*end\s*;/i.test(codeLine) && context.typeBlockDepth > 0) {
-      context.typeBlockDepth -= 1;
+      context.typeBlockDepth -= 1
     }
   }
 
-  return result;
+  return result
 }
 
 /**
@@ -387,48 +498,49 @@ function normalizeTypeNameCapitalization(lines: string[]) {
  * // Both occurrences of `value` become `Value`.
  */
 function normalizeVariableNameCapitalization(lines: string[]) {
-  const codeLines = maskPascalLines(lines);
-  const declaredVariables = new Set<string>([PascalKeyword.Result, PascalKeyword.Self]);
+  const codeLines = maskPascalLines(lines)
+  const declaredVariables = new Set<string>([PascalKeyword.Result, PascalKeyword.Self])
   const addNames = (names: string) => {
     for (const name of names.split(",")) {
-      const trimmedName = name.trim();
+      const trimmedName = name.trim()
       if (trimmedName) {
-        declaredVariables.add(trimmedName.toLowerCase());
+        declaredVariables.add(trimmedName.toLowerCase())
       }
     }
-  };
+  }
 
   for (const codeLine of codeLines) {
-    const typedDeclaration = /(?:^|[;(])\s*(?:(?:const|constref|out|var)\s+)?([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*:\s*\^?\s*([A-Za-z_]\w*)/gi;
-    let declarationMatch;
+    const typedDeclaration =
+      /(?:^|[;(])\s*(?:(?:const|constref|out|var)\s+)?([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*:\s*\^?\s*([A-Za-z_]\w*)/gi
+    let declarationMatch
     while ((declarationMatch = typedDeclaration.exec(codeLine)) !== null) {
       if (!NON_TYPE_AFTER_COLON.has(declarationMatch[2].toLowerCase())) {
-        addNames(declarationMatch[1]);
+        addNames(declarationMatch[1])
       }
     }
 
-    const inlineVariable = /\bvar\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*(?=:|:=)/gi;
+    const inlineVariable = /\bvar\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*(?=:|:=)/gi
     while ((declarationMatch = inlineVariable.exec(codeLine)) !== null) {
-      addNames(declarationMatch[1]);
+      addNames(declarationMatch[1])
     }
 
-    const exceptionVariable = /\bon\s+([A-Za-z_]\w*)\s*:/gi;
+    const exceptionVariable = /\bon\s+([A-Za-z_]\w*)\s*:/gi
     while ((declarationMatch = exceptionVariable.exec(codeLine)) !== null) {
-      addNames(declarationMatch[1]);
+      addNames(declarationMatch[1])
     }
   }
 
   return lines.map((line, lineIndex) => {
-    const characters = [...line];
-    const identifier = /\b[A-Za-z_]\w*\b/g;
-    let match;
+    const characters = [...line]
+    const identifier = /\b[A-Za-z_]\w*\b/g
+    let match
     while ((match = identifier.exec(codeLines[lineIndex])) !== null) {
       if (declaredVariables.has(match[0].toLowerCase())) {
-        characters[match.index] = characters[match.index].toUpperCase();
+        characters[match.index] = characters[match.index].toUpperCase()
       }
     }
-    return characters.join("");
-  });
+    return characters.join("")
+  })
 }
 
 /**
@@ -439,10 +551,10 @@ function normalizeVariableNameCapitalization(lines: string[]) {
  * normalizeGenericTypeSpacing(["TList < TPoint >"]); // ["TList<TPoint>"]
  */
 function normalizeGenericTypeSpacing(lines: string[]) {
-  const codeLines = maskPascalLines(lines);
+  const codeLines = maskPascalLines(lines)
   return lines.map((line, index) =>
-    normalizeGenericTypeSpacingOnMaskedLine(line, codeLines[index])
-  );
+    normalizeGenericTypeSpacingOnMaskedLine(line, codeLines[index]),
+  )
 }
 
 /**
@@ -454,23 +566,27 @@ function normalizeGenericTypeSpacing(lines: string[]) {
  * protectBlankLinesForFormatting("begin\n\nend.", [{ lineNumber: 1, marker: "CARET" }]);
  * // "begin\n{CARET}\nend."
  */
-function protectBlankLinesForFormatting(text: string, protections: BlankLineProtection[]) {
+function protectBlankLinesForFormatting(
+  text: string,
+  protections: BlankLineProtection[],
+) {
   if (protections.length === 0) {
-    return text;
+    return text
   }
 
-  const newline = text.includes("\r\n") ? "\r\n" : "\n";
-  const lines = text.split(/\r\n|\n|\r/);
+  const newline = text.includes("\r\n") ? "\r\n" : "\n"
+  const lines = text.split(/\r\n|\n|\r/)
   for (const protection of protections) {
     if (
       protection.lineNumber >= 0 &&
       protection.lineNumber < lines.length &&
       lines[protection.lineNumber].trim() === ""
     ) {
-      lines[protection.lineNumber] = `${lines[protection.lineNumber]}{${protection.marker}}`;
+      lines[protection.lineNumber] =
+        `${lines[protection.lineNumber]}{${protection.marker}}`
     }
   }
-  return lines.join(newline);
+  return lines.join(newline)
 }
 
 /**
@@ -485,33 +601,33 @@ function protectBlankLinesForFormatting(text: string, protections: BlankLineProt
  */
 function restoreProtectedBlankLines(text: string, protections: BlankLineProtection[]) {
   if (protections.length === 0) {
-    return text;
+    return text
   }
 
-  const newline = text.includes("\r\n") ? "\r\n" : "\n";
-  const lines = text.split(/\r\n|\n|\r/);
+  const newline = text.includes("\r\n") ? "\r\n" : "\n"
+  const lines = text.split(/\r\n|\n|\r/)
   for (const protection of protections) {
-    let markerLine = lines.findIndex((line) => line.includes(protection.marker));
+    let markerLine = lines.findIndex((line) => line.includes(protection.marker))
     if (markerLine >= 0) {
-      const indentation = lines[markerLine].match(/^\s*/)?.[0] || '';
+      const indentation = lines[markerLine].match(/^\s*/)?.[0] || ""
 
       // Formatter.exe treats the temporary marker as a comment and may add its
       // normal declaration separator beside it. Keep the protected caret line,
       // but discard adjacent blank lines created around that marker.
       while (markerLine > 0 && lines[markerLine - 1].trim() === "") {
-        lines.splice(markerLine - 1, 1);
-        markerLine -= 1;
+        lines.splice(markerLine - 1, 1)
+        markerLine -= 1
       }
       while (markerLine + 1 < lines.length && lines[markerLine + 1].trim() === "") {
-        lines.splice(markerLine + 1, 1);
+        lines.splice(markerLine + 1, 1)
       }
 
-      protection.resolvedLineNumber = markerLine;
-      protection.resolvedCharacter = indentation.length;
-      lines[markerLine] = indentation;
+      protection.resolvedLineNumber = markerLine
+      protection.resolvedCharacter = indentation.length
+      lines[markerLine] = indentation
     }
   }
-  return lines.join(newline);
+  return lines.join(newline)
 }
 
 /**
@@ -522,7 +638,7 @@ function restoreProtectedBlankLines(text: string, protections: BlankLineProtecti
  * isInlineVariableDeclaration("var Value := CreateValue;"); // true
  */
 function isInlineVariableDeclaration(codeLine: string) {
-  return /^\s*var\s+[A-Za-z_]\w*/i.test(codeLine) && /;\s*$/.test(codeLine);
+  return /^\s*var\s+[A-Za-z_]\w*/i.test(codeLine) && /;\s*$/.test(codeLine)
 }
 
 /**
@@ -533,17 +649,20 @@ function isInlineVariableDeclaration(codeLine: string) {
  * @example
  * findInlineVariableDeclarationEnd(["var", "  Value := 1;", "begin"], 0); // 1
  */
-function findInlineVariableDeclarationEnd(codeLines: string[], declarationIndex: number) {
+function findInlineVariableDeclarationEnd(
+  codeLines: string[],
+  declarationIndex: number,
+) {
   if (!/^\s*var\s+[A-Za-z_]\w*/i.test(codeLines[declarationIndex])) {
-    return -1;
+    return -1
   }
 
   for (let index = declarationIndex; index < codeLines.length; index += 1) {
     if (codeLines[index].includes(";")) {
-      return index;
+      return index
     }
   }
-  return -1;
+  return -1
 }
 
 /**
@@ -555,33 +674,40 @@ function findInlineVariableDeclarationEnd(codeLines: string[], declarationIndex:
  * normalizeInlineVariableContinuations(["  var Value: Integer;", "      DoWork;", "end;"]);
  * // The `DoWork;` line is reduced to the declaration's two-space indent.
  */
-function normalizeInlineVariableContinuations(lines: string[], options: { includeBlankLineIndexes?: Iterable<number> } = {}) {
-  const codeLines = maskPascalLines(lines);
-  const result = [...lines];
-  const includeBlankLineIndexes = new Set(options.includeBlankLineIndexes ?? []);
+function normalizeInlineVariableContinuations(
+  lines: string[],
+  options: { includeBlankLineIndexes?: Iterable<number> } = {},
+) {
+  const codeLines = maskPascalLines(lines)
+  const result = [...lines]
+  const includeBlankLineIndexes = new Set(options.includeBlankLineIndexes ?? [])
 
-  for (let declarationIndex = 0; declarationIndex < result.length - 1; declarationIndex += 1) {
-    const declarationEnd = findInlineVariableDeclarationEnd(codeLines, declarationIndex);
+  for (
+    let declarationIndex = 0;
+    declarationIndex < result.length - 1;
+    declarationIndex += 1
+  ) {
+    const declarationEnd = findInlineVariableDeclarationEnd(codeLines, declarationIndex)
     if (declarationEnd < 0) {
-      continue;
+      continue
     }
 
-    const declarationIndent = result[declarationIndex].match(/^\s*/)?.[0] || '';
+    const declarationIndent = result[declarationIndex].match(/^\s*/)?.[0] || ""
     for (let index = declarationEnd + 1; index < result.length; index += 1) {
-      const isBlank = result[index].trim() === "";
-      const isCommentOnly = !isBlank && codeLines[index].trim() === "";
+      const isBlank = result[index].trim() === ""
+      const isCommentOnly = !isBlank && codeLines[index].trim() === ""
 
       if (!isBlank || includeBlankLineIndexes.has(index)) {
-        result[index] = `${declarationIndent}${result[index].trimStart()}`;
+        result[index] = `${declarationIndent}${result[index].trimStart()}`
       }
       if (!isBlank && !isCommentOnly) {
-        break;
+        break
       }
     }
-    declarationIndex = declarationEnd;
+    declarationIndex = declarationEnd
   }
 
-  return result;
+  return result
 }
 
 /**
@@ -592,21 +718,21 @@ function normalizeInlineVariableContinuations(lines: string[], options: { includ
  * preserveInlineVariables(["var", "  Value := CreateValue;"]); // ["var Value := CreateValue;"]
  */
 function preserveInlineVariables(lines: string[]) {
-  const result = [];
+  const result = []
 
   for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].match(/^(\s*)(var)\s*$/i);
-    const declaration = lines[index + 1]?.trimStart() ?? "";
+    const match = lines[index].match(/^(\s*)(var)\s*$/i)
+    const declaration = lines[index + 1]?.trimStart() ?? ""
 
     if (match && /^[A-Za-z_]\w*(?:\s*:\s*.*?)?\s*:=/.test(declaration)) {
-      result.push(`${match[1]}${match[2]} ${declaration}`);
-      index += 1;
+      result.push(`${match[1]}${match[2]} ${declaration}`)
+      index += 1
     } else {
-      result.push(lines[index]);
+      result.push(lines[index])
     }
   }
 
-  return result;
+  return result
 }
 
 /**
@@ -618,88 +744,94 @@ function preserveInlineVariables(lines: string[]) {
  * alignWrappedParameters(["procedure Run(A: Integer;", "B: Integer);"]);
  * // The second parameter is indented to the continuation column.
  */
-function alignWrappedParameters(lines: string[], options: { alignBlankLineIndexes?: Iterable<number>; indentSize?: number } = {}) {
-  const codeLines = maskPascalLines(lines);
-  const result = [...lines];
-  const alignBlankLineIndexes = new Set(options.alignBlankLineIndexes ?? []);
-  const indentSize = isInteger(options.indentSize) ? options.indentSize : 2;
-  let inParameterList = false;
-  let parameterDepth = 0;
-  let continuationColumn = indentSize;
-  let previousParameterEnded = false;
+function alignWrappedParameters(
+  lines: string[],
+  options: { alignBlankLineIndexes?: Iterable<number>; indentSize?: number } = {},
+) {
+  const codeLines = maskPascalLines(lines)
+  const result = [...lines]
+  const alignBlankLineIndexes = new Set(options.alignBlankLineIndexes ?? [])
+  const indentSize = isInteger(options.indentSize) ? options.indentSize : 2
+  let inParameterList = false
+  let parameterDepth = 0
+  let continuationColumn = indentSize
+  let previousParameterEnded = false
 
   for (let lineIndex = 0; lineIndex < result.length; lineIndex += 1) {
-    const codeLine = codeLines[lineIndex];
-    let scanStart = 0;
+    const codeLine = codeLines[lineIndex]
+    let scanStart = 0
 
     if (!inParameterList) {
-      const declarationMatch = DECLARATION_PATTERN.exec(codeLine);
+      const declarationMatch = DECLARATION_PATTERN.exec(codeLine)
       if (!declarationMatch) {
-        continue;
+        continue
       }
 
-      scanStart = codeLine.indexOf("(", (declarationMatch.index ?? 0) + declarationMatch[0].length);
+      scanStart = codeLine.indexOf(
+        "(",
+        (declarationMatch.index ?? 0) + declarationMatch[0].length,
+      )
       if (scanStart < 0) {
-        continue;
+        continue
       }
 
-      inParameterList = true;
-      parameterDepth = 0;
-      continuationColumn = Math.max(0, codeLine.search(/\S/)) + indentSize;
-      previousParameterEnded = false;
+      inParameterList = true
+      parameterDepth = 0
+      continuationColumn = Math.max(0, codeLine.search(/\S/)) + indentSize
+      previousParameterEnded = false
     } else {
-      const trimmedCode = codeLine.trim();
+      const trimmedCode = codeLine.trim()
       if (!trimmedCode) {
-        if (
-          alignBlankLineIndexes.has(lineIndex) &&
-          previousParameterEnded
-        ) {
-          result[lineIndex] = " ".repeat(continuationColumn);
+        if (alignBlankLineIndexes.has(lineIndex) && previousParameterEnded) {
+          result[lineIndex] = " ".repeat(continuationColumn)
         }
-        continue;
+        continue
       }
 
-      const firstCodeColumn = codeLine.search(/\S/);
-      if (
-        previousParameterEnded &&
-        codeLine[firstCodeColumn] !== ")"
-      ) {
-        result[lineIndex] = `${" ".repeat(continuationColumn)}${result[lineIndex].trimStart()}`;
+      const firstCodeColumn = codeLine.search(/\S/)
+      if (previousParameterEnded && codeLine[firstCodeColumn] !== ")") {
+        result[lineIndex] =
+          `${" ".repeat(continuationColumn)}${result[lineIndex].trimStart()}`
       } else if (
         previousParameterEnded &&
         codeLine[firstCodeColumn] === ")" &&
         alignBlankLineIndexes.has(lineIndex)
       ) {
-        result[lineIndex] = `${" ".repeat(continuationColumn)}${result[lineIndex].trimStart()}`;
+        result[lineIndex] =
+          `${" ".repeat(continuationColumn)}${result[lineIndex].trimStart()}`
       }
     }
 
-    let lastTopLevelCharacter;
-    for (let characterIndex = scanStart; characterIndex < codeLine.length; characterIndex += 1) {
-      const character = codeLine[characterIndex];
+    let lastTopLevelCharacter
+    for (
+      let characterIndex = scanStart;
+      characterIndex < codeLine.length;
+      characterIndex += 1
+    ) {
+      const character = codeLine[characterIndex]
       if (character === "(") {
-        parameterDepth += 1;
-        continue;
+        parameterDepth += 1
+        continue
       }
       if (character === ")") {
-        parameterDepth -= 1;
+        parameterDepth -= 1
         if (parameterDepth <= 0) {
-          inParameterList = false;
-          break;
+          inParameterList = false
+          break
         }
-        continue;
+        continue
       }
       if (parameterDepth === 1 && !/\s/.test(character)) {
-        lastTopLevelCharacter = character;
+        lastTopLevelCharacter = character
       }
     }
 
     if (inParameterList) {
-      previousParameterEnded = lastTopLevelCharacter === ";";
+      previousParameterEnded = lastTopLevelCharacter === ";"
     }
   }
 
-  return result;
+  return result
 }
 
 /**
@@ -712,75 +844,81 @@ function alignWrappedParameters(lines: string[], options: { alignBlankLineIndexe
  * alignWrappedArgumentLine(["Call(Value,", ")"], 1); // ["Call(Value,", "  )"]
  */
 function alignWrappedArgumentLine(lines: string[], lineIndex: number, indentSize = 2) {
-  const targetText = lines[lineIndex] ?? "";
-  const trimmedTarget = targetText.trimStart();
+  const targetText = lines[lineIndex] ?? ""
+  const trimmedTarget = targetText.trimStart()
   if (
     lineIndex < 0 ||
     lineIndex >= lines.length ||
     (trimmedTarget !== "" && !trimmedTarget.startsWith(")"))
   ) {
-    return [...lines];
+    return [...lines]
   }
 
-  const codeLines = maskPascalLines(lines);
-  const frames: { lastTopLevelCharacter: string; openLine: number; baseIndent: number; continuationColumn?: number; isDeclaration: boolean }[] = [];
+  const codeLines = maskPascalLines(lines)
+  const frames: {
+    lastTopLevelCharacter: string
+    openLine: number
+    baseIndent: number
+    continuationColumn?: number
+    isDeclaration: boolean
+  }[] = []
 
   for (let currentLine = 0; currentLine < lineIndex; currentLine += 1) {
-    const codeLine = codeLines[currentLine];
-    const firstCodeColumn = codeLine.search(/\S/);
-    const activeFrame = frames.at(-1);
+    const codeLine = codeLines[currentLine]
+    const firstCodeColumn = codeLine.search(/\S/)
+    const activeFrame = frames.at(-1)
     if (
       activeFrame &&
       currentLine > activeFrame.openLine &&
       activeFrame.continuationColumn === undefined &&
       firstCodeColumn >= 0
     ) {
-      activeFrame.continuationColumn = firstCodeColumn;
+      activeFrame.continuationColumn = firstCodeColumn
     }
 
     for (let column = 0; column < codeLine.length; column += 1) {
-      const character = codeLine[column];
+      const character = codeLine[column]
       if (character === "(") {
-        const parentFrame = frames.at(-1);
+        const parentFrame = frames.at(-1)
         if (parentFrame) {
-          parentFrame.lastTopLevelCharacter = character;
+          parentFrame.lastTopLevelCharacter = character
         }
         frames.push({
           openLine: currentLine,
           baseIndent: Math.max(0, firstCodeColumn),
           continuationColumn: undefined,
           isDeclaration: DECLARATION_PATTERN.test(codeLine.slice(0, column)),
-          lastTopLevelCharacter: "("
-        });
-        continue;
+          lastTopLevelCharacter: "(",
+        })
+        continue
       }
       if (character === ")") {
         if (frames.length > 0) {
-          frames.pop();
+          frames.pop()
         }
-        const parentFrame = frames.at(-1);
+        const parentFrame = frames.at(-1)
         if (parentFrame) {
-          parentFrame.lastTopLevelCharacter = character;
+          parentFrame.lastTopLevelCharacter = character
         }
-        continue;
+        continue
       }
       if (!/\s/.test(character) && frames.length > 0) {
-        frames[frames.length - 1].lastTopLevelCharacter = character;
+        frames[frames.length - 1].lastTopLevelCharacter = character
       }
     }
   }
 
-  const frame = frames.at(-1);
+  const frame = frames.at(-1)
   if (!frame || frame.lastTopLevelCharacter !== ",") {
-    return [...lines];
+    return [...lines]
   }
 
-  const result = [...lines];
+  const result = [...lines]
   const continuationColumn = frame.isDeclaration
     ? frame.baseIndent + indentSize
-    : frame.continuationColumn ?? frame.baseIndent + indentSize;
-  result[lineIndex] = `${" ".repeat(continuationColumn)}${trimmedTarget}`;
-  return result;
+    : (frame.continuationColumn ?? frame.baseIndent + indentSize)
+  result[lineIndex] = `${" ".repeat(continuationColumn)}${trimmedTarget}`
+  return result
 }
 
 /**
@@ -791,30 +929,40 @@ function alignWrappedArgumentLine(lines: string[], lineIndex: number, indentSize
  * @example
  * postprocessPascal("var\n  value: point;"); // "var\n  Value: Point;"
  */
-function postprocessPascal(text: string, options: { preserveInlineVariables?: boolean; normalizeTypeNameCapitalization?: boolean; normalizeVariableNameCapitalization?: boolean; normalizeGenericTypeSpacing?: boolean; normalizeInlineVariableContinuations?: boolean; alignWrappedParameters?: boolean } = {}) {
-  const newline = text.includes("\r\n") ? "\r\n" : "\n";
-  let lines = text.split(/\r\n|\n|\r/);
+function postprocessPascal(
+  text: string,
+  options: {
+    preserveInlineVariables?: boolean
+    normalizeTypeNameCapitalization?: boolean
+    normalizeVariableNameCapitalization?: boolean
+    normalizeGenericTypeSpacing?: boolean
+    normalizeInlineVariableContinuations?: boolean
+    alignWrappedParameters?: boolean
+  } = {},
+) {
+  const newline = text.includes("\r\n") ? "\r\n" : "\n"
+  let lines = text.split(/\r\n|\n|\r/)
 
   if (options.preserveInlineVariables !== false) {
-    lines = preserveInlineVariables(lines);
+    lines = preserveInlineVariables(lines)
   }
   if (options.normalizeTypeNameCapitalization !== false) {
-    lines = normalizeTypeNameCapitalization(lines);
+    lines = normalizeTypeNameCapitalization(lines)
   }
   if (options.normalizeVariableNameCapitalization !== false) {
-    lines = normalizeVariableNameCapitalization(lines);
+    lines = normalizeVariableNameCapitalization(lines)
   }
   if (options.normalizeGenericTypeSpacing !== false) {
-    lines = normalizeGenericTypeSpacing(lines);
+    lines = normalizeGenericTypeSpacing(lines)
   }
   if (options.normalizeInlineVariableContinuations !== false) {
-    lines = normalizeInlineVariableContinuations(lines);
+    lines = normalizeInlineVariableContinuations(lines)
   }
   if (options.alignWrappedParameters !== false) {
-    lines = alignWrappedParameters(lines);
+    lines = alignWrappedParameters(lines)
   }
 
-  return lines.join(newline);
+  return lines.join(newline)
 }
 
 export {
@@ -829,6 +977,5 @@ export {
   postprocessPascal,
   protectBlankLinesForFormatting,
   preserveInlineVariables,
-  restoreProtectedBlankLines
-};
-
+  restoreProtectedBlankLines,
+}

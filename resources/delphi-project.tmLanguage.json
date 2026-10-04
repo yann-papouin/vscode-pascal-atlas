@@ -2,5 +2,9 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Delphi Project",
   "scopeName": "text.xml.pascal-atlas-dproj",
-  "patterns": [{ "include": "text.xml" }]
+  "patterns": [
+    {
+      "include": "text.xml"
+    }
+  ]
 }
