@@ -91,7 +91,7 @@ When the default syntax standard is enabled, its detailed options reflect the bu
 - Worker-based syntax diagnostics cover strings, comments, delimiters, generics, and structural `begin/end` errors.
 - Background Delphi compilation uses isolated shadow files and never overwrites project sources or normal output directories.
 - Missing-Unit diagnostics offer an **Add Unit to uses** quick fix.
-- New `.pas/.dpr/.dpk/.dproj` files default to GB2312; existing files retain a reliably detected original encoding, while other documents default to UTF-8.
+- Delphi and other text files use UTF-8 or UTF-8 with BOM. Existing UTF-8 BOMs are preserved; files without a BOM use the configured UTF-8 default.
 - Optional Explorer exclusions cover Delphi forms, `.skincfg`, generated output, and metadata.
 - Built-in Object Pascal snippets include `begin/end`, conditions, loops, exceptions, Case, Procedure, and Function templates.
 - RAD/VCL source opens in an isolated language mode so inspecting System/Winapi code does not stall the original project's navigation.

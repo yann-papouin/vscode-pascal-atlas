@@ -97,11 +97,6 @@ function colorBuildOutputLine(line, category) {
   return line;
 }
 
-function processOutputDecoder() {
-  try { return new TextDecoder('gbk'); }
-  catch { return new TextDecoder('utf-8'); }
-}
-
 class RunDebugAdapter {
   constructor(configuration) {
     this.configuration = configuration;
@@ -171,8 +166,8 @@ class RunDebugAdapter {
         stdio: ['ignore', 'pipe', 'pipe']
       });
       this.process = child;
-      const stdoutDecoder = processOutputDecoder();
-      const stderrDecoder = processOutputDecoder();
+      const stdoutDecoder = new TextDecoder('utf-8');
+      const stderrDecoder = new TextDecoder('utf-8');
       child.stdout.on('data', chunk => {
         const output = stdoutDecoder.decode(chunk, { stream: true });
         if (output) this.sendEvent('output', { category: 'stdout', output });

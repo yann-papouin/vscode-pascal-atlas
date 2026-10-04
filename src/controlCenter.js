@@ -38,18 +38,18 @@ const SECTIONS = [
   },
   {
     title: 'File encoding',
-    description: 'New Delphi files default to GB2312 and other files to UTF-8; ambiguous Pascal files fall back to GB2312.',
+    description: 'Use UTF-8 or UTF-8 with BOM for Delphi and other text files.',
     settings: [
       { key: 'encoding.enabled', label: 'Enable file encoding policy', type: 'boolean' },
       {
         key: 'encoding.delphiDefault', label: 'New or ambiguous Delphi files', type: 'select', target: 'global',
-        options: ['gb2312', 'gbk', 'utf8', 'utf8bom'],
-        optionLabels: ['GB2312 (default)', 'GBK', 'UTF-8', 'UTF-8 with BOM']
+        options: ['utf8', 'utf8bom'],
+        optionLabels: ['UTF-8 (default)', 'UTF-8 with BOM']
       },
       {
         key: 'encoding.otherDefault', label: 'New or ambiguous non-Delphi files', type: 'select', target: 'global',
-        options: ['utf8', 'utf8bom', 'gb2312', 'gbk'],
-        optionLabels: ['UTF-8 (default)', 'UTF-8 with BOM', 'GB2312', 'GBK']
+        options: ['utf8', 'utf8bom'],
+        optionLabels: ['UTF-8 (default)', 'UTF-8 with BOM']
       },
       { key: 'encoding.detectExisting', label: 'Detect and preserve existing file encoding', type: 'boolean' },
       { key: 'encoding.respectDprojDeclaration', label: 'Prefer the DPROJ XML encoding declaration', type: 'boolean' }

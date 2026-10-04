@@ -13,12 +13,11 @@ const {
   reconciledEncoding
 } = require('../src/encodingSupport');
 
-const gb2312Text = String.fromCodePoint(0x4e2d, 0x6587);
-
-test('normalizes supported XML encoding aliases', () => {
+test('recognizes UTF-8 XML encoding declarations only', () => {
   assert.equal(normalizeXmlEncoding('UTF-8'), 'utf8');
-  assert.equal(normalizeXmlEncoding('GB-2312'), 'gb2312');
-  assert.equal(normalizeXmlEncoding('cp936'), 'gbk');
+  assert.equal(normalizeXmlEncoding('utf8'), 'utf8');
+  assert.equal(normalizeXmlEncoding('GB-2312'), undefined);
+  assert.equal(normalizeXmlEncoding('cp936'), undefined);
   assert.equal(normalizeXmlEncoding('unknown'), undefined);
 });
 
@@ -31,44 +30,29 @@ test('returns undefined when a DPROJ has no encoding declaration', () => {
   assert.equal(declaredXmlEncoding(Buffer.from('<Project />', 'ascii')), undefined);
 });
 
-test('detects BOMs and distinguishes valid UTF-8 from a legacy byte stream', () => {
+test('detects UTF-8 BOM and validates UTF-8 bytes', () => {
   assert.equal(bomEncoding(Buffer.from([0xef, 0xbb, 0xbf, 0x41])), 'utf8bom');
-  assert.equal(bomEncoding(Buffer.from([0xff, 0xfe, 0x41, 0x00])), 'utf16le');
+  assert.equal(bomEncoding(Buffer.from([0xff, 0xfe, 0x41, 0x00])), undefined);
   assert.equal(isAscii(Buffer.from('unit Example;', 'ascii')), true);
   assert.equal(isValidUtf8(Buffer.from('UTF-8 sample', 'utf8')), true);
   assert.equal(isValidUtf8(Buffer.from([0xd6, 0xd0, 0xce, 0xc4])), false);
 });
 
-test('uses GB2312 for a PAS file that is neither clearly UTF-8 nor explicitly encoded', () => {
-  const legacyBytes = Buffer.from([0xd6, 0xd0, 0xce, 0xc4]);
-  assert.equal(reconciledEncoding(legacyBytes, 'gbk', 'gb2312', true), 'gb2312');
-  assert.equal(reconciledEncoding(Buffer.from(`UTF-8 sample ${gb2312Text}`, 'utf8'), 'utf8', 'gb2312', true), 'utf8');
-  assert.equal(reconciledEncoding(Buffer.from('unit X;', 'ascii'), 'utf8', 'gb2312', true), 'gb2312');
-  assert.equal(reconciledEncoding(legacyBytes, 'utf16le', 'gb2312', true, 'utf16le'), 'utf16le');
+test('reconciles files using only UTF-8 choices', () => {
+  const invalidUtf8 = Buffer.from([0xd6, 0xd0, 0xce, 0xc4]);
+  assert.equal(reconciledEncoding(invalidUtf8, 'utf8'), 'utf8');
+  assert.equal(reconciledEncoding(Buffer.from('UTF-8 café', 'utf8'), 'utf8bom'), 'utf8');
+  assert.equal(reconciledEncoding(Buffer.from('unit X;', 'ascii'), 'utf8bom'), 'utf8bom');
+  assert.equal(reconciledEncoding(invalidUtf8, 'gb2312'), 'utf8');
+  assert.equal(reconciledEncoding(Buffer.from('<?xml encoding="gbk"?>', 'ascii'), 'utf8', 'gbk'), 'utf8');
 });
 
-test('decodes UTF-8 and legacy GB2312 Pascal sources before indexing', () => {
+test('decodes Pascal sources as UTF-8', () => {
   assert.equal(decodePascalBytes(Buffer.from('unit Sample;', 'utf8')), 'unit Sample;');
-  const gb2312 = Buffer.concat([
-    Buffer.from('unit Legacy; // ', 'ascii'),
-    Buffer.from([0xd6, 0xd0, 0xce, 0xc4]),
-    Buffer.from('\r\nend.', 'ascii')
-  ]);
-  assert.equal(decodePascalBytes(gb2312), `unit Legacy; // ${gb2312Text}\r\nend.`);
+  assert.equal(decodePascalBytes(Buffer.from([0xef, 0xbb, 0xbf, 0x41])), 'A');
 });
 
-test('decodes Delphi compiler output as UTF-8 or the Windows Chinese ANSI code page', () => {
+test('decodes Delphi compiler output as UTF-8', () => {
   assert.equal(decodeProcessOutput(Buffer.from('Notice: UTF-8 output', 'utf8')), 'Notice: UTF-8 output');
-  const cp936 = Buffer.from([
-    0x53, 0x79, 0x6d, 0x62, 0x6f, 0x6c, 0x20, 0x27, 0x44, 0x65, 0x66, 0x54,
-    0x6f, 0x6c, 0x27, 0x20, 0x69, 0x73, 0x20, 0x64, 0x65, 0x70, 0x72, 0x65,
-    0x63, 0x61, 0x74, 0x65, 0x64, 0x3a, 0x20, 0x6c, 0x65, 0x67, 0x61, 0x63, 0x79,
-    0x20, 0x41, 0x50, 0x49, 0x2c, 0x20, 0x75, 0x73, 0x65, 0x20, 0x44, 0x65, 0x66, 0x61,
-    0x75, 0x6c, 0x74, 0x54, 0x6f, 0x6c
-  ]);
-  assert.equal(
-    decodeProcessOutput(cp936),
-    "Symbol 'DefTol' is deprecated: legacy API, use DefaultTol"
-  );
   assert.equal(decodeProcessOutput('already decoded'), 'already decoded');
 });

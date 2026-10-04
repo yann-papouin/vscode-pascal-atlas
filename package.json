@@ -917,52 +917,44 @@
 				},
 				"pascalAtlas.encoding.enabled": {
 					"type": "boolean",
-					"default": true,
-					"description": "Enables Pascal Atlas's file encoding policy: new Delphi files default to GB2312, other new files to UTF-8, and ambiguous .pas files fall back to GB2312."
+					"default": false,
+					"description": "Enables Pascal Atlas's UTF-8 file encoding policy."
 				},
 				"pascalAtlas.encoding.delphiDefault": {
 					"type": "string",
-					"default": "gb2312",
+					"default": "utf8",
 					"enum": [
-						"gb2312",
-						"gbk",
 						"utf8",
 						"utf8bom"
 					],
 					"enumDescriptions": [
-						"GB2312",
-						"GBK",
 						"UTF-8",
 						"UTF-8 with BOM"
 					],
-					"description": "Encoding for new .pas/.dpr/.dpk/.dproj files and as a fallback when an existing file's encoding cannot be detected."
+					"description": "Encoding for new Delphi files and the fallback for existing files without a UTF-8 BOM."
 				},
 				"pascalAtlas.encoding.otherDefault": {
 					"type": "string",
 					"default": "utf8",
 					"enum": [
 						"utf8",
-						"utf8bom",
-						"gb2312",
-						"gbk"
+						"utf8bom"
 					],
 					"enumDescriptions": [
 						"UTF-8",
-						"UTF-8 with BOM",
-						"GB2312",
-						"GBK"
+						"UTF-8 with BOM"
 					],
-					"description": "Encoding for new Markdown, UML, and other text files, and as a fallback when an existing file's encoding cannot be detected."
+					"description": "Encoding for new non-Delphi text files and the fallback when no UTF-8 BOM is present."
 				},
 				"pascalAtlas.encoding.detectExisting": {
 					"type": "boolean",
 					"default": true,
-					"description": "Detects an existing file's encoding when opened. For .pas files, preserves UTF-8/GB2312 only when clearly detected or indicated by a reliable BOM; otherwise opens as GB2312."
+					"description": "Detects UTF-8 BOMs in existing files when they are opened."
 				},
 				"pascalAtlas.encoding.respectDprojDeclaration": {
 					"type": "boolean",
 					"default": true,
-					"description": "Prefers the XML encoding declaration in DPROJ files so projects declared as UTF-8 are not saved as GB2312."
+					"description": "Honors UTF-8 encoding declarations in DPROJ files."
 				},
 				"pascalAtlas.classNavigator.enabled": {
 					"type": "boolean",

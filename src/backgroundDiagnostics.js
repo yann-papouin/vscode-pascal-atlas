@@ -607,9 +607,7 @@ class BackgroundDiagnostics {
       const result = await execFileResult(
         executable,
         args,
-        // Delphi command-line tools use the active Windows ANSI code page on
-        // localized installations. Keep stdout/stderr as bytes so Chinese
-        // warning text is not irreversibly decoded as UTF-8 by Node.
+        // Keep output as bytes until it is decoded as UTF-8 for diagnostic parsing.
         { cwd, env: isolatedCompiler.environment, encoding: 'buffer' },
         signal,
         timeoutMs
