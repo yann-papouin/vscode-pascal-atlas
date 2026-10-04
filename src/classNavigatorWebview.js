@@ -105,7 +105,9 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
   const saved = vscode.getState() || {};
   const expanded = new Set(saved.expanded || []);
   const initialized = new Set(saved.initialized || []);
-  let roots = [];
+  let rootIds = [];
+  const nodesById = new Map();
+  const renderedNodes = new Map();
   let selectedId = saved.selectedId;
   let mode = 'class';
   let messageText = '';
@@ -154,6 +156,7 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
     if (name === 'error') element.style.color = 'var(--vscode-errorForeground, #f14c4c)';
     else if (name === 'symbol-constructor') element.style.color = 'var(--vscode-charts-purple, #b180d7)';
     else if (access) element.style.color = accessColor(access);
+    else element.style.color = '';
   }
 
   function remember() { vscode.setState({ expanded:[...expanded], initialized:[...initialized], selectedId, searchOptions }); }
@@ -164,7 +167,7 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
     if (!state) return;
     expanded.clear(); for (const id of state.expanded || []) expanded.add(id);
     initialized.clear(); for (const id of state.initialized || []) initialized.add(id);
-    selectedId = state.selectedId || undefined;
+    setSelected(state.selectedId || undefined, false, false);
     renderTree();
     requestAnimationFrame(() => {
       treeHost.scrollTop = Number.isFinite(state.scrollTop) ? Math.max(0, state.scrollTop) : 0;
@@ -188,10 +191,18 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
     return searchOptions;
   }
   function setSelected(id, scroll, notify) {
+    const previous = renderedNodes.get(selectedId)?.row;
+    if (previous && selectedId !== id) {
+      previous.classList.remove('selected'); previous.tabIndex = -1;
+      previous.setAttribute('aria-selected', 'false');
+    }
     selectedId = id;
-    document.querySelectorAll('#tree .row.selected').forEach(row => row.classList.remove('selected'));
-    const row = id ? document.querySelector('#tree .row[data-id="' + CSS.escape(id) + '"]') : undefined;
-    if (row) { row.classList.add('selected'); row.tabIndex = 0; if (scroll) row.scrollIntoView({ block:'nearest' }); }
+    const row = renderedNodes.get(id)?.row;
+    if (row) {
+      row.classList.add('selected'); row.tabIndex = 0;
+      if (row.getAttribute('aria-selected') !== 'true') row.setAttribute('aria-selected', 'true');
+      if (scroll) row.scrollIntoView({ block:'nearest' });
+    }
     if (notify && id) vscode.postMessage({ type:'selectNode', id });
     remember();
   }
@@ -207,26 +218,57 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
     return undefined;
   }
 
-  function renderNode(node, depth) {
+  /** Create a row once; event handlers read its latest data after each patch. */
+  function renderNode(node) {
     const wrapper = document.createElement('div');
+    wrapper.dataset.nodeId = node.id;
     const row = document.createElement('div');
-    row.className = 'row'; row.dataset.id = node.id; row.style.paddingLeft = (depth * 8) + 'px';
-    row.title = node.tooltip || node.label; row.setAttribute('role', 'treeitem'); row.tabIndex = node.id === selectedId ? 0 : -1;
-    const section = contextSection(node);
-    if (section) row.dataset.vscodeContext = JSON.stringify({ webviewSection:section, preventDefaultContextMenuItems:true });
+    row.className = 'row'; row.dataset.id = node.id;
+    row.setAttribute('role', 'treeitem'); row.tabIndex = -1;
     const twisty = document.createElement('button');
-    twisty.className = 'twisty codicon' + (node.children.length ? '' : ' empty') + (expanded.has(node.id) ? ' expanded' : ''); twisty.tabIndex = -1;
+    twisty.className = 'twisty codicon'; twisty.tabIndex = -1;
     row.appendChild(twisty);
-    const icon = document.createElement('span'); configureIcon(icon, node.icon, node.access); row.appendChild(icon);
-    const label = document.createElement('span'); label.className = 'label'; label.textContent = node.label; row.appendChild(label);
+    const icon = document.createElement('span'); row.appendChild(icon);
+    const label = document.createElement('span'); label.className = 'label'; row.appendChild(label);
     wrapper.appendChild(row);
-    const children = document.createElement('div'); children.className = 'children' + (expanded.has(node.id) ? '' : ' collapsed');
-    node.children.forEach(child => children.appendChild(renderNode(child, depth + 1))); wrapper.appendChild(children);
+    const children = document.createElement('div'); children.className = 'children'; wrapper.appendChild(children);
+    let previous;
+    let previousDepth;
+    let previousMode;
+    let previousExpanded;
+    let previousHasChildren;
+    const syncExpansion = () => {
+      const hasChildren = node.children.length > 0;
+      const isExpanded = expanded.has(node.id);
+      if (hasChildren === previousHasChildren && isExpanded === previousExpanded) return;
+      twisty.classList.toggle('empty', !hasChildren);
+      twisty.classList.toggle('expanded', isExpanded);
+      children.classList.toggle('collapsed', !isExpanded);
+      if (hasChildren) row.setAttribute('aria-expanded', String(isExpanded));
+      else row.removeAttribute('aria-expanded');
+      previousHasChildren = hasChildren; previousExpanded = isExpanded;
+    };
+    const update = (next, depth) => {
+      node = next;
+      if (depth !== previousDepth) row.style.paddingLeft = (depth * 8) + 'px';
+      if (node !== previous || mode !== previousMode) {
+        if (!previous || previous.label !== node.label) label.textContent = node.label;
+        if (!previous || previous.tooltip !== node.tooltip || previous.label !== node.label) row.title = node.tooltip || node.label;
+        if (!previous || previous.icon !== node.icon || previous.access !== node.access) configureIcon(icon, node.icon, node.access);
+        const section = contextSection(node);
+        const context = section ? JSON.stringify({ webviewSection:section, preventDefaultContextMenuItems:true }) : undefined;
+        if (row.dataset.vscodeContext !== context) {
+          if (context) row.dataset.vscodeContext = context;
+          else delete row.dataset.vscodeContext;
+        }
+      }
+      syncExpansion(); previous = node; previousDepth = depth; previousMode = mode;
+    };
     const toggle = expand => {
       if (!node.children.length) return;
       const next = expand === undefined ? !expanded.has(node.id) : expand;
       if (next) expanded.add(node.id); else expanded.delete(node.id);
-      children.classList.toggle('collapsed', !next); twisty.classList.toggle('expanded', next); remember();
+      syncExpansion(); remember();
       vscode.postMessage({ type:next ? 'expand' : 'collapse', id:node.id });
     };
     twisty.addEventListener('click', event => { event.stopPropagation(); toggle(); });
@@ -246,13 +288,57 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
         row.dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, clientX:rect.left + 20, clientY:rect.bottom }));
       }
     });
-    return wrapper;
+    return { wrapper, row, children, update, syncExpansion };
   }
 
+  /** Reconcile sibling order by ID, moving only rows whose position changed. */
+  function reconcileChildren(host, ids, depth) {
+    const wanted = new Set(ids);
+    for (const child of [...host.children]) {
+      if (child.id === 'empty' && ids.length === 0) continue;
+      if (!wanted.has(child.dataset.nodeId)) child.remove();
+    }
+    ids.forEach((id, index) => {
+      const node = nodesById.get(id);
+      if (!node) return;
+      let entry = renderedNodes.get(id);
+      if (!entry) { entry = renderNode(node); renderedNodes.set(id, entry); }
+      entry.update(node, depth);
+      // appendChild for every entry would move unchanged rows and put new
+      // declarations at the end. Insert only at their actual model position.
+      const before = host.children[index] || null;
+      if (before !== entry.wrapper) host.insertBefore(entry.wrapper, before);
+      reconcileChildren(entry.children, node.children, depth + 1);
+    });
+  }
+
+  /** Apply changed data without replacing the tree or losing its viewport. */
   function renderTree() {
-    treeHost.replaceChildren();
-    if (!roots.length) { const empty = document.createElement('div'); empty.id = 'empty'; empty.textContent = messageText || 'Open a Pascal/Delphi, DPK, or DPROJ file to view its structure.'; treeHost.appendChild(empty); return; }
-    roots.forEach(node => treeHost.appendChild(renderNode(node, 0))); setSelected(selectedId, false, false);
+    const scrollTop = treeHost.scrollTop;
+    const top = treeHost.getBoundingClientRect().top;
+    const anchor = flattenVisibleRows().find(row => row.getBoundingClientRect().bottom > top);
+    const anchorTop = anchor?.getBoundingClientRect().top;
+    const focused = treeHost.contains(document.activeElement) ? document.activeElement : undefined;
+    reconcileChildren(treeHost, rootIds, 0);
+    for (const [id, entry] of renderedNodes) {
+      if (!nodesById.has(id)) { entry.wrapper.remove(); renderedNodes.delete(id); }
+    }
+    if (!rootIds.length) {
+      let empty = document.getElementById('empty');
+      if (!empty) { empty = document.createElement('div'); empty.id = 'empty'; treeHost.appendChild(empty); }
+      const text = messageText || 'Open a Pascal/Delphi, DPK, or DPROJ file to view its structure.';
+      if (empty.textContent !== text) empty.textContent = text;
+    }
+    setSelected(selectedId, false, false);
+    if (focused && document.activeElement !== focused) {
+      const target = focused.isConnected ? focused : renderedNodes.get(selectedId)?.row || treeHost;
+      target.focus({ preventScroll:true });
+    }
+    // Preserve the visible row even when rows are inserted above it. Fall back
+    // to the previous scroll offset if that row was removed by the edit.
+    if (anchor?.isConnected && anchor.offsetParent !== null) {
+      treeHost.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
+    } else treeHost.scrollTop = scrollTop;
   }
 
   function sendSearch(persistOptions = false) {
@@ -350,13 +436,29 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
 
   window.addEventListener('message', event => {
     const data = event.data || {};
-    if (data.type === 'model') {
-      roots = data.roots || []; mode = data.mode || mode; messageText = data.message || ''; capabilities = data.capabilities || capabilities;
-      const initialize = nodes => { for (const node of nodes) { if (!initialized.has(node.id)) { initialized.add(node.id); if (node.initialExpanded) expanded.add(node.id); } initialize(node.children || []); } };
-      initialize(roots);
-      selectedId = data.selectedId; for (const id of data.selectedPath || []) expanded.add(id); renderTree();
+    if (data.type === 'model' || data.type === 'patch') {
+      if (data.type === 'model') nodesById.clear();
+      for (const id of data.removed || []) nodesById.delete(id);
+      for (const node of data.nodes || data.upsert || []) {
+        nodesById.set(node.id, node);
+        if (!initialized.has(node.id)) { initialized.add(node.id); if (node.initialExpanded) expanded.add(node.id); }
+      }
+      if (data.rootIds) rootIds = data.rootIds;
+      mode = data.mode || mode;
+      if (Object.hasOwn(data, 'message')) messageText = data.message || '';
+      capabilities = data.capabilities || capabilities;
+      if (Object.hasOwn(data, 'selectedId')) setSelected(data.selectedId, false, false);
+      for (const id of data.selectedPath || []) expanded.add(id);
+      renderTree();
     } else if (data.type === 'select') {
-      for (const id of data.path || []) expanded.add(id); if (data.expandId) expanded.add(data.expandId); renderTree(); setSelected(data.id, true, false);
+      for (const id of [...(data.path || []), ...(data.expandId ? [data.expandId] : [])]) {
+        expanded.add(id); renderedNodes.get(id)?.syncExpansion();
+      }
+      if (data.select !== false) setSelected(data.id, false, false);
+      const row = renderedNodes.get(data.id)?.row;
+      row?.scrollIntoView({ block:'nearest' });
+      if (data.focus) row?.focus({ preventScroll:true });
+      remember();
     } else if (data.type === 'showSearch') showSearch(data.options);
     else if (data.type === 'hideSearch') hideSearch();
     else if (data.type === 'showSort') showSort(data.settings);
@@ -380,6 +482,8 @@ class ClassNavigatorWebview {
     this.view = undefined;
     this.webview = undefined;
     this.nodeById = new Map();
+    this.snapshot = undefined;
+    this.webviewReady = false;
     this.selection = [];
     this.mode = 'class';
     this._description = undefined;
@@ -395,7 +499,11 @@ class ClassNavigatorWebview {
   get description() { return this._description; }
   set description(value) { this._description = value; if (this.view) this.view.description = value; }
   get message() { return this._message; }
-  set message(value) { this._message = value; this.refresh(); }
+  set message(value) {
+    if (this._message === value) return;
+    this._message = value;
+    this.refresh();
+  }
   onDidExpandElement(listener) { return this.expandEmitter.event(listener); }
   onDidCollapseElement(listener) { return this.collapseEmitter.event(listener); }
   onDidChangeVisibility(listener) { return this.visibilityEmitter.event(listener); }
@@ -408,6 +516,8 @@ class ClassNavigatorWebview {
   }
 
   resolveWebviewView(view) {
+    this.webviewReady = false;
+    this.snapshot = undefined;
     this.view = view;
     this.webview = view.webview;
     view.description = this._description;
@@ -425,6 +535,8 @@ class ClassNavigatorWebview {
       void this.options.onFocusChanged?.(false);
       this.view = undefined;
       this.webview = undefined;
+      this.webviewReady = false;
+      this.snapshot = undefined;
     });
     view.webview.onDidReceiveMessage(message => this.handleMessage(message));
     queueMicrotask(() => this.visibilityEmitter.fire({ visible: view.visible }));
@@ -433,6 +545,9 @@ class ClassNavigatorWebview {
   handleMessage(message) {
     const node = message?.id ? this.nodeById.get(message.id) : undefined;
     if (message?.type === 'ready') {
+      // A recreated webview needs one initial snapshot before receiving deltas.
+      this.webviewReady = true;
+      this.snapshot = undefined;
       this.refresh();
       if (this.pendingSearchOptions) void this.postMessage({ type: 'showSearch', options: this.pendingSearchOptions });
       else if (this.pendingSortSettings) void this.postMessage({ type: 'showSort', settings: this.pendingSortSettings });
@@ -440,9 +555,11 @@ class ClassNavigatorWebview {
       void this.options.onFocusChanged?.(Boolean(message.focused));
     } else if (message?.type === 'open' && node) {
       this.selection = [node];
+      this.lastSelectedId = node.id;
       void this.options.onOpen?.(node);
     } else if (message?.type === 'selectNode' && node) {
       this.selection = [node];
+      this.lastSelectedId = node.id;
     } else if (message?.type === 'expand' && node) {
       this.expandEmitter.fire({ element: node });
     } else if (message?.type === 'collapse' && node) {
@@ -474,29 +591,74 @@ class ClassNavigatorWebview {
     visit(nodes);
   }
 
+  /**
+   * Rebind navigation targets to current source data and send presentation deltas.
+   * Offsets stay on the host: a body edit can update every target without sending
+   * any tree message when labels, icons and sibling order are unchanged.
+   */
   refresh() {
+    if (!this.webviewReady) return;
     const roots = this.options.getRoots?.() || [];
     this.collectNodes(roots);
-    const selected = this.selection[0];
-    void this.postMessage({
-      type: 'model',
-      roots: roots.map(node => this.options.serializeNode(node)),
-      selectedId: selected?.id,
-      selectedPath: this.options.nodePath?.(selected) || [],
+    let selected = this.selection[0];
+    // Rebuilt models contain new objects. Never keep stale offsets in selection;
+    // if a selected item was deleted, retain its nearest surviving ancestor.
+    while (selected && !this.nodeById.has(selected.id)) selected = selected.parent;
+    selected = selected && this.nodeById.get(selected.id);
+    this.selection = selected ? [selected] : [];
+    const selectedId = selected?.id || null;
+    const nodes = new Map();
+    const collect = node => {
+      nodes.set(node.id, { ...node, children: (node.children || []).map(child => child.id) });
+      for (const child of node.children || []) collect(child);
+    };
+    roots.map(node => this.options.serializeNode(node)).forEach(collect);
+    const rootIds = roots.map(node => node.id);
+    const metadata = {
       mode: this.mode,
-      message: this._message,
+      message: this._message || '',
       capabilities: this.options.capabilities?.() || {}
-    });
+    };
+    const metadataKey = JSON.stringify(metadata);
+    const previous = this.snapshot;
+    this.snapshot = nodes;
+    let message;
+    if (!previous) {
+      message = { type: 'model', nodes: [...nodes.values()], rootIds, selectedId,
+        selectedPath: this.options.nodePath?.(selected) || [], ...metadata };
+    } else {
+      const upsert = [...nodes.values()].filter(node =>
+        JSON.stringify(node) !== JSON.stringify(previous.get(node.id)));
+      const removed = [...previous.keys()].filter(id => !nodes.has(id));
+      const rootsChanged = JSON.stringify(rootIds) !== JSON.stringify(this.rootIds);
+      if (upsert.length || removed.length || rootsChanged
+        || selectedId !== this.lastSelectedId || metadataKey !== this.metadataKey) {
+        message = { type: 'patch', upsert, removed };
+        if (rootsChanged) message.rootIds = rootIds;
+        if (selectedId !== this.lastSelectedId) message.selectedId = selectedId;
+        if (metadataKey !== this.metadataKey) Object.assign(message, metadata);
+      }
+    }
+    this.rootIds = rootIds;
+    this.metadataKey = metadataKey;
+    this.lastSelectedId = selectedId;
+    if (message) void this.postMessage(message);
   }
 
   setMode(mode) {
+    if (this.mode === mode) return;
     this.mode = mode;
     this.refresh();
   }
 
   async reveal(node, options = {}) {
     if (!node) return;
+    // A cursor event can parse a new model before the edit timer fires. Commit
+    // its data before selecting a row that the client has not received yet.
+    if (this.nodeById.get(node.id) !== node) this.refresh();
+    node = this.nodeById.get(node.id) || node;
     if (options.select) this.selection = [node];
+    this.lastSelectedId = this.selection[0]?.id || null;
     if (options.focus) {
       if (this.view) this.view.show(false);
       else {
@@ -506,6 +668,8 @@ class ClassNavigatorWebview {
     await this.postMessage({
       type: 'select',
       id: node.id,
+      select: Boolean(options.select),
+      focus: Boolean(options.focus),
       path: this.options.nodePath?.(node) || [],
       expandId: options.expand ? node.id : undefined
     });

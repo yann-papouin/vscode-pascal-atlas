@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 const { Worker } = require('node:worker_threads');
 const { maskPascalNonCode } = require('./binarySymbols');
 const { parseSourceUnitSymbols } = require('./usesQuickFix');
@@ -26,6 +27,7 @@ const NAVIGATOR_MODE_STATE_KEY = 'pascalAtlas.navigator.mode';
 const EXPLORER_LAYOUT_VERSION = 1;
 const EXPANDED_ROUTINES_STATE_KEY = 'pascalAtlas.classNavigator.expandedRoutines';
 const SEARCH_OPTIONS_STATE_KEY = 'pascalAtlas.classNavigator.searchOptions';
+const DOCUMENT_EDIT_DELAY_MS = 350;
 const WEBVIEW_CONTEXT_COMMANDS = [
   ['buildPackage', 'pascalAtlas.build.buildPackage'],
   ['compilePackage', 'pascalAtlas.build.compilePackage'],
@@ -198,6 +200,7 @@ function buildDprojNavigatorModel(text, filePath = '', options = {}) {
       children: []
     });
   }
+  assignNavigatorNodeIds(roots, filePath);
   attachParents(roots, undefined);
   return {
     filePath,
@@ -480,6 +483,34 @@ function attachParents(nodes, parent, ancestors = new Set(), visited = new Set()
     const nextAncestors = new Set(ancestors);
     nextAncestors.add(node);
     attachParents(node.children || [], node, nextAncestors, visited);
+  }
+}
+
+/**
+ * Give a symbol a file-scoped identity independent of its source offsets.
+ * Parent identities distinguish nested symbols; signatures distinguish overloads.
+ */
+function assignNavigatorNodeIds(nodes, filePath, parentId = `document:${filePath}`) {
+  const occurrences = new Map();
+  for (const node of nodes) {
+    let signature = '';
+    if (node.kind === 'routine' && node.signature) {
+      // Fallback signatures can include a one-line body. Only the header is
+      // identity: editing the body must retain its row, selection and expansion.
+      const headerEnd = routineHeaderEnd(maskPascalNonCode(node.signature), 0);
+      signature = node.signature.slice(0, headerEnd < 0 ? undefined : headerEnd)
+        .replace(/\s+/g, '').toLowerCase();
+    }
+    const identity = JSON.stringify([
+      node.kind, node.section || '',
+      node.kind === 'uses-section' ? '' : String(node.name || node.label || '').toLowerCase(),
+      signature
+    ]);
+    const occurrence = occurrences.get(identity) || 0;
+    occurrences.set(identity, occurrence + 1);
+    node.id = `symbol:${createHash('sha1')
+      .update(`${parentId}:${identity}:${occurrence}`).digest('hex')}`;
+    assignNavigatorNodeIds(node.children || [], filePath, node.id);
   }
 }
 
@@ -1042,6 +1073,7 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
   }
   addRoutineRanges(text, routineNodes);
   attachParents(roots, undefined);
+  assignNavigatorNodeIds(roots, filePath);
   const nodes = [];
   const collectNodes = entries => {
     for (const entry of entries || []) {
@@ -1224,6 +1256,7 @@ function highlightExpandedAiStepAt(text, step, focusOffset, expandedNodeIds) {
   return step;
 }
 
+/** Resolve the tree row that should track an editor location. */
 function activeFollowNodeAt(text, model, offset, expandedRoutineIds) {
   return highlightNodeForExpandedSteps(
     text,
@@ -1451,9 +1484,8 @@ class ClassNavigatorProvider {
         routine.children.push(...steps);
       }
     }
-    // Fire the routine element, not undefined. The combined provider forwards
-    // this exact element so VS Code only asks for this function's TreeItem and
-    // children; all other expansion, selection and scroll state stays intact.
+    // The webview diffs this routine's presentation against its last snapshot;
+    // unchanged rows retain their DOM elements and navigation state.
     this.changed.fire(routine);
     return true;
   }
@@ -1606,18 +1638,21 @@ class ClassNavigatorProvider {
       void worker.terminate();
     };
     worker.once('message', message => {
+      const current = this.modelWorker === worker;
       finish();
       const activeDocument = this.activeDocument();
-      if (!activeDocument || this.modelKey(activeDocument) !== key) return;
+      if (!current || !activeDocument || this.modelKey(activeDocument) !== key) return;
       if (message?.error) {
         this.output?.appendLine(`Large-file class navigator failed: ${message.error}`);
         this.cache = {
-          key,
-          model: pendingNavigatorModel(document.fileName, 'Class navigator analysis failed. Click refresh to retry.', 'navigator-error')
+          key, documentUri: document.uri.toString(),
+          stale: Boolean(this.cache?.retainedModel),
+          model: this.cache?.retainedModel
+            || pendingNavigatorModel(document.fileName, 'Class navigator analysis failed. Click refresh to retry.', 'navigator-error')
         };
       } else {
         this.applyAiSteps(message.model, activeDocument);
-        this.cache = { key, model: message.model };
+        this.cache = { key, documentUri: document.uri.toString(), model: message.model };
         this.output?.appendLine(
           `Large-file class navigator ready: ${path.basename(document.fileName)} `
           + `(${text.length} characters, ${message.elapsedMs} ms in worker).`
@@ -1627,18 +1662,22 @@ class ClassNavigatorProvider {
       this.onModelReady?.();
     });
     worker.once('error', error => {
+      const current = this.modelWorker === worker;
       finish();
-      if (this.cache?.key !== key) return;
+      if (!current || this.cache?.key !== key) return;
       this.output?.appendLine(`Large-file class navigator worker failed: ${error.stack || error.message}`);
       this.cache = {
-        key,
-        model: pendingNavigatorModel(document.fileName, 'Class navigator analysis failed. Click refresh to retry.', 'navigator-error')
+        key, documentUri: document.uri.toString(),
+        stale: Boolean(this.cache.retainedModel),
+        model: this.cache.retainedModel
+          || pendingNavigatorModel(document.fileName, 'Class navigator analysis failed. Click refresh to retry.', 'navigator-error')
       };
       this.changed.fire(undefined);
     });
     worker.postMessage({ text, filePath: document.fileName, options });
   }
 
+  /** Update source data while retaining the visible tree during background parsing. */
   model() {
     const document = this.activeDocument();
     if (!document) return undefined;
@@ -1653,8 +1692,13 @@ class ClassNavigatorProvider {
     if (options.backgroundParsingEnabled !== false
       && !/\.dproj$/i.test(document.fileName)
       && text.length >= backgroundThreshold) {
-      const model = pendingNavigatorModel(document.fileName);
-      this.cache = { key, model };
+      // A loading placeholder is only needed for the first parse of a file.
+      // Replacing an existing tree here would discard its rows on every edit.
+      const retainedModel = this.cache?.documentUri === document.uri.toString()
+        && !this.cache.model.roots.some(node => /^navigator-(?:loading|error)$/.test(node.kind))
+        ? this.cache.model : undefined;
+      const model = retainedModel || pendingNavigatorModel(document.fileName);
+      this.cache = { key, documentUri: document.uri.toString(), model, retainedModel, pending: true };
       this.buildLargeModel(document, text, options, key);
       return model;
     }
@@ -1663,11 +1707,13 @@ class ClassNavigatorProvider {
       ? buildDprojNavigatorModel(text, document.fileName, options)
       : buildClassNavigatorModel(text, document.fileName, options);
     this.applyAiSteps(model, document);
-    this.cache = { key, model };
+    this.cache = { key, documentUri: document.uri.toString(), model };
     return model;
   }
 
-  refresh() {
+  /** Notify data consumers; the webview emits only differences in visible data. */
+  refresh({ force = false } = {}) {
+    if (force && this.cache) this.cache.key = undefined;
     // URI, version and all model options are already part of the cache key.
     // Keeping a still-valid model avoids parsing twice when a click/scroll lands
     // just before the debounced document refresh.
@@ -1677,7 +1723,7 @@ class ClassNavigatorProvider {
   async readyModel(document = this.activeDocument()) {
     if (!document) return undefined;
     let model = this.model();
-    if (!model?.roots?.some(node => node.kind === 'navigator-loading')) return model;
+    if (!this.cache?.pending) return this.cache?.stale ? undefined : model;
     return new Promise(resolve => {
       const disposable = this.onDidChangeTreeData(() => {
         if (this.activeDocument()?.uri.toString() !== document.uri.toString()) {
@@ -1686,9 +1732,9 @@ class ClassNavigatorProvider {
           return;
         }
         model = this.model();
-        if (model?.roots?.some(node => node.kind === 'navigator-loading')) return;
+        if (this.cache?.pending) return;
         disposable.dispose();
-        resolve(model);
+        resolve(this.cache?.stale ? undefined : model);
       });
     });
   }
@@ -1736,9 +1782,8 @@ class ClassNavigatorProvider {
           : vscode.TreeItemCollapsibleState.Collapsed)
       : vscode.TreeItemCollapsibleState.None;
     const item = new vscode.TreeItem(node.label, collapsible);
-    // Node ids are stable inside a file, but the same type/routine ids can
-    // occur in another editor. Qualifying the TreeItem id prevents VS Code
-    // from reusing the other document's expansion state during a jump.
+    // Semantic IDs survive source edits. Add the URI for native tree consumers
+    // so virtual documents with the same file name also have separate state.
     item.id = documentUri ? `${documentUri}::${node.id}` : node.id;
     item.contextValue = `pascalAtlas.classNavigator.${node.kind}`;
     const accessColor = node.access
@@ -1903,146 +1948,6 @@ function navigatorNodeById(model, id) {
   return undefined;
 }
 
-function classNavigatorHtml(webview) {
-  const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-  html, body { width: 100%; min-height: 100%; margin: 0; padding: 0; color: var(--vscode-foreground); background: var(--vscode-sideBar-background); font: var(--vscode-font-weight) var(--vscode-font-size)/22px var(--vscode-font-family); overflow-x: hidden; }
-  #empty { padding: 8px 12px; color: var(--vscode-descriptionForeground); white-space: normal; }
-  .row { display: flex; align-items: center; height: 22px; padding-right: 8px; border: 0; outline: 0; color: var(--vscode-foreground); background: transparent; cursor: default; user-select: none; white-space: nowrap; }
-  .row:hover { background: var(--vscode-list-hoverBackground); }
-  .row.selected, .row.selected:hover { color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); background: var(--vscode-list-inactiveSelectionBackground, rgba(127,127,127,.24)); }
-  .twisty { flex: 0 0 16px; width: 16px; height: 22px; padding: 0; border: 0; outline: 0; color: var(--vscode-icon-foreground); background: transparent; font: inherit; line-height: 22px; text-align: center; cursor: pointer; }
-  .twisty.empty { visibility: hidden; }
-  .icon { display: inline-flex; flex: 0 0 16px; width: 16px; height: 16px; margin-right: 4px; align-items: center; justify-content: center; }
-  .icon svg { width: 16px; height: 16px; overflow: visible; }
-  .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .children.collapsed { display: none; }
-</style></head><body><div id="tree"></div>
-<script nonce="${nonce}">
-  const vscode = acquireVsCodeApi();
-  const saved = vscode.getState() || {};
-  const expanded = new Set(saved.expanded || []);
-  let roots = [];
-  let selectedId = saved.selectedId;
-
-  const accessColor = access => ({
-    public: 'var(--vscode-charts-green, #89d185)',
-    published: 'var(--vscode-charts-green, #89d185)',
-    protected: 'var(--vscode-charts-yellow, #cca700)',
-    'strict-protected': 'var(--vscode-charts-purple, #b180d7)',
-    private: 'var(--vscode-charts-red, #f14c4c)',
-    'strict-private': 'var(--vscode-charts-orange, #d18616)'
-  }[access] || 'var(--vscode-icon-foreground)');
-
-  function iconSvg(name, access) {
-    const color = accessColor(access);
-    const common = 'fill="none" stroke="' + color + '" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"';
-    const paths = {
-      references: '<path d="M3 3h4v4H3zM9 9h4v4H9zM7 5h3a2 2 0 0 1 2 2v2"/>',
-      namespace: '<path d="M2 4h5l1.5 2H14v7H2z"/>',
-      global: '<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/>',
-      package: '<path d="M2 5 8 2l6 3-6 3zM2 5v6l6 3 6-3V5M8 8v6"/>',
-      files: '<path d="M4 2h6l3 3v9H4zM10 2v3h3M2 5v8"/>',
-      tools: '<path d="M9.8 2.4a3 3 0 0 0-3.5 3.8L2.4 10a1.7 1.7 0 1 0 2.4 2.4l3.8-3.8a3 3 0 0 0 3.8-3.5l-2 2-2-2z"/>',
-      properties: '<path d="M3 3h10M3 8h10M3 13h10"/><circle cx="5" cy="3" r="1" fill="' + color + '"/><circle cx="10" cy="8" r="1" fill="' + color + '"/><circle cx="7" cy="13" r="1" fill="' + color + '"/>',
-      property: '<path d="M2 4h7l4 4-5 5-6-6z"/><circle cx="5" cy="7" r="1"/>',
-      interface: '<circle cx="8" cy="8" r="6"/><path d="M8 5v6M6 5h4M6 11h4"/>',
-      struct: '<path d="M2 3h12v10H2zM6 3v10M10 3v10M2 8h12"/>',
-      class: '<path d="M3 2h10v12H3zM5 5h6M5 8h6M5 11h4"/>',
-      'symbol-method': '<path d="m8 2 5.5 3v6L8 14l-5.5-3V5zM2.5 5 8 8l5.5-3M8 8v6"/>',
-      'symbol-function': '<circle cx="8" cy="8" r="6"/><path d="M6 11V5h4M6 8h3"/>',
-      'symbol-operator': '<circle cx="8" cy="8" r="6"/><path d="M5 6h6M8 3v6M5 11h6"/>',
-      zap: '<path d="m9 1-6 8h5l-1 6 6-9H8z"/>',
-      symbol: '<circle cx="8" cy="8" r="5"/>'
-    };
-    return '<svg viewBox="0 0 16 16" aria-hidden="true"><g ' + common + '>' + (paths[name] || paths.symbol) + '</g></svg>';
-  }
-
-  function remember() { vscode.setState({ expanded: [...expanded], selectedId }); }
-  function setSelected(id, scroll) {
-    selectedId = id;
-    document.querySelectorAll('.row.selected').forEach(row => row.classList.remove('selected'));
-    const row = id ? document.querySelector('.row[data-id="' + CSS.escape(id) + '"]') : undefined;
-    if (row) {
-      row.classList.add('selected');
-      if (scroll) row.scrollIntoView({ block: 'nearest' });
-    }
-    remember();
-  }
-
-  function renderNode(node, depth) {
-    const wrapper = document.createElement('div');
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.dataset.id = node.id;
-    row.style.paddingLeft = (depth * 12) + 'px';
-    row.title = node.tooltip || node.label;
-    const twisty = document.createElement('button');
-    twisty.className = 'twisty' + (node.children.length ? '' : ' empty');
-    twisty.textContent = expanded.has(node.id) ? '⌄' : '›';
-    row.appendChild(twisty);
-    const icon = document.createElement('span');
-    icon.className = 'icon';
-    icon.innerHTML = iconSvg(node.icon, node.access);
-    row.appendChild(icon);
-    const label = document.createElement('span');
-    label.className = 'label';
-    label.textContent = node.label;
-    row.appendChild(label);
-    wrapper.appendChild(row);
-    const children = document.createElement('div');
-    children.className = 'children' + (expanded.has(node.id) ? '' : ' collapsed');
-    node.children.forEach(child => children.appendChild(renderNode(child, depth + 1)));
-    wrapper.appendChild(children);
-    twisty.addEventListener('click', event => {
-      event.stopPropagation();
-      if (expanded.has(node.id)) expanded.delete(node.id); else expanded.add(node.id);
-      children.classList.toggle('collapsed', !expanded.has(node.id));
-      twisty.textContent = expanded.has(node.id) ? '⌄' : '›';
-      remember();
-    });
-    row.addEventListener('click', () => {
-      setSelected(node.id, false);
-      if (node.jumpable) vscode.postMessage({ type: 'open', id: node.id });
-    });
-    return wrapper;
-  }
-
-  function render() {
-    const host = document.getElementById('tree');
-    host.replaceChildren();
-    if (!roots.length) {
-      const empty = document.createElement('div');
-      empty.id = 'empty';
-      empty.textContent = 'Open a Pascal/Delphi, DPK, or DPROJ file to view its structure.';
-      host.appendChild(empty);
-      return;
-    }
-    roots.forEach(node => host.appendChild(renderNode(node, 0)));
-    setSelected(selectedId, false);
-  }
-
-  window.addEventListener('message', event => {
-    const message = event.data || {};
-    if (message.type === 'model') {
-      roots = message.roots || [];
-      selectedId = message.selectedId;
-      for (const id of message.selectedPath || []) expanded.add(id);
-      render();
-    } else if (message.type === 'select') {
-      for (const id of message.path || []) expanded.add(id);
-      render();
-      setSelected(message.id, true);
-    }
-  });
-  vscode.postMessage({ type: 'ready' });
-</script></body></html>`;
-}
-
 function registerClassNavigator(context, output, vscodeApi, projectProvider, projectSourceIndexPromise) {
   const vscode = vscodeApi || require('vscode');
   const provider = new ClassNavigatorProvider(vscode, output, context);
@@ -2106,6 +2011,8 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     gutterIconSize: 'contain'
   });
   let refreshTimer;
+  let lastDocumentEditAt = 0;
+  let lastDocumentEditUri;
   let followTimer;
   let layoutTimer;
   let layoutPending = false;
@@ -2216,7 +2123,9 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     const editor = vscode.window.activeTextEditor;
     if (!routine || !highlight || !editor || highlight.documentUri !== editor.document.uri.toString()
       || !Number.isInteger(highlight.focusOffset)) return;
-    const activeNode = activeNodeAt(provider.model(), highlight.focusOffset);
+    const model = provider.model();
+    if (provider.cache?.pending || provider.cache?.stale) return;
+    const activeNode = activeNodeAt(model, highlight.focusOffset);
     if (provider.routineForNode(activeNode)?.id !== routine.id) return;
     showNavigationHighlight(editor, activeNode, highlight.focusOffset);
   };
@@ -2292,6 +2201,10 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     if (!navigatorCanTrack()) return;
     const editor = vscode.window.activeTextEditor;
     if (!editor || !isClassNavigatorDocument(editor.document)) return;
+    // Typing also scrolls the editor. Defer both cursor and viewport following
+    // so these events cannot bypass the document refresh debounce.
+    if (reason !== 'mouse' && lastDocumentEditUri === editor.document.uri.toString()
+      && Date.now() - lastDocumentEditAt < DOCUMENT_EDIT_DELAY_MS) return;
 
     let offset;
     if (reason === 'scroll') {
@@ -2305,9 +2218,11 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       offset = editor.document.offsetAt(editor.selection.active);
     }
     if (!Number.isInteger(offset)) return;
+    const model = provider.model();
+    if (provider.cache?.pending || provider.cache?.stale) return; // Retained rows still have the old source ranges.
     const node = activeFollowNodeAt(
       editor.document.getText(),
-      provider.model(),
+      model,
       offset,
       expandedRoutineIds()
     );
@@ -2339,7 +2254,8 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       applyFollow(reason, event);
     }, Math.max(0, delay));
   };
-  const refresh = (followReason = 'cursor', immediate = false) => {
+  /** Refresh the view after a caller-selected quiet period. */
+  const refresh = (followReason = 'cursor', immediate = false, delayMs = 80) => {
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = undefined;
     const applyRefresh = () => {
@@ -2347,7 +2263,6 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       updatePresentation();
       if (navigatorMode === 'project') {
         projectProvider?.refresh();
-        combinedChanged.fire(undefined);
         return;
       }
       scheduleDefaultLayout();
@@ -2360,7 +2275,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       applyRefresh();
       return;
     }
-    refreshTimer = setTimeout(applyRefresh, 80);
+    refreshTimer = setTimeout(applyRefresh, delayMs);
   };
   const initializeDefaultLayout = async () => {
     if (layoutPending
@@ -2431,13 +2346,20 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     updatePresentation();
     activeProvider().refresh?.();
     tree.setMode(navigatorMode);
-    combinedChanged.fire(undefined);
     if (navigatorMode === 'class') scheduleFollow('cursor');
   };
 
+  /** Resolve a clicked row against current source data before navigating. */
   const openNode = async (node, options = {}) => {
     const document = provider.activeDocument();
     if (!document || !node) return;
+    // A click may arrive during the edit debounce or a background parse. The
+    // stable row ID survives the edit, but its stored offsets may have moved.
+    const model = await provider.readyModel(document);
+    if (!model || provider.activeDocument() !== document) return;
+    node = navigatorNodeById(model, node.id);
+    if (!node) return;
+    tree.refresh();
     const offset = node.kind === 'routine'
       ? node.implementationOffset ?? node.declarationOffset
       : node.offset ?? node.declarationOffset;
@@ -3208,8 +3130,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       refreshHighlightForRoutineExpansion(provider.routineForNode(event.element));
     }),
     vscode.commands.registerCommand('pascalAtlas.classNavigator.refresh', () => {
-      activeProvider().refresh?.();
-      combinedChanged.fire(undefined);
+      activeProvider().refresh?.({ force: true });
       updatePresentation();
       scheduleFollow('cursor');
     }),
@@ -3266,6 +3187,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       clearNavigationHighlight();
       navigationLock = undefined;
       navigationHoldUntil = 0;
+      lastDocumentEditAt = 0;
       refresh('cursor', true);
     }),
     vscode.window.onDidChangeTextEditorSelection(event => {
@@ -3276,6 +3198,10 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
         navigationHoldUntil = 0;
         scheduleFollow('mouse', event);
       } else if (event.kind === vscode.TextEditorSelectionChangeKind.Keyboard) {
+        // Keyboard selection events also fire for each typed character. The
+        // pending document refresh will follow the caret once typing settles.
+        if (lastDocumentEditUri === event.textEditor.document.uri.toString()
+          && Date.now() - lastDocumentEditAt < DOCUMENT_EDIT_DELAY_MS) return;
         scheduleFollow('cursor', event);
       }
     }),
@@ -3291,18 +3217,27 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
         return;
       }
       activeProvider().refresh?.();
-      combinedChanged.fire(undefined);
       updatePresentation();
       scheduleFollow('cursor');
     }),
     vscode.workspace.onDidChangeTextDocument(event => {
+      if (event.contentChanges.length === 0) return;
       if (activeNavigationHighlight?.documentUri === event.document.uri.toString()) {
         clearNavigationHighlight();
       }
-      if (navigatorMode === 'class' && event.document === provider.activeDocument()) refresh();
+      if (navigatorMode === 'class' && event.document === provider.activeDocument()) {
+        // Keep the existing tree stable while a user is actively typing. The
+        // trailing refresh still picks up new declarations as soon as editing pauses.
+        lastDocumentEditAt = Date.now();
+        lastDocumentEditUri = event.document.uri.toString();
+        refresh('cursor', false, DOCUMENT_EDIT_DELAY_MS);
+      }
     }),
     vscode.workspace.onDidSaveTextDocument(document => {
-      if (navigatorMode === 'class' && document === provider.activeDocument()) refresh();
+      if (navigatorMode === 'class' && document === provider.activeDocument()) {
+        lastDocumentEditAt = 0;
+        refresh('cursor', true);
+      }
     }),
     vscode.workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('pascalAtlas.classNavigator.highlightRange.enabled')
@@ -3344,6 +3279,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
 }
 
 module.exports = {
+  ClassNavigatorProvider,
   EXPLORER_LAYOUT_STATE_KEY,
   EXPLORER_LAYOUT_VERSION,
   accessColorId,
@@ -3368,6 +3304,7 @@ module.exports = {
   nodeSourceRanges,
   registerClassNavigator,
   routineIconName,
+  serializeNavigatorNode,
   unitLifecycleNodes,
   viewportFollowLine
 };

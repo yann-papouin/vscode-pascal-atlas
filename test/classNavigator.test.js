@@ -931,7 +931,7 @@ test('navigator webview emits a syntactically valid self-contained client script
   assert.doesNotMatch(html, /struct:0xea91/);
   assert.match(html, /paddingLeft = \(depth \* 8\)/);
   assert.doesNotMatch(html, /<svg viewBox=/);
-  assert.match(html, /dataset\.vscodeContext = JSON\.stringify\(\{ webviewSection:section, preventDefaultContextMenuItems:true \}\)/);
+  assert.match(html, /JSON\.stringify\(\{ webviewSection:section, preventDefaultContextMenuItems:true \}\)/);
   assert.match(html, /document\.addEventListener\('focusin',[\s\S]*?reportWebviewFocus\(true\)/);
   assert.match(html, /window\.addEventListener\('blur',[\s\S]*?reportWebviewFocus\(false\)/);
   assert.match(html, /type:'focusChanged', focused/);
