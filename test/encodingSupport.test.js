@@ -42,7 +42,7 @@ test('detects BOMs and distinguishes valid UTF-8 from a legacy byte stream', () 
 test('uses GB2312 for a PAS file that is neither clearly UTF-8 nor explicitly encoded', () => {
   const legacyBytes = Buffer.from([0xd6, 0xd0, 0xce, 0xc4]);
   assert.equal(reconciledEncoding(legacyBytes, 'gbk', 'gb2312', true), 'gb2312');
-  assert.equal(reconciledEncoding(Buffer.from('UTF-8 sample', 'utf8'), 'utf8', 'gb2312', true), 'utf8');
+  assert.equal(reconciledEncoding(Buffer.from(`UTF-8 sample ${gb2312Text}`, 'utf8'), 'utf8', 'gb2312', true), 'utf8');
   assert.equal(reconciledEncoding(Buffer.from('unit X;', 'ascii'), 'utf8', 'gb2312', true), 'gb2312');
   assert.equal(reconciledEncoding(legacyBytes, 'utf16le', 'gb2312', true, 'utf16le'), 'utf16le');
 });
