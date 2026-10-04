@@ -66,6 +66,7 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
   .icon.loading { animation:spin 1s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
   .label { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  .row.missing-counterpart .label, .result.missing-counterpart .result-label { color:var(--vscode-errorForeground, #f14c4c); }
   .children.collapsed { display:none; }
   .result { display:flex; align-items:center; height:25px; padding:0 7px; cursor:pointer; white-space:nowrap; }
   .result:hover { background:var(--vscode-list-hoverBackground); }
@@ -149,11 +150,11 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
     loading:0xeb19, error:0xea87, symbol:0xeb63
   };
 
-  function configureIcon(element, name, access) {
+  function configureIcon(element, name, access, missingCounterpart) {
     const iconName = Object.hasOwn(codiconGlyphs, name) ? name : 'symbol';
     element.className = 'icon codicon icon-' + iconName + (iconName === 'loading' ? ' loading' : '');
     element.textContent = String.fromCodePoint(codiconGlyphs[iconName]);
-    if (name === 'error') element.style.color = 'var(--vscode-errorForeground, #f14c4c)';
+    if (name === 'error' || missingCounterpart) element.style.color = 'var(--vscode-errorForeground, #f14c4c)';
     else if (name === 'symbol-constructor') element.style.color = 'var(--vscode-charts-purple, #b180d7)';
     else if (access) element.style.color = accessColor(access);
     else element.style.color = '';
@@ -254,7 +255,13 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
       if (node !== previous || mode !== previousMode) {
         if (!previous || previous.label !== node.label) label.textContent = node.label;
         if (!previous || previous.tooltip !== node.tooltip || previous.label !== node.label) row.title = node.tooltip || node.label;
-        if (!previous || previous.icon !== node.icon || previous.access !== node.access) configureIcon(icon, node.icon, node.access);
+        if (!previous || previous.icon !== node.icon || previous.access !== node.access
+          || previous.missingCounterpart !== node.missingCounterpart) {
+          // Counterpart changes arrive as data patches; retain the row and clear
+          // the red styling as soon as the missing declaration/body is added.
+          configureIcon(icon, node.icon, node.access, node.missingCounterpart);
+          row.classList.toggle('missing-counterpart', Boolean(node.missingCounterpart));
+        }
         const section = contextSection(node);
         const context = section ? JSON.stringify({ webviewSection:section, preventDefaultContextMenuItems:true }) : undefined;
         if (row.dataset.vscodeContext !== context) {
@@ -364,8 +371,8 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
   function renderResults(items, responseStatus) {
     results = items || []; resultsHost.replaceChildren();
     for (const [index, item] of results.entries()) {
-      const row = document.createElement('div'); row.className = 'result'; row.setAttribute('role', 'option'); row.title = item.tooltip || item.description || item.label;
-      const icon = document.createElement('span'); configureIcon(icon, item.icon, item.access); row.appendChild(icon);
+      const row = document.createElement('div'); row.className = 'result' + (item.missingCounterpart ? ' missing-counterpart' : ''); row.setAttribute('role', 'option'); row.title = item.tooltip || item.description || item.label;
+      const icon = document.createElement('span'); configureIcon(icon, item.icon, item.access, item.missingCounterpart); row.appendChild(icon);
       const main = document.createElement('div'); main.className = 'result-main';
       const label = document.createElement('span'); label.className = 'result-label'; label.textContent = item.label; main.appendChild(label);
       if (item.description) { const detail = document.createElement('span'); detail.className = 'result-detail'; detail.textContent = item.description; main.appendChild(detail); }

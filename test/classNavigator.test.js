@@ -23,6 +23,7 @@ const {
   navigatorNodeForSearchResult,
   normalizeNavigatorSearchOptions,
   nodeSourceRanges,
+  serializeNavigatorNode,
   routineIconName,
   viewportFollowLine
 } = require('../src/classNavigator');
@@ -989,4 +990,211 @@ end.
   assert.equal(add.specialRoutineKind, 'operator');
   assert.equal(routineIconName(initialize), routineIconName(finalize));
   assert.notEqual(routineIconName(initialize), routineIconName(add));
+});
+
+test('class routines expose missing declarations and implementations with useful jump ranges', () => {
+  const source = `unit Counterparts;
+interface
+type
+  TDemo = class
+  public
+    procedure DeclaredOnly;
+    function Complete: Integer;
+  end;
+implementation
+function TDemo.Complete: Integer;
+begin
+  Result := 1;
+end;
+procedure TDemo.BodyOnly;
+  procedure LocalHelper;
+  begin
+  end;
+begin
+  LocalHelper;
+end;
+end.`;
+  const model = buildClassNavigatorModel(source, 'Counterparts.pas');
+  const demo = model.roots.find(node => node.label === 'TDemo');
+  const declared = demo.children.find(node => node.name === 'DeclaredOnly');
+  const complete = demo.children.find(node => node.name === 'Complete');
+  const orphan = demo.children.find(node => node.name === 'BodyOnly');
+  assert.equal(declared.missingCounterpart, 'implementation');
+  assert.equal(declared.implementationOffset, undefined);
+  assert.equal(complete.missingCounterpart, undefined);
+  assert.equal(source.slice(complete.implementationOffset, complete.implementationOffset + 8), 'Complete');
+  assert.equal(orphan.missingCounterpart, 'declaration');
+  assert.equal(orphan.declarationOffset, undefined);
+  assert.equal(activeNodeAt(model, source.lastIndexOf('LocalHelper;')), orphan);
+  assert.equal(serializeNavigatorNode(orphan).jumpable, true);
+  assert.match(serializeNavigatorNode(orphan).tooltip, /Missing declaration/);
+  assert.match(serializeNavigatorNode(declared).tooltip, /Missing implementation/);
+  assert.deepEqual(orphan.children.map(node => node.label), ['LocalHelper']);
+  assert.equal(orphan.children[0].missingCounterpart, undefined);
+});
+
+test('overloads match parameter types rather than implementation occurrence order', () => {
+  const source = `unit OverloadedCounterparts;
+interface
+type
+  TDemo = class
+  public
+    procedure Run(Value: Integer); overload;
+    procedure Run(Value: string); overload;
+    procedure Pair(A, B: Integer; const Caption: string = 'default');
+    class function Calculate(Value: Integer): Integer;
+  end;
+implementation
+procedure TDemo.Run(Text: string);
+begin
+end;
+procedure TDemo.Pair(First: Integer; Second: Integer; const Text: string);
+begin
+end;
+class function TDemo.Calculate(Number: Integer): Integer;
+begin
+  Result := Number;
+end;
+end.`;
+  const model = buildClassNavigatorModel(source, 'OverloadedCounterparts.pas');
+  const methods = model.roots[0].children;
+  const integer = methods.find(node => node.signature.includes('Run(Value: Integer)'));
+  const string = methods.find(node => node.signature.includes('Run(Value: string)'));
+  assert.equal(integer.missingCounterpart, 'implementation');
+  assert.equal(integer.implementationOffset, undefined);
+  assert.equal(string.missingCounterpart, undefined);
+  assert.equal(string.implementationOffset, source.indexOf('Run(Text: string)'));
+  assert.equal(methods.find(node => node.name === 'Pair').missingCounterpart, undefined);
+  assert.equal(methods.find(node => node.name === 'Calculate').missingCounterpart, undefined);
+  assert.equal(methods.filter(node => node.name === 'Run').length, 2);
+});
+
+test('methods with mismatching result types retain both unmatched counterparts', () => {
+  const source = `unit ResultCounterparts;
+interface
+type
+  TDemo = class
+  public
+    function ReadValue: Integer;
+  end;
+implementation
+function TDemo.ReadValue: string;
+begin
+  Result := '';
+end;
+end.`;
+  const methods = buildClassNavigatorModel(source, 'ResultCounterparts.pas').roots[0].children;
+  assert.deepEqual(methods.map(node => node.missingCounterpart).sort(), ['declaration', 'implementation']);
+  assert.notEqual(methods[0].id, methods[1].id);
+});
+
+test('class owner matching does not steal another class or global routine implementation', () => {
+  const source = `unit OwnerCounterparts;
+interface
+type
+  TFirst = class
+  public
+    procedure Run;
+  end;
+  TSecond = class
+  end;
+procedure Run;
+implementation
+procedure TSecond.Run;
+begin
+end;
+procedure TUnknown.Run;
+begin
+end;
+end.`;
+  const model = buildClassNavigatorModel(source, 'OwnerCounterparts.pas');
+  const first = model.roots.find(node => node.label === 'TFirst').children[0];
+  const second = model.roots.find(node => node.label === 'TSecond').children[0];
+  const unknown = model.roots.find(node => node.label === 'TUnknown').children[0];
+  assert.equal(first.missingCounterpart, 'implementation');
+  assert.equal(first.implementationOffset, undefined);
+  assert.equal(second.missingCounterpart, 'declaration');
+  assert.equal(second.implementationOffset, source.indexOf('Run;', source.indexOf('procedure TSecond')));
+  assert.equal(unknown.missingCounterpart, 'declaration');
+  assert.equal(unknown.implementationOffset, source.indexOf('Run;', source.indexOf('procedure TUnknown')));
+  const global = model.roots.find(node => node.kind === 'global-group').children[0];
+  assert.equal(global.implementationOffset, undefined);
+  assert.equal(global.missingCounterpart, undefined);
+});
+
+test('abstract methods and interface contracts need no local implementation', () => {
+  const source = `unit AbstractCounterparts;
+interface
+type
+  TDemo = class
+  public
+    procedure AbstractMethod; virtual;
+      abstract;
+    procedure RegularMethod;
+  end;
+  IContract = interface
+    procedure ContractMethod;
+  end;
+implementation
+end.`;
+  const model = buildClassNavigatorModel(source, 'AbstractCounterparts.pas');
+  assert.equal(model.routineNodes.find(node => node.name === 'AbstractMethod').missingCounterpart, undefined);
+  assert.equal(model.routineNodes.find(node => node.name === 'ContractMethod').missingCounterpart, undefined);
+  assert.equal(model.routineNodes.find(node => node.name === 'RegularMethod').missingCounterpart, 'implementation');
+});
+
+test('nested class methods with the same name match their lexical owners', () => {
+  const source = `unit NestedCounterparts;
+interface
+type
+  TOuter = class
+  type
+    TInner = class
+    public
+      procedure Run;
+    end;
+  public
+    procedure Run;
+  end;
+implementation
+procedure TOuter.TInner.Run;
+begin
+end;
+end.`;
+  const model = buildClassNavigatorModel(source, 'NestedCounterparts.pas');
+  const outer = model.roots[0];
+  const inner = outer.children.find(node => node.kind === 'type');
+  assert.equal(inner.children[0].missingCounterpart, undefined);
+  assert.equal(inner.children[0].implementationOffset, source.indexOf('Run;', source.indexOf('procedure TOuter.TInner')));
+  assert.equal(outer.children.find(node => node.kind === 'routine').missingCounterpart, 'implementation');
+});
+
+test('abbreviated implementation headings match only unambiguous non-overloaded methods', () => {
+  const source = `unit AbbreviatedCounterparts;
+interface
+type
+  TDemo = class
+  public
+    procedure Save(Value: Integer);
+    function ReadValue(Value: Integer): string;
+    procedure Run(Value: Integer); overload;
+    procedure Run(Value: string); overload;
+  end;
+implementation
+procedure TDemo.Save;
+begin
+end;
+function TDemo.ReadValue;
+begin
+  Result := '';
+end;
+procedure TDemo.Run;
+begin
+end;
+end.`;
+  const model = buildClassNavigatorModel(source, 'AbbreviatedCounterparts.pas');
+  assert.equal(model.routineNodes.find(node => node.name === 'Save').missingCounterpart, undefined);
+  assert.equal(model.routineNodes.find(node => node.name === 'ReadValue').missingCounterpart, undefined);
+  const overloaded = model.routineNodes.filter(node => node.name === 'Run');
+  assert.deepEqual(overloaded.map(node => node.missingCounterpart).sort(), ['declaration', 'implementation', 'implementation']);
 });

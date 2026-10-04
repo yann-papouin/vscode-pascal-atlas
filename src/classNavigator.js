@@ -494,7 +494,9 @@ function assignNavigatorNodeIds(nodes, filePath, parentId = `document:${filePath
   const occurrences = new Map();
   for (const node of nodes) {
     let signature = '';
-    if (node.kind === 'routine' && node.signature) {
+    if (node.routineSignatureKey) {
+      signature = node.routineSignatureKey;
+    } else if (node.kind === 'routine' && node.signature) {
       // Fallback signatures can include a one-line body. Only the header is
       // identity: editing the body must retain its row, selection and expansion.
       const headerEnd = routineHeaderEnd(maskPascalNonCode(node.signature), 0);
@@ -599,9 +601,10 @@ function navigatorSearchResultsForModel(model, filePath, query, rawOptions = {})
           description: node.parent?.kind === 'type'
             ? `${node.parent.label} · ${fileName}`
             : fileName,
-          tooltip: node.signature || filePath,
+          tooltip: navigatorNodeTooltip(node) || filePath,
           icon: navigatorIconName(node),
           access: node.access,
+          missingCounterpart: node.missingCounterpart,
           filePath,
           offset: Number.isInteger(offset) ? offset : 0,
           isCurrentFile: true,
@@ -721,7 +724,9 @@ function addRoutineRanges(text, routineNodes) {
     }
   }
   for (const node of routineNodes) {
-    node.declarationEndOffset = lineEndOffset(text, node.declarationOffset);
+    if (Number.isInteger(node.declarationOffset)) {
+      node.declarationEndOffset = lineEndOffset(text, node.declarationOffset);
+    }
   }
 }
 
@@ -730,7 +735,7 @@ function routineHeaders(code, startOffset) {
   const pattern = /^\s*(?:class\s+)?(?:function|procedure|constructor|destructor|operator)\s+([A-Za-z_][A-Za-z0-9_]*(?:\s*<[^>\r\n]*>)?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\s*<[^>\r\n]*>)?)*)/gim;
   pattern.lastIndex = startOffset;
   for (let match; (match = pattern.exec(code));) {
-    const parts = match[1].split('.').map(item => item.replace(/\s*<.*>\s*$/, '').trim());
+    const parts = match[1].replace(/<[^>]*>/g, '').split('.').map(item => item.trim());
     const name = parts.at(-1);
     const declarationOffset = match.index + match[0].search(/\b(?:class\s+)?(?:function|procedure|constructor|destructor|operator)\b/i);
     result.push({
@@ -740,6 +745,7 @@ function routineHeaders(code, startOffset) {
       // routine look like a nested declaration.
       start: declarationOffset,
       name,
+      owner: parts.length > 1 ? parts.slice(0, -1).join('.') : undefined,
       nameOffset: match.index + match[0].lastIndexOf(name),
       headerEnd: routineHeaderEnd(code, declarationOffset)
     });
@@ -849,7 +855,7 @@ function implementationRoutineForest(code) {
   return forest;
 }
 
-function nestLocalRoutines(code, routineNodes, globalRoot) {
+function nestLocalRoutines(code, routineNodes, globalRoot, forest = implementationRoutineForest(code)) {
   const byOffset = new Map();
   for (const node of routineNodes) {
     if (Number.isInteger(node.implementationOffset)) byOffset.set(node.implementationOffset, node);
@@ -872,8 +878,164 @@ function nestLocalRoutines(code, routineNodes, globalRoot) {
       (left.implementationOffset ?? left.declarationOffset)
       - (right.implementationOffset ?? right.declarationOffset));
   };
-  for (const routine of implementationRoutineForest(code)) attach(routine, undefined);
+  for (const routine of forest) attach(routine, undefined);
   if (globalRoot) globalRoot.children = globalRoot.children.filter(node => !nested.has(node));
+}
+
+/** Split a Pascal header at separators outside nested parameter and type expressions. */
+function splitRoutineHeaderText(text, separator) {
+  const parts = [];
+  let start = 0;
+  let parentheses = 0;
+  let brackets = 0;
+  let angles = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const token = text[index];
+    if (token === '(') parentheses += 1;
+    else if (token === ')') parentheses -= 1;
+    else if (token === '[') brackets += 1;
+    else if (token === ']') brackets -= 1;
+    else if (token === '<') angles += 1;
+    else if (token === '>') angles -= 1;
+    else if (token === separator && parentheses === 0 && brackets === 0 && angles === 0) {
+      parts.push(text.slice(start, index));
+      start = index + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
+
+/** Match overloads by parameter modes/types and result type, ignoring names and defaults. */
+function routineCounterpartKey(signature, name) {
+  const code = maskPascalNonCode(signature || '').trim().toLowerCase();
+  const prefix = /^(class\s+)?(function|procedure|constructor|destructor|operator)\s+/.exec(code);
+  if (!prefix) return undefined;
+  let cursor = prefix[0].length;
+  let angles = 0;
+  // Skip the qualified method name, including generic type/method arguments.
+  for (; cursor < code.length; cursor += 1) {
+    if (code[cursor] === '<') angles += 1;
+    else if (code[cursor] === '>') angles -= 1;
+    else if (angles === 0 && /[(:;]/.test(code[cursor])) break;
+  }
+  let parameters = '';
+  if (code[cursor] === '(') {
+    const start = ++cursor;
+    let depth = 1;
+    for (; cursor < code.length; cursor += 1) {
+      if (code[cursor] === '(') depth += 1;
+      else if (code[cursor] === ')' && --depth === 0) break;
+    }
+    parameters = code.slice(start, cursor);
+    cursor += 1;
+  }
+  const parameterTypes = [];
+  for (const parameter of splitRoutineHeaderText(parameters, ';')) {
+    if (!parameter.trim()) continue;
+    const withoutDefault = splitRoutineHeaderText(parameter, '=')[0].trim();
+    const mode = /^(constref|const|var|out)\b\s*/.exec(withoutDefault);
+    const declaration = withoutDefault.slice(mode?.[0].length || 0);
+    const [names, ...typeParts] = splitRoutineHeaderText(declaration, ':');
+    const type = typeParts.join(':').replace(/\s+/g, '');
+    for (const identifier of names.split(',')) {
+      if (identifier.trim()) parameterTypes.push([mode?.[1] || '', type]);
+    }
+  }
+  const resultType = code.slice(cursor).replace(/;[\s\S]*$/, '').replace(/^\s*:/, '').replace(/\s+/g, '');
+  return JSON.stringify([prefix[2], Boolean(prefix[1]), name.toLowerCase(), parameterTypes, resultType]);
+}
+
+/** Read declaration directives only; a later method's abstract directive must not leak back. */
+function methodDeclarationDirectives(code, node) {
+  const result = new Set();
+  const end = routineHeaderEnd(code, node.declarationOffset);
+  if (end < 0) return result;
+  let tail = code.slice(end);
+  const directives = /^\s*(abstract|external|virtual|dynamic|override|overload|reintroduce|static|final|inline|cdecl|stdcall|safecall|register|pascal|message|dispid|deprecated|platform|experimental)\b[^;]*;/i;
+  for (let match; (match = directives.exec(tail)); tail = tail.slice(match[0].length)) {
+    result.add(match[1].toLowerCase());
+  }
+  return result;
+}
+
+/** Reconcile class declarations and bodies without the source index's name-only fallback. */
+function reconcileClassRoutineCounterparts(text, code, types, rootTypes, routines, forest, unitName, hiddenOwners) {
+  const byOwner = new Map(types.map(type => [type.qualifiedName.toLowerCase(), type]));
+  const implementations = forest.filter(routine => routine.header?.owner);
+  const ownedOffsets = new Set(implementations.map(routine => routine.header.nameOffset));
+  const declarations = new Map();
+  for (const type of types) {
+    if (type.typeKind !== 'class') continue;
+    const methods = type.children.filter(node => node.kind === 'routine');
+    const bySignature = new Map();
+    const byName = new Map();
+    for (const node of methods) {
+      // Clear potentially incorrect name/ordinal matches supplied by the index.
+      node.implementationOffset = undefined;
+      node.routineSignatureKey = routineCounterpartKey(node.signature, node.name);
+      const directives = methodDeclarationDirectives(code, node);
+      node.missingCounterpart = directives.has('abstract') || directives.has('external') ? undefined : 'implementation';
+      node.routineOverloaded = directives.has('overload');
+      if (!bySignature.has(node.routineSignatureKey)) bySignature.set(node.routineSignatureKey, []);
+      bySignature.get(node.routineSignatureKey).push(node);
+      const name = node.name.toLowerCase();
+      if (!byName.has(name)) byName.set(name, []);
+      byName.get(name).push(node);
+    }
+    declarations.set(type, { bySignature, byName });
+  }
+  for (const node of routines) {
+    if (!node.owner && ownedOffsets.has(node.implementationOffset)) node.implementationOffset = undefined;
+  }
+  for (const implementation of implementations) {
+    const header = implementation.header;
+    let owner = header.owner.toLowerCase();
+    if (unitName && owner.startsWith(`${unitName.toLowerCase()}.`)) owner = owner.slice(unitName.length + 1);
+    let type = byOwner.get(owner);
+    if (!type) {
+      const candidates = types.filter(candidate => candidate.name.toLowerCase() === owner);
+      if (candidates.length === 1) type = candidates[0];
+    }
+    if (!type && hiddenOwners.has(owner.split('.').at(-1))) continue;
+    if (!type) {
+      // Keep an orphan visible even when its owner has no local type declaration.
+      type = { kind: 'type', typeKind: 'class', name: header.owner, label: header.owner,
+        qualifiedName: header.owner, offset: header.start, declarationEndOffset: implementation.end, children: [] };
+      types.push(type); rootTypes.push(type); byOwner.set(owner, type);
+    }
+    if (type.typeKind !== 'class') continue;
+    const signature = text.slice(header.start, header.headerEnd < 0 ? lineEndOffset(text, header.start) : header.headerEnd)
+      .replace(/\s+/g, ' ').trim();
+    const key = routineCounterpartKey(signature, header.name);
+    const matches = declarations.get(type);
+    let node = key && matches?.bySignature.get(key)?.find(candidate => !Number.isInteger(candidate.implementationOffset));
+    if (!node && key && !signature.includes('(')) {
+      // Delphi permits abbreviated implementation headings for non-overloaded
+      // methods. Only a single declaration can supply their omitted types.
+      const candidates = matches?.byName.get(header.name.toLowerCase()) || [];
+      const candidate = candidates.length === 1 ? candidates[0] : undefined;
+      if (candidate && !candidate.routineOverloaded && candidate.routineSignatureKey
+        && !Number.isInteger(candidate.implementationOffset)) {
+        const [kind, classMethod, , , result] = JSON.parse(key);
+        const [expectedKind, expectedClass, , , expectedResult] = JSON.parse(candidate.routineSignatureKey);
+        if (kind === expectedKind && classMethod === expectedClass && (!result || result === expectedResult)) node = candidate;
+      }
+    }
+    if (node) {
+      node.implementationOffset = header.nameOffset;
+      node.implementationEndOffset = implementation.end;
+      node.missingCounterpart = undefined;
+    } else {
+      const routineKind = routineKeywordAt(text, header.nameOffset);
+      const orphan = { kind: 'routine', name: header.name, label: header.name, owner: type.name,
+        offset: header.nameOffset, implementationOffset: header.nameOffset, implementationEndOffset: implementation.end,
+        routineKind, routineFlavor: routineFlavorAt(code, header.nameOffset, type.name),
+        specialRoutineKind: specialRoutineKind(header.name, routineKind), signature, routineSignatureKey: key,
+        missingCounterpart: 'declaration', children: [] };
+      type.children.push(orphan); routines.push(orphan);
+    }
+  }
 }
 
 function buildClassNavigatorModel(text, filePath = '', options = {}) {
@@ -972,7 +1134,8 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
     if ((type.structureKind === 'record' || type.structureKind === 'object')
       && !settings.showRecordsAndObjects) continue;
     const typeMembers = members
-      .filter(member => member.owner?.toLowerCase() === type.symbol.toLowerCase())
+      .filter(member => member.owner?.toLowerCase() === type.symbol.toLowerCase()
+        && member.offset >= type.offset && member.offset < (structureEnds.get(type.offset) ?? text.length))
       .sort((left, right) => left.offset - right.offset)
       .map(member => {
         const routineKind = routineKeywordAt(text, member.offset);
@@ -1048,10 +1211,12 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
         (left.declarationEndOffset - left.offset)
         - (right.declarationEndOffset - right.offset))[0];
     if (!parent) {
+      node.qualifiedName = node.name;
       rootTypeNodes.push(node);
       continue;
     }
     node.owner = parent.name;
+    node.qualifiedName = `${parent.qualifiedName}.${node.name}`;
     // Nested types are always the first children of their declaring type,
     // before the properties group and routines, in declaration order.
     let insertAt = 0;
@@ -1060,6 +1225,18 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
       && parent.children[insertAt].offset < node.offset) insertAt += 1;
     parent.children.splice(insertAt, 0, node);
   }
+  const implementationForest = implementationRoutineForest(code);
+  const visibleTypeOffsets = new Set(allTypeNodes.map(type => type.offset));
+  const hiddenOwners = new Set(typeDefinitions.filter(type => !visibleTypeOffsets.has(type.offset))
+    .map(type => type.symbol.toLowerCase()));
+  reconcileClassRoutineCounterparts(text, code, allTypeNodes, rootTypeNodes, routineNodes,
+    implementationForest, source?.unitName, hiddenOwners);
+  for (const type of allTypeNodes) {
+    // Nested types and the properties group retain their leading positions.
+    const methods = type.children.filter(node => node.kind === 'routine')
+      .sort((left, right) => compareTypeMembers(left, right, settings.memberOrder));
+    type.children = [...type.children.filter(node => node.kind !== 'routine'), ...methods];
+  }
   rootTypeNodes.sort((left, right) => compareTypeNodes(left, right, settings.typeOrder));
   roots.push(...rootTypeNodes);
 
@@ -1067,7 +1244,7 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
   roots.push(...unitLifecycleNodes(code, settings));
 
   const globalRoot = roots.find(node => node.kind === 'global-group');
-  nestLocalRoutines(code, routineNodes, globalRoot);
+  nestLocalRoutines(code, routineNodes, globalRoot, implementationForest);
   if (globalRoot && globalRoot.children.length === 0) {
     roots.splice(roots.indexOf(globalRoot), 1);
   }
@@ -1861,9 +2038,12 @@ class ClassNavigatorProvider {
                 : undefined;
       item.iconPath = new vscode.ThemeIcon(
         icon,
-        lifecycle ? new vscode.ThemeColor('charts.purple') : accessColor
+        node.missingCounterpart ? new vscode.ThemeColor('errorForeground')
+          : lifecycle ? new vscode.ThemeColor('charts.purple') : accessColor
       );
       item.tooltip = `${flavor ? `${flavor} · ` : ''}${node.access ? `${node.access} · ` : ''}${node.signature || `${node.routineKind} ${node.name}`}`;
+      const missing = missingCounterpartMessage(node);
+      if (missing) item.tooltip += `\n${missing}`;
     }
     if (node.kind === 'uses-group') item.tooltip = 'Uses in the current file. Click to go to the uses clause; imported packages are not expanded.';
     if (node.kind === 'uses-section') {
@@ -1914,16 +2094,30 @@ function navigatorIconName(node) {
   return 'symbol';
 }
 
+/** Explain the red method state in both the tree and search tooltips. */
+function missingCounterpartMessage(node) {
+  if (node.missingCounterpart === 'implementation') return 'Missing implementation for this class method.';
+  if (node.missingCounterpart === 'declaration') return 'Missing declaration for this class method.';
+  return '';
+}
+
+function navigatorNodeTooltip(node) {
+  const tooltip = node.signature || node.typeName || node.filePath || node.projectPath
+    || node.groupPath || node.fsPath || '';
+  const missing = missingCounterpartMessage(node);
+  return missing ? `${tooltip}\n${missing}`.trim() : tooltip;
+}
+
 function serializeNavigatorNode(node, options = {}) {
   return {
     id: node.id,
     kind: node.kind,
     label: node.label,
     access: node.access,
+    missingCounterpart: node.missingCounterpart,
     icon: navigatorIconName(node),
     jumpable: Number.isInteger(node.offset) || Number.isInteger(node.declarationOffset),
-    tooltip: node.signature || node.typeName || node.filePath || node.projectPath
-      || node.groupPath || node.fsPath || '',
+    tooltip: navigatorNodeTooltip(node),
     contextValue: node.contextValue,
     initialExpanded: node.kind === 'project'
       || (node.kind === 'package' && options.projectDefaultExpansion === 'all'),
@@ -2488,6 +2682,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     tooltip: result.tooltip,
     icon: result.icon,
     access: result.access,
+    missingCounterpart: result.missingCounterpart,
     isCurrentFile: result.isCurrentFile
   });
 

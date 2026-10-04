@@ -320,3 +320,43 @@ test('mode and search-state changes update retained rows without rebuilding the 
   assert.equal(row.dataset.vscodeContext, undefined);
   assert.deepEqual(client.counts(), before);
 });
+
+test('counterpart repairs clear red styling through a patch and retain the selected row', async () => {
+  const declaration = SOURCE.replace('    procedure Last;', '    procedure Missing;\n    procedure Last;');
+  const body = SOURCE.replace('end.', 'procedure TDemo.Missing;\nbegin\nend;\nend.');
+  const complete = declaration.replace('end.', 'procedure TDemo.Missing;\nbegin\nend;\nend.');
+  for (const [before, missing] of [[declaration, 'implementation'], [body, 'declaration']]) {
+    const client = clientHarness();
+    const messages = [];
+    let model = modelFor(before);
+    const tree = new ClassNavigatorWebview({ EventEmitter: Emitter }, 'test', {
+      getRoots: () => model.roots, serializeNode: serializeNavigatorNode
+    });
+    tree.webview = { postMessage: message => {
+      // Exercise the actual transport shape, including omitted undefined fields.
+      const payload = JSON.parse(JSON.stringify(message));
+      messages.push(payload); client.send(payload); return Promise.resolve(true);
+    } };
+    tree.handleMessage({ type: 'ready' });
+    const routine = model.routineNodes.find(node => node.name === 'Missing');
+    assert.equal(routine.missingCounterpart, missing);
+    await tree.reveal(routine, { select: true });
+    const row = client.row(routine.id);
+    row.focus();
+    assert.equal(row.classList.contains('missing-counterpart'), true);
+    assert.equal(row.children[1].style.color, 'var(--vscode-errorForeground, #f14c4c)');
+    assert.match(row.title, missing === 'implementation' ? /Missing implementation/ : /Missing declaration/);
+    const created = client.counts()[0];
+    model = modelFor(complete);
+    tree.refresh();
+    assert.equal(messages.at(-1).type, 'patch');
+    assert.equal(messages.at(-1).removed.length, 0);
+    assert.equal(client.counts()[0], created);
+    assert.equal(client.row(routine.id), row);
+    assert.equal(row.classList.contains('missing-counterpart'), false);
+    assert.equal(row.children[1].style.color, 'var(--vscode-charts-green, #89d185)');
+    assert.equal(row.classList.contains('selected'), true);
+    assert.equal(client.document.activeElement, row);
+    assert.doesNotMatch(row.title, /Missing (implementation|declaration)/);
+  }
+});
