@@ -173,17 +173,149 @@ function routineCounterpartKey(signature, name) {
   return JSON.stringify(identity);
 }
 
-/** Read declaration directives only; a later method's abstract directive must not leak back. */
-function methodDeclarationDirectives(code, node) {
-  const result = new Set();
-  const end = routineHeaderEnd(code, node.declarationOffset);
-  if (end < 0) return result;
-  let tail = code.slice(end);
-  const directives = /^\s*(abstract|external|virtual|dynamic|override|overload|reintroduce|static|final|inline|cdecl|stdcall|safecall|register|pascal|message|dispid|deprecated|platform|experimental)\b[^;]*;/i;
-  for (let match; (match = directives.exec(tail)); tail = tail.slice(match[0].length)) {
-    result.add(match[1].toLowerCase());
+/** Read complete directive statements, including their source positions for insertion. */
+function routineDirectiveStatements(code, headerEnd) {
+  const result = [];
+  if (!Number.isInteger(headerEnd) || headerEnd < 0) return result;
+  let cursor = headerEnd;
+  const pattern = /^\s*(abstract|external|forward|virtual|dynamic|override|overload|reintroduce|static|final|inline|cdecl|stdcall|safecall|register|pascal|varargs|message|dispid|deprecated|platform|experimental|library)\b[^;]*;/i;
+  for (let match; (match = pattern.exec(code.slice(cursor)));) {
+    result.push({ name: match[1].toLowerCase(), start: cursor + match[0].search(/\S/), end: cursor + match[0].length });
+    cursor += match[0].length;
   }
   return result;
+}
+
+/** Read declaration directives only; a later method's abstract directive must not leak back. */
+function methodDeclarationDirectives(code, node) {
+  return new Set(routineDirectiveStatements(code, routineHeaderEnd(code, node.declarationOffset)).map(item => item.name));
+}
+
+function skipSpace(code, offset) {
+  while (/\s/.test(code[offset] || '')) offset += 1;
+  return offset;
+}
+
+/**
+ * Read a structure lexically. Entire nested structures and method headings are
+ * consumed as members so their visibility labels cannot affect the outer type.
+ */
+function structureLayout(code, kindOffset, depth = 0) {
+  if (depth > 64) return undefined;
+  const kindMatch = /^(class|record|object|interface)\b/i.exec(code.slice(kindOffset));
+  if (!kindMatch) return undefined;
+  const kind = kindMatch[1].toLowerCase();
+  let cursor = skipSpace(code, kindOffset + kindMatch[0].length);
+  if (kind === 'class' && /^of\b/i.test(code.slice(cursor))) return undefined;
+  for (let modifier; (modifier = /^(abstract|sealed)\b\s*/i.exec(code.slice(cursor)));) cursor += modifier[0].length;
+  const helper = /^helper\s+for\s+[A-Za-z_][A-Za-z0-9_.]*(?:\s*<[^>]*>)?\s*/i.exec(code.slice(cursor));
+  if (helper) cursor += helper[0].length;
+  let ancestor = false;
+  if (code[cursor] === '(') {
+    const close = closingBracket(code, cursor, '(', ')');
+    if (close < 0) return undefined;
+    ancestor = true; cursor = skipSpace(code, close + 1);
+  }
+  if (code[cursor] === ';') {
+    return { kind, keyword: kindMatch[0], bodyStart: cursor, endOffset: cursor + 1,
+      shorthand: ancestor && kind === 'class', forward: !ancestor, sections: [], members: [] };
+  }
+  const bodyStart = cursor;
+  const sections = [{ access: kind === 'class' ? 'published' : 'public', start: bodyStart, bodyStart, implicit: true }];
+  const members = [];
+  let declarationKind;
+  for (; cursor < code.length;) {
+    cursor = skipSpace(code, cursor);
+    const close = /^end\s*;/i.exec(code.slice(cursor));
+    if (close) {
+      sections.at(-1).end = cursor;
+      return { kind, keyword: kindMatch[0], bodyStart, closingStart: cursor,
+        endOffset: cursor + close[0].length, sections, members };
+    }
+    const visibility = /^(strict\s+(?:private|protected)|public|published|private|protected|automated)\b/i.exec(code.slice(cursor));
+    if (visibility) {
+      sections.at(-1).end = cursor;
+      sections.push({ access: visibility[1].toLowerCase().replace(/\s+/g, '-'), start: cursor,
+        bodyStart: cursor + visibility[0].length, spelling: visibility[0] });
+      cursor += visibility[0].length; declarationKind = undefined; continue;
+    }
+    const group = /^(?:class\s+)?(type|const|var|threadvar)\b/i.exec(code.slice(cursor));
+    if (group) { declarationKind = group[1].toLowerCase(); cursor += group[0].length; continue; }
+    const attributeStart = cursor;
+    while (code[cursor] === '[') {
+      const closeAttribute = closingBracket(code, cursor, '[', ']');
+      if (closeAttribute < 0) return undefined;
+      cursor = skipSpace(code, closeAttribute + 1);
+    }
+    if (kind === 'interface' && /^end\s*;/i.test(code.slice(cursor))) continue;
+    const start = cursor;
+    const section = sections.length - 1;
+    const routine = /^((?:class\s+)?(function|procedure|constructor|destructor|operator)\s+)([A-Za-z_][A-Za-z0-9_]*)/i.exec(code.slice(start));
+    if (routine) {
+      const nameOffset = start + routine[1].length;
+      const range = routineDeclarationRange(code, nameOffset);
+      if (!range?.end) return undefined;
+      const directives = routineDirectiveStatements(code, range.end);
+      const end = directives.at(-1)?.end ?? range.end;
+      members.push({ kind: 'routine', name: routine[3], nameOffset, start, attributeStart,
+        headerEnd: range.end, end, section, access: sections[section].access, directives });
+      cursor = end; declarationKind = undefined; continue;
+    }
+    // Other declarations end at a semicolon outside parentheses, generics and
+    // nested record/class bodies (including anonymous record fields).
+    let parentheses = 0;
+    let brackets = 0;
+    let angles = 0;
+    let end;
+    for (; cursor < code.length; cursor += 1) {
+      const token = code[cursor];
+      if (!parentheses && !brackets && !angles && /[A-Za-z]/.test(token)
+        && !/[A-Za-z0-9_&.]/.test(code[cursor - 1] || '')) {
+        if (/^(?:implementation|initialization|finalization|end)\b/i.test(code.slice(cursor))) return undefined;
+        const nestedKind = /^(?:class|record|object|interface)\b/i.exec(code.slice(cursor));
+        if (nestedKind && !/^class\s+of\b/i.test(code.slice(cursor))) {
+          const nested = structureLayout(code, cursor, depth + 1);
+          if (!nested) return undefined;
+          end = nested.endOffset; break;
+        }
+      }
+      if (token === '(') parentheses += 1;
+      else if (token === ')') parentheses -= 1;
+      else if (token === '[') brackets += 1;
+      else if (token === ']') brackets -= 1;
+      else if (token === '<') angles += 1;
+      else if (token === '>') angles = Math.max(0, angles - 1);
+      else if (token === ';' && !parentheses && !brackets && !angles) { end = cursor + 1; break; }
+    }
+    if (!end) return undefined;
+    const property = /^(?:class\s+)?property\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(code.slice(start, end));
+    const names = property ? [property[1]] : (/^([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)/.exec(code.slice(start, end))?.[1] || '').split(',').map(name => name.trim()).filter(Boolean);
+    for (const name of names) {
+      members.push({ kind: property ? 'property' : declarationKind === 'type' ? 'type' : 'field',
+        name, start, attributeStart, end, section, access: sections[section].access,
+        accessors: property ? [...code.slice(start, end).matchAll(/\b(?:read|write)\s+([A-Za-z_][A-Za-z0-9_]*)/gi)].map(match => match[1].toLowerCase()) : [] });
+    }
+    cursor = end;
+  }
+  return undefined;
+}
+
+/** Read a real class definition, rejecting synthetic Navigator owners and forward-only types. */
+function readClassLayout(text, offset, preparedCode) {
+  const code = preparedCode || maskPascalNonCode(text);
+  const name = /^[A-Za-z_][A-Za-z0-9_]*/.exec(code.slice(offset));
+  if (!name) return undefined;
+  let cursor = skipSpace(code, offset + name[0].length);
+  if (code[cursor] === '<') {
+    const close = closingBracket(code, cursor, '<', '>');
+    if (close < 0) return undefined;
+    cursor = skipSpace(code, close + 1);
+  }
+  if (code[cursor] !== '=') return undefined;
+  cursor = skipSpace(code, cursor + 1);
+  if (!/^class\b/i.test(code.slice(cursor))) return undefined;
+  const layout = structureLayout(code, cursor);
+  return layout && { ...layout, offset, name: name[0] };
 }
 
 /** Index complete declarations once, preserving all overloads for ambiguity checks. */
@@ -431,7 +563,269 @@ function planRoutineImplementation(text, model, caretOffset, editorOptions = {})
   return { offset, text: insertion, caretOffset: offset + start.length, targetId: target.id };
 }
 
-/** Execute a single version-checked edit, leaving model synchronization to the caller. */
+/** Compact code whitespace without changing defaults or swallowing code after line comments. */
+function compactRoutineHeading(text) {
+  const literals = [];
+  const protectedText = text.replace(/'(?:''|[^'])*'|\/\/[^\r\n]*|\{[^}]*\}|\(\*[\s\S]*?\*\)/g, token => {
+    literals.push(token.startsWith('//') ? token + (text.includes('\r\n') ? '\r\n' : '\n') : token);
+    return `\0${literals.length - 1}\0`;
+  });
+  return protectedText.replace(/\s+/g, ' ').trim().replace(/\0(\d+)\0/g, (_, index) => literals[Number(index)]);
+}
+
+function keywordCase(word, reference) {
+  const first = reference?.match(/[A-Za-z]+/)?.[0] || '';
+  return first && first === first.toUpperCase() ? word.toUpperCase()
+    : /^[A-Z][a-z]+$/.test(first) ? word[0].toUpperCase() + word.slice(1) : word;
+}
+
+function declarationFromBody(text, code, body, overloaded) {
+  const prefix = /^(?:class\s+)?(function|procedure)\s+/i.exec(code.slice(body.header.start));
+  if (!prefix || body.header.headerEnd < 0) return undefined;
+  const heading = compactRoutineHeading(text.slice(body.header.start, body.header.start + prefix[0].length)
+    + text.slice(body.header.nameOffset, body.header.headerEnd));
+  const key = routineCounterpartKey(heading, body.header.name);
+  if (!key) return undefined;
+  const [kind, , , parameters, result] = JSON.parse(key);
+  if ((kind === 'function' && !result) || (kind === 'procedure' && result)
+    || parameters.some(([mode, type]) => !mode && !type)) return undefined;
+  const directives = routineDirectiveStatements(code, body.header.headerEnd)
+    .filter(item => /^(cdecl|stdcall|safecall|register|pascal|varargs)$/.test(item.name))
+    .map(item => compactRoutineHeading(text.slice(item.start, item.end)));
+  if (overloaded) directives.unshift(`${keywordCase('overload', prefix[1])};`);
+  return { text: [heading, ...directives].join(' '), key,
+    nameOffset: /^(?:class\s+)?(?:function|procedure)\s+/i.exec(maskPascalNonCode(heading))[0].length };
+}
+
+/** Parameter modes, result types and routine kinds cannot distinguish an overload. */
+function overloadParameterKey(key) {
+  const [, , name, parameters, , arity = 0] = JSON.parse(key);
+  return JSON.stringify([name, arity, parameters.map(([, type]) => type)]);
+}
+
+function declarationEntry(text, code, member) {
+  const signature = text.slice(member.start, member.headerEnd);
+  return { ...member, signature, routineSignatureKey: routineCounterpartKey(signature, member.name),
+    routineOverloaded: member.directives.some(item => item.name === 'overload') };
+}
+
+function declarationInsertionBefore(text, entry, comments) {
+  return beforeImplementation(text, { header: { start: entry.attributeStart ?? entry.start } }, comments);
+}
+
+function declarationInsertionAfter(text, entry, comments) {
+  return afterImplementation(text, { terminatorEndOffset: entry.end }, comments);
+}
+
+/** Keep insertions at the same position ordered and translate the caret through all repairs. */
+function finishCounterpartPlan(main, repairs, targetId, direction) {
+  let caretRelative = main.caretRelative;
+  const edits = [];
+  for (const repair of repairs) {
+    if (repair.offset === main.offset && repair.endOffset === repair.offset && main.endOffset === main.offset) {
+      main = { ...main, text: repair.text + main.text };
+      caretRelative += repair.text.length;
+    } else edits.push(repair);
+  }
+  edits.push({ offset: main.offset, endOffset: main.endOffset, text: main.text });
+  edits.sort((left, right) => left.offset - right.offset);
+  for (let index = 1; index < edits.length; index += 1) {
+    if (edits[index].offset < edits[index - 1].endOffset) return { reason: 'The required declaration edits overlap.' };
+  }
+  const shift = edits.filter(edit => edit.offset < main.offset)
+    .reduce((sum, edit) => sum + edit.text.length - (edit.endOffset - edit.offset), 0);
+  return { edits, caretOffset: main.offset + caretRelative + shift, targetId, direction };
+}
+
+/**
+ * Create a missing declaration using immediate implementation neighbors. Class
+ * anchors prefer protected, then private; otherwise placement uses public names.
+ */
+function planRoutineDeclaration(text, model, caretOffset, editorOptions = {}) {
+  const code = maskPascalNonCode(text);
+  const unitHeading = /^\s*unit\s+[A-Za-z_][A-Za-z0-9_.]*\s*;\s*interface\b/i.exec(code);
+  const implementation = /\bimplementation\b/i.exec(code);
+  if (!unitHeading || !implementation || !/\bend\s*\.(?=\s*$)/i.test(code)) {
+    return { reason: 'A complete unit with an interface and implementation section is required.' };
+  }
+  const bodies = model?.implementationRoutines || [];
+  const body = bodies.find(item => caretOffset >= item.header.start && caretOffset <= (item.terminatorEndOffset ?? item.end));
+  if (!body) return { reason: 'Place one caret in a top-level function or procedure implementation.' };
+  if (body.children.some(child => caretOffset >= child.header.start && caretOffset < child.end)) {
+    return { reason: 'Local routines cannot have class or unit-interface declarations.' };
+  }
+  const target = model.routineNodes.find(node => node.implementationOffset === body.header.nameOffset);
+  if (!target || !['function', 'procedure'].includes(target.routineKind) || !body.complete) {
+    return { reason: 'Complete the function or procedure implementation before creating its declaration.' };
+  }
+  if (conditionalDepthAt(text, body.header.start)) return { reason: 'The implementation is inside an unresolved conditional section.' };
+  const owner = body.header.owner ? target.parent : undefined;
+  const global = !body.header.owner && target.routineFlavor === 'global';
+  const layout = owner?.kind === 'type' && owner.typeKind === 'class' ? readClassLayout(text, owner.offset, code) : undefined;
+  if (!global && (!layout || layout.forward)) return { reason: 'The owning class definition is unavailable or incomplete.' };
+  if ((layout && layout.members.some(member => member.kind === 'routine' && member.nameOffset === target.declarationOffset))
+    || (global && target.declarationOffset < implementation.index)) return { reason: 'This routine already has a declaration.' };
+  const bodyDirectives = routineDirectiveStatements(code, body.header.headerEnd);
+  if (bodyDirectives.some(item => item.name === 'forward')) return { reason: 'A forward declaration is not a routine implementation.' };
+  let declarations;
+  if (layout) declarations = layout.members.filter(member => member.kind === 'routine').map(member => declarationEntry(text, code, member));
+  else declarations = model.routineNodes.filter(node => !node.owner && node.routineFlavor === 'global'
+    && node.declarationOffset < implementation.index).map(node => {
+    const directives = routineDirectiveStatements(code, node.declarationHeaderEndOffset);
+    return declarationEntry(text, code, { name: node.name, nameOffset: node.declarationOffset,
+      start: node.declarationStartOffset, headerEnd: node.declarationHeaderEndOffset,
+      end: directives.at(-1)?.end ?? node.declarationHeaderEndOffset, directives });
+  });
+  if (declarations.some(entry => !entry.headerEnd || !entry.routineSignatureKey)) {
+    return { reason: 'Complete the existing declarations before adding a counterpart.' };
+  }
+  const heading = declarationFromBody(text, code, body, false);
+  if (!heading) return { reason: 'The implementation must supply a complete parameter and result signature.' };
+  if (declarations.some(entry => entry.routineSignatureKey === heading.key)) return { reason: 'This routine already has a declaration.' };
+  const family = declarations.filter(entry => entry.name.toLowerCase() === target.name.toLowerCase());
+  if (family.some(entry => overloadParameterKey(entry.routineSignatureKey) === overloadParameterKey(heading.key))) {
+    return { reason: 'An existing declaration has incompatible parameters, modifiers or result type; correct that signature first.' };
+  }
+  if (layout?.members.some(member => (member.kind !== 'routine' && member.name.toLowerCase() === target.name.toLowerCase())
+    || (family.length && member.accessors?.includes(target.name.toLowerCase())))) {
+    return { reason: 'The name conflicts with a class member or property-accessor contract.' };
+  }
+  const sameOwner = item => global ? !item.header.owner : model.routineNodes
+    .some(node => node.parent === owner && node.implementationOffset === item.header.nameOffset);
+  const ownerBodies = bodies.filter(sameOwner);
+  const index = indexRoutineDeclarations(declarations);
+  const entryByBody = new Map();
+  for (const item of ownerBodies) {
+    const entry = findRoutineCounterpart(index, text.slice(item.header.start, item.header.headerEnd), item.header.name);
+    if (entry) { entry.implementationOffset = item.header.nameOffset; entryByBody.set(item, entry); }
+  }
+  if (entryByBody.has(body)) return { reason: 'This routine already has a declaration.' };
+  // Private global overloads need not be exported, but their defining
+  // declarations still participate in the unit's overload family.
+  if (global) {
+    for (const item of ownerBodies) {
+      if (item === body || entryByBody.has(item) || item.header.name.toLowerCase() !== target.name.toLowerCase()) continue;
+      if (!declarationFromBody(text, code, item, false)) return { reason: 'Complete the related overload headings before creating a declaration.' };
+      const directives = routineDirectiveStatements(code, item.header.headerEnd);
+      const entry = declarationEntry(text, code, { name: item.header.name, nameOffset: item.header.nameOffset,
+        start: item.header.start, headerEnd: item.header.headerEnd, end: directives.at(-1)?.end ?? item.header.headerEnd, directives });
+      if (overloadParameterKey(entry.routineSignatureKey) === overloadParameterKey(heading.key)) return { reason: 'A global routine with incompatible signature already exists.' };
+      entry.implementationOffset = item.header.nameOffset;
+      family.push(entry);
+    }
+  }
+  const position = ownerBodies.indexOf(body);
+  let previous = entryByBody.get(ownerBodies[position - 1]);
+  let next = entryByBody.get(ownerBodies[position + 1]);
+  const category = access => access?.replace(/^strict-/, '');
+  let section;
+  if (layout) {
+    const available = [previous, next].filter(Boolean);
+    const preferred = available.some(entry => category(entry.access) === 'protected') ? 'protected'
+      : available.some(entry => category(entry.access) === 'private') ? 'private' : 'public';
+    previous = category(previous?.access) === preferred ? previous : undefined;
+    next = category(next?.access) === preferred ? next : undefined;
+    section = layout.sections[(previous || next)?.section];
+    // Separate blocks have separate lexical scopes, even with equal visibility.
+    if (previous && next && previous.section !== next.section) next = undefined;
+  }
+  let anchor;
+  let before = false;
+  const ordered = declarations.filter(entry => !layout || entry.section === (previous || next)?.section)
+    .sort((left, right) => left.start - right.start);
+  if (previous && next && Math.abs(ordered.indexOf(previous) - ordered.indexOf(next)) === 1) {
+    anchor = previous.start < next.start ? previous : next;
+  } else if (previous) anchor = previous;
+  else if (next) { anchor = next; before = true; }
+  else {
+    const pool = declarations.filter(entry => !layout || entry.access === 'public').sort((left, right) => left.start - right.start);
+    const equal = pool.filter(entry => entry.name.toLowerCase() === target.name.toLowerCase());
+    if (equal.length) anchor = equal.at(-1);
+    else { anchor = pool.find(entry => entry.name.toLowerCase() > target.name.toLowerCase()); before = Boolean(anchor); anchor ||= pool.at(-1); }
+    section = layout ? (anchor ? layout.sections[anchor.section] : layout.sections.find(item => item.access === 'public')) : undefined;
+  }
+  const eol = editorOptions.eol || (text.includes('\r\n') ? '\r\n' : '\n');
+  const size = Number(editorOptions.tabSize);
+  const indentUnit = editorOptions.insertSpaces === false ? '\t' : ' '.repeat(Number.isFinite(size) && size > 0 ? Math.floor(size) : 2);
+  const leadingIndent = offset => text.slice(lineStart(text, offset), offset).match(/^[ \t]*/)[0];
+  const classIndent = layout ? leadingIndent(layout.offset) : '';
+  const visibilityIndent = layout ? leadingIndent(layout.sections.find(item => !item.implicit)?.start ?? layout.offset) : '';
+  const sample = anchor || layout?.members.find(member => member.section === layout.sections.indexOf(section)) || layout?.members[0];
+  const memberIndent = sample && !text.slice(lineStart(text, sample.start), sample.start).trim()
+    ? leadingIndent(sample.start) : layout ? visibilityIndent + indentUnit : '';
+  const needsOverload = family.length > 0 || bodyDirectives.some(item => item.name === 'overload');
+  if (needsOverload && layout?.members.some(member => member.accessors?.includes(target.name.toLowerCase()))) {
+    return { reason: 'A property-accessor contract cannot be made overloaded.' };
+  }
+  const completeHeading = declarationFromBody(text, code, body, needsOverload);
+  const comments = commentSpans(text);
+  let main;
+  if (layout?.shorthand) {
+    const label = keywordCase('public', layout.keyword);
+    const prefix = `${eol}${visibilityIndent}${label}${eol}${memberIndent}`;
+    main = { offset: layout.endOffset - 1, endOffset: layout.endOffset,
+      text: `${prefix}${completeHeading.text}${eol}${classIndent}${keywordCase('end', layout.keyword)};`,
+      caretRelative: prefix.length + completeHeading.nameOffset };
+  } else {
+    const boundary = layout ? section?.end ?? layout.closingStart : implementation.index;
+    let offset = anchor ? (before ? declarationInsertionBefore(text, anchor, comments) : declarationInsertionAfter(text, anchor, comments))
+      : beforeImplementation(text, { header: { start: boundary } }, comments);
+    if (layout && offset < (section?.bodyStart ?? layout.bodyStart)) offset = boundary;
+    if (offset < (layout?.bodyStart ?? unitHeading[0].length) || offset > boundary) return { reason: 'The declaration boundary cannot be safely resolved.' };
+    const midLine = Boolean(text.slice(lineStart(text, offset), offset).trim());
+    let prefix = midLine ? eol : '';
+    if (layout && !section) prefix += `${visibilityIndent}${keywordCase('public', layout.sections.find(item => item.spelling)?.spelling || layout.keyword)}${eol}`;
+    if (!layout && !anchor && !/\n[ \t\r]*\n$/.test(text.slice(0, offset))) prefix += eol;
+    prefix += memberIndent;
+    main = { offset, endOffset: offset, text: `${prefix}${completeHeading.text}${eol}${!layout && !anchor ? eol : ''}`,
+      caretRelative: prefix.length + completeHeading.nameOffset };
+  }
+  if (conditionalDepthAt(text, main.offset)) return { reason: 'The declaration boundary is inside an unresolved conditional section.' };
+  if (section && !section.implicit && conditionalDepthAt(text, section.start)) return { reason: 'The selected visibility section is conditional and cannot be resolved safely.' };
+  const repairs = [];
+  for (const entry of family) {
+    if (conditionalDepthAt(text, entry.start)) return { reason: 'An overload declaration is inside an unresolved conditional section.' };
+    if (!entry.routineOverloaded) {
+      const offset = entry.directives.find(item => item.name === 'reintroduce')?.end ?? entry.headerEnd;
+      const reference = /^(?:class\s+)?([A-Za-z]+)/i.exec(code.slice(entry.start))?.[1];
+      repairs.push({ offset, endOffset: offset, text: ` ${keywordCase('overload', reference)};` });
+    }
+    const existing = ownerBodies.find(item => item.header.nameOffset === entry.implementationOffset);
+    if (existing && !code.slice(existing.header.nameOffset, existing.header.headerEnd).includes('(')) {
+      // Adding overload makes abbreviated defining headings invalid. Insert only
+      // the known parameters/result, preserving qualification, comments and body.
+      let nameEnd = existing.header.nameOffset + existing.header.name.length;
+      const genericStart = skipSpace(code, nameEnd);
+      if (code[genericStart] === '<') nameEnd = closingBracket(code, genericStart, '<', '>') + 1;
+      const defining = implementationHeading(text, code, { ...entry, declarationStartOffset: entry.start,
+        declarationHeaderEndOffset: entry.headerEnd });
+      if (!defining) return { reason: 'An existing overload heading cannot be expanded safely.' };
+      const start = defining.indexOf('(');
+      const end = start < 0 ? -1 : closingBracket(defining, start, '(', ')');
+      let addition = start < 0 ? '' : defining.slice(start, end + 1);
+      const result = defining.slice(end < 0 ? defining.indexOf(':') : end + 1).replace(/;\s*$/, '');
+      if (!code.slice(nameEnd, existing.header.headerEnd).includes(':') && /^\s*:/.test(result)) addition += result;
+      if (addition) {
+        if (conditionalDepthAt(text, nameEnd)) return { reason: 'An abbreviated overload is inside an unresolved conditional section.' };
+        repairs.push({ offset: nameEnd, endOffset: nameEnd, text: addition });
+      }
+    }
+  }
+  return finishCounterpartPlan(main, repairs, target.id, 'declaration');
+}
+
+/** Dispatch by source position while retaining the original forward planner's API. */
+function planRoutineCounterpart(text, model, caretOffset, editorOptions = {}) {
+  const implementation = /\bimplementation\b/i.exec(maskPascalNonCode(text));
+  const declaration = model?.routineNodes?.find(node => Number.isInteger(node.declarationStartOffset)
+    && caretOffset >= node.declarationStartOffset && caretOffset <= (node.declarationHeaderEndOffset ?? node.declarationEndOffset)
+    && (node.parent?.kind === 'type' || node.declarationOffset < implementation?.index));
+  if (!declaration) return planRoutineDeclaration(text, model, caretOffset, editorOptions);
+  const plan = planRoutineImplementation(text, model, caretOffset, editorOptions);
+  return plan.reason ? plan : { ...plan, direction: 'implementation', edits: [{ offset: plan.offset, endOffset: plan.offset, text: plan.text }] };
+}
+
+/** Execute a version-checked counterpart edit and all required repairs in one undo group. */
 function createImplementationCommand(vscode, { readyModel, onCreated }) {
   const pending = new Set();
   return async () => {
@@ -441,9 +835,9 @@ function createImplementationCommand(vscode, { readyModel, onCreated }) {
     if (!document || !['pascal', 'objectpascal'].includes(document.languageId)
       || !vscode.workspace.getConfiguration('pascalAtlas', document.uri).get('enabled', true)) return false;
     if (vscode.workspace.fs?.isWritableFileSystem(document.uri.scheme) === false) return inform('The current document is read-only.');
-    if (editor.selections.length !== 1 || !editor.selection.isEmpty) return inform('Use one caret without a selection to create an implementation.');
+    if (editor.selections.length !== 1 || !editor.selection.isEmpty) return inform('Use one caret without a selection to create a routine counterpart.');
     const uri = document.uri.toString();
-    if (pending.has(uri)) return inform('An implementation is already being created for this document.');
+    if (pending.has(uri)) return inform('A routine counterpart is already being created for this document.');
     pending.add(uri);
     const version = document.version;
     const caret = document.offsetAt(editor.selection.active);
@@ -451,20 +845,23 @@ function createImplementationCommand(vscode, { readyModel, onCreated }) {
       const model = await readyModel(document);
       if (vscode.window.activeTextEditor !== editor || document.isClosed || document.version !== version
         || editor.selections.length !== 1 || !editor.selection.isEmpty || document.offsetAt(editor.selection.active) !== caret) {
-        return inform('The document, caret or active editor changed. Invoke Create Routine Implementation again.');
+        return inform('The document, caret or active editor changed. Invoke Create Missing Routine Counterpart again.');
       }
       if (!model) return inform('The current source model is not available.');
-      const plan = planRoutineImplementation(document.getText(), model, caret, {
+      const plan = planRoutineCounterpart(document.getText(), model, caret, {
         ...editor.options, eol: document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n'
       });
       if (plan.reason) return inform(plan.reason);
       let inserted = false;
       const changed = await editor.edit(builder => {
         if (document.version !== version || vscode.window.activeTextEditor !== editor) return;
-        builder.insert(document.positionAt(plan.offset), plan.text);
+        for (const edit of plan.edits) {
+          if (edit.endOffset === edit.offset) builder.insert(document.positionAt(edit.offset), edit.text);
+          else builder.replace(new vscode.Range(document.positionAt(edit.offset), document.positionAt(edit.endOffset)), edit.text);
+        }
         inserted = true;
       }, { undoStopBefore: true, undoStopAfter: true });
-      if (!changed || !inserted) return inform('The implementation could not be inserted into the current document.');
+      if (!changed || !inserted) return inform('The routine counterpart could not be inserted into the current document.');
       if (vscode.window.activeTextEditor === editor) {
         const position = document.positionAt(plan.caretOffset);
         editor.selection = new vscode.Selection(position, position);
@@ -473,7 +870,7 @@ function createImplementationCommand(vscode, { readyModel, onCreated }) {
       await onCreated?.(document, plan.targetId);
       return true;
     } catch (error) {
-      void vscode.window.showErrorMessage(`Could not create the routine implementation: ${error.message}`);
+      void vscode.window.showErrorMessage(`Could not create the routine counterpart: ${error.message}`);
       return false;
     } finally { pending.delete(uri); }
   };
@@ -485,10 +882,15 @@ module.exports = {
   memberImplementationDefinitions,
   routineImplementationDefinitions,
   methodDeclarationDirectives,
+  readClassLayout,
+  routineDirectiveStatements,
   createImplementationCommand,
   findRoutineCounterpart,
   indexRoutineDeclarations,
   planRoutineImplementation,
+  planRoutineDeclaration,
+  planRoutineCounterpart,
+  compactRoutineHeading,
   routineDeclarationRange,
   routineCounterpartKey,
   routineHeaderEnd,

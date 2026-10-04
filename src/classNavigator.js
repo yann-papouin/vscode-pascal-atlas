@@ -7,12 +7,15 @@ const { maskPascalNonCode } = require('./binarySymbols');
 const { parseSourceUnitSymbols } = require('./usesQuickFix');
 const { ClassNavigatorWebview } = require('./classNavigatorWebview');
 const {
+  compactRoutineHeading,
   createImplementationCommand,
   findRoutineCounterpart,
   indexRoutineDeclarations,
   methodDeclarationDirectives,
+  readClassLayout,
   routineCounterpartKey,
   routineDeclarationRange,
+  routineDirectiveStatements,
   routineHeaderEnd
 } = require('./implementationCore');
 const {
@@ -246,7 +249,11 @@ function routineFlavorAt(code, offset, owner) {
   return isClassRoutine ? 'class' : 'instance';
 }
 
-function memberAccessAt(code, typeOffset, memberOffset, typeKind) {
+function memberAccessAt(code, typeOffset, memberOffset, typeKind, layout) {
+  if (layout) {
+    return layout.sections.find(section => memberOffset >= section.bodyStart && memberOffset < section.end)?.access
+      || (typeKind === 'class' ? 'published' : 'public');
+  }
   const segment = code.slice(typeOffset, memberOffset);
   const pattern = /^\s*(strict\s+private|strict\s+protected|private|protected|public|published|automated)\b/gim;
   let access = typeKind === 'record' || typeKind === 'object' || typeKind === 'interface'
@@ -734,6 +741,8 @@ function addDeclarationHeaders(text, code, nodes) {
     if (!range) continue;
     node.declarationStartOffset = range.start;
     node.declarationHeaderEndOffset = range.end;
+    node.declarationTerminatorEndOffset = range.end
+      ? routineDirectiveStatements(code, range.end).at(-1)?.end ?? range.end : undefined;
     const kind = /^(?:class\s+)?(function|procedure|constructor|destructor|operator)\b/i
       .exec(code.slice(range.start));
     if (kind) {
@@ -741,7 +750,7 @@ function addDeclarationHeaders(text, code, nodes) {
       node.specialRoutineKind = specialRoutineKind(node.name, node.routineKind);
       if (node.owner) node.routineFlavor = routineFlavorAt(code, node.declarationOffset, node.owner);
     }
-    if (range.end) node.signature = text.slice(range.start, range.end).replace(/\s+/g, ' ').trim();
+    if (range.end) node.signature = compactRoutineHeading(text.slice(range.start, range.end));
   }
 }
 
@@ -871,7 +880,8 @@ function implementationRoutineForest(code) {
   // Helper classes and records may be declared in the implementation section.
   // Their body-less method declarations must not be interpreted as nested local
   // functions; Josh.DB.pas previously turned hundreds of methods into one graph.
-  const structureRanges = [...structureEndOffsets(code)];
+  const structureRanges = [...structureEndOffsets(code)].map(([start, end]) =>
+    [start, readClassLayout(code, start, code)?.endOffset ?? end]);
   const headers = routineHeaders(code, implementation.index + implementation[0].length)
     .filter(header => !structureRanges.some(([start, end]) =>
       header.start >= start && header.start < end));
@@ -952,8 +962,7 @@ function reconcileClassRoutineCounterparts(text, code, types, rootTypes, routine
       types.push(type); rootTypes.push(type); byOwner.set(owner, type);
     }
     if (type.typeKind !== 'class') continue;
-    const signature = text.slice(header.start, header.headerEnd < 0 ? lineEndOffset(text, header.start) : header.headerEnd)
-      .replace(/\s+/g, ' ').trim();
+    const signature = compactRoutineHeading(text.slice(header.start, header.headerEnd < 0 ? lineEndOffset(text, header.start) : header.headerEnd));
     const key = routineCounterpartKey(signature, header.name);
     const node = findRoutineCounterpart(declarations.get(type), signature, header.name);
     if (node) {
@@ -989,8 +998,7 @@ function reconcileGlobalRoutineCounterparts(text, code, globals, routines, fores
   for (const body of forest) {
     const header = body.header;
     if (header.owner) continue;
-    const signature = text.slice(header.start, header.headerEnd < 0 ? lineEndOffset(text, header.start) : header.headerEnd)
-      .replace(/\s+/g, ' ').trim();
+    const signature = compactRoutineHeading(text.slice(header.start, header.headerEnd < 0 ? lineEndOffset(text, header.start) : header.headerEnd));
     let node = findRoutineCounterpart(index, signature, header.name);
     const privateNode = privateByOffset.get(header.nameOffset);
     if (node && privateNode && node !== privateNode) {
@@ -1032,6 +1040,14 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
   const source = parseSourceUnitSymbols(text, filePath, code, {
     includeImplementationSymbols: true
   });
+  const classLayouts = new Map();
+  for (const type of source?.types || []) {
+    if (type.structureKind !== 'class') continue;
+    const layout = readClassLayout(text, type.offset, code);
+    if (!layout) continue;
+    classLayouts.set(type.offset, layout);
+    if (!layout.forward) structureEnds.set(type.offset, layout.endOffset);
+  }
   const parsedUses = parseUsesNodes(text, code);
   const roots = [];
   const routineNodes = [];
@@ -1060,7 +1076,16 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
   roots.push(...projectReferenceRoots);
 
   const sourceMembers = source?.members || [];
-  const members = sourceMembers.filter(item => item.kind === 'routine');
+  // The lexical layout also recovers direct methods after anonymous record
+  // fields and inline visibility labels that the general symbol index omits.
+  const layoutMembers = [...classLayouts.values()].flatMap(layout => layout.members
+    .filter(member => member.kind === 'routine').map(member => ({
+      kind: 'routine', owner: layout.name, symbol: member.name, offset: member.nameOffset,
+      signature: compactRoutineHeading(text.slice(member.start, member.headerEnd)),
+      attributeStart: member.attributeStart
+    })));
+  const members = [...new Map([...sourceMembers.filter(item => item.kind === 'routine'), ...layoutMembers]
+    .map(member => [member.offset, member])).values()];
   const properties = sourceMembers.filter(item => item.kind === 'property');
   const memberDeclarationOffsets = new Set(members.map(item => item.offset));
   const definitions = source?.definitions || fallbackRoutineDefinitions(text, code);
@@ -1106,6 +1131,7 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
     if (type.structureKind === 'interface' && !settings.showInterfaces) continue;
     if ((type.structureKind === 'record' || type.structureKind === 'object')
       && !settings.showRecordsAndObjects) continue;
+    const layout = classLayouts.get(type.offset);
     const typeMembers = members
       .filter(member => member.owner?.toLowerCase() === type.symbol.toLowerCase()
         && member.offset >= type.offset && member.offset < (structureEnds.get(type.offset) ?? text.length))
@@ -1121,8 +1147,9 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
           routineKind,
           routineFlavor: routineFlavorAt(code, member.offset, type.symbol),
           specialRoutineKind: specialRoutineKind(member.symbol, routineKind),
-          access: memberAccessAt(code, type.offset, member.offset, type.structureKind),
+          access: memberAccessAt(code, type.offset, member.offset, type.structureKind, layout),
           declarationOffset: member.offset,
+          declarationAttributesStartOffset: member.attributeStart,
           implementationOffset: member.implementationOffset,
           signature: member.signature,
           children: []
@@ -1140,7 +1167,7 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
         label: property.symbol,
         name: property.symbol,
         owner: type.symbol,
-        access: memberAccessAt(code, type.offset, property.offset, type.structureKind),
+        access: memberAccessAt(code, type.offset, property.offset, type.structureKind, layout),
         offset: property.offset,
         rangeOffset: lineStartOffset(text, property.offset),
         declarationEndOffset: lineEndOffset(text, property.offset),
@@ -1163,6 +1190,7 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
       name: type.symbol,
       offset: type.offset,
       declarationEndOffset: structureEnds.get(type.offset) ?? lineEndOffset(text, type.offset),
+      classLayout: layout,
       children: typeChildren
     });
   }

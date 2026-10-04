@@ -7,7 +7,7 @@ const {
   buildClassNavigatorModel, ClassNavigatorProvider, serializeNavigatorNode
 } = require('../src/classNavigator');
 const { ClassNavigatorWebview, navigatorWebviewHtml } = require('../src/classNavigatorWebview');
-const { planRoutineImplementation } = require('../src/implementationCore');
+const { planRoutineImplementation, planRoutineCounterpart } = require('../src/implementationCore');
 
 class Emitter {
   listeners = new Set();
@@ -394,4 +394,44 @@ test('generated implementations repair the selected Navigator row through a data
   assert.equal(client.document.activeElement, row);
   assert.equal(client.row(routine.parent.id).getAttribute('aria-expanded'), 'true');
   assert.deepEqual(client.counts(), before);
+});
+
+test('generated declarations retain selected rows and the viewport while clearing the missing marker', async () => {
+  const client = clientHarness();
+  let source = SOURCE.replace('  public', '  protected').replace('procedure TDemo.Last;',
+    'procedure TDemo.Missing;\nbegin\nend;\nprocedure TDemo.Last;');
+  let model = modelFor(source);
+  const messages = [];
+  const tree = new ClassNavigatorWebview({ EventEmitter: Emitter }, 'test', {
+    getRoots: () => model.roots, serializeNode: serializeNavigatorNode,
+    nodePath: node => node?.parent ? [node.parent.id] : []
+  });
+  tree.webview = { postMessage: message => {
+    const payload = JSON.parse(JSON.stringify(message));
+    messages.push(payload); client.send(payload); return Promise.resolve(true);
+  } };
+  tree.handleMessage({ type: 'ready' });
+  const routine = model.routineNodes.find(node => node.name === 'Missing');
+  await tree.reveal(routine, { select: true });
+  const row = client.row(routine.id);
+  const first = client.row(model.routineNodes.find(node => node.name === 'First').id);
+  row.focus();
+  client.document.getElementById('tree').scrollTop = 66;
+  const top = row.getBoundingClientRect().top;
+  const created = client.counts()[0];
+  const plan = planRoutineCounterpart(source, model, routine.implementationOffset);
+  assert.equal(plan.reason, undefined);
+  for (const edit of [...plan.edits].reverse()) source = source.slice(0, edit.offset) + edit.text + source.slice(edit.endOffset);
+  model = modelFor(source);
+  tree.refresh();
+  assert.equal(messages.at(-1).type, 'patch');
+  assert.equal(client.row(routine.id), row);
+  assert.equal(client.row(model.routineNodes.find(node => node.name === 'First').id), first);
+  assert.equal(client.counts()[0], created);
+  assert.equal(row.classList.contains('missing-counterpart'), false);
+  assert.equal(row.classList.contains('selected'), true);
+  assert.equal(client.document.activeElement, row);
+  assert.equal(row.getBoundingClientRect().top, top);
+  assert.equal(row.children[1].style.color, 'var(--vscode-charts-yellow, #cca700)');
+  assert.equal(client.row(routine.parent.id).getAttribute('aria-expanded'), 'true');
 });

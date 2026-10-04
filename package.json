@@ -357,7 +357,7 @@
 			},
 			{
 				"command": "pascalAtlas.createImplementation",
-				"title": "Pascal Atlas: Create Routine Implementation"
+				"title": "Pascal Atlas: Create Missing Routine Counterpart"
 			},
 			{
 				"command": "pascalAtlas.addUnit",

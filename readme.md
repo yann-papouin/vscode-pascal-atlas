@@ -44,7 +44,7 @@ The class navigator focuses on structure rather than ordinary fields and local v
 - Nested routines appear recursively under their owning routine instead of being misclassified as global.
 - Members can be grouped by visibility or shown in original source order.
 - Types and properties navigate to declarations; routines prefer implementations.
-- `Ctrl+Shift+C` creates a missing class or global routine implementation from its declaration, uses neighboring implementations or alphabetical order for placement, and moves the caret to the first blank body line. Creation is a single undoable edit.
+- `Ctrl+Shift+C` creates the missing declaration or implementation of a class or global routine, using immediate neighbors before alphabetical placement. A new class declaration follows protected neighbors first, then private neighbors, with public as the fallback. The caret moves to the new declaration's name or the implementation's first blank body line; creation and required overload repairs form one undoable edit.
 - Editor clicks and scrolling follow the active item and mark its source range in the line-number gutter.
 - Multiple `uses` blocks plus Unit `initialization` and `finalization` sections are independently navigable.
 

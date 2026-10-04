@@ -6,7 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { buildClassNavigatorModel, implementationRoutineForest } = require('../src/classNavigator');
 const { maskPascalNonCode } = require('../src/binarySymbols');
-const { createImplementationCommand, planRoutineImplementation } = require('../src/implementationCore');
+const { createImplementationCommand, planRoutineImplementation, planRoutineCounterpart, readClassLayout } = require('../src/implementationCore');
 
 const body = name => `procedure ${name};\nbegin\nend;`;
 const unit = (declarations, bodies = [], tail = 'end.') => `unit CreateSample;
@@ -245,11 +245,12 @@ function editorHarness(initial) {
     async edit(callback, options) {
       if (!this.acceptEdits) return false;
       const insertions = [];
-      callback({ insert: (position, text) => insertions.push({ offset: document.offsetAt(position), text }) });
+      callback({ insert: (position, text) => insertions.push({ offset: document.offsetAt(position), text }),
+        replace: (range, text) => insertions.push({ offset: document.offsetAt(range.start), endOffset: document.offsetAt(range.end), text }) });
       if (!insertions.length) return false;
       undo.push(source); edits.push({ insertions, options });
       for (const insertion of insertions.sort((left, right) => right.offset - left.offset)) {
-        source = source.slice(0, insertion.offset) + insertion.text + source.slice(insertion.offset);
+        source = source.slice(0, insertion.offset) + insertion.text + source.slice(insertion.endOffset ?? insertion.offset);
       }
       document.version += 1;
       return true;
@@ -330,7 +331,7 @@ test('the command respects selection, editor changes and rejected document edits
 test('the manifest exposes Ctrl+Shift+C independently of Navigator visibility or mode', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   const command = manifest.contributes.commands.find(item => item.command === 'pascalAtlas.createImplementation');
-  assert.equal(command.title, 'Pascal Atlas: Create Routine Implementation');
+  assert.equal(command.title, 'Pascal Atlas: Create Missing Routine Counterpart');
   const binding = manifest.contributes.keybindings.find(item => item.command === command.command);
   assert.equal(binding.key, 'ctrl+shift+c');
   assert.match(binding.when, /editorTextFocus.*!editorReadonly/);
@@ -401,4 +402,316 @@ test('routine names on the following line still expose the entire declaration he
   const source = unit(['class function\n      Missing(\n        Value: Integer\n      ): Integer; static;']);
   const { result } = generate(source);
   assert.match(result, /class function TDemo\.Missing\(Value: Integer\): Integer;/);
+});
+
+function applyCounterpart(source, plan) {
+  for (const edit of [...plan.edits].sort((left, right) => right.offset - left.offset)) {
+    source = source.slice(0, edit.offset) + edit.text + source.slice(edit.endOffset);
+  }
+  return source;
+}
+
+function declare(source, name = 'Missing', caret) {
+  const model = modelFor(source);
+  const target = model.routineNodes.find(node => node.name === name && Number.isInteger(node.implementationOffset));
+  const plan = planRoutineCounterpart(source, model, caret ?? target.implementationOffset);
+  assert.equal(plan.reason, undefined, plan.reason);
+  assert.equal(plan.direction, 'declaration');
+  const result = applyCounterpart(source, plan);
+  const after = modelFor(result);
+  const repaired = after.routineNodes.find(node => node.id === target.id);
+  assert.ok(repaired, 'The generated declaration retains its routine identity');
+  assert.equal(repaired.missingCounterpart, undefined);
+  assert.ok(Number.isInteger(repaired.declarationOffset));
+  assert.equal(result.slice(plan.caretOffset, plan.caretOffset + name.length), name);
+  assert.equal(plan.caretOffset, repaired.declarationOffset);
+  return { result, after, repaired, plan };
+}
+const declarationOrder = source => readClassLayout(source, modelFor(source).roots.find(node => node.label === 'TDemo').offset)
+  .members.filter(member => member.kind === 'routine').map(member => member.name);
+
+for (const [description, declarations, bodies, expected] of [
+  ['adjacent declarations', ['procedure Before;', 'procedure After;'], ['TDemo.Before', 'TDemo.Missing', 'TDemo.After'], ['Before', 'Missing', 'After']],
+  ['reversed adjacent declarations', ['procedure After;', 'procedure Before;'], ['TDemo.Before', 'TDemo.Missing', 'TDemo.After'], ['After', 'Missing', 'Before']],
+  ['separated declarations', ['procedure Before;', 'procedure Unimplemented;', 'procedure After;'], ['TDemo.Before', 'TDemo.Missing', 'TDemo.After'], ['Before', 'Missing', 'Unimplemented', 'After']],
+  ['previous declaration only', ['procedure Before;'], ['TDemo.Before', 'TDemo.Missing', 'TDemo.After'], ['Before', 'Missing']],
+  ['next declaration only', ['procedure After;'], ['TDemo.Before', 'TDemo.Missing', 'TDemo.After'], ['Missing', 'After']]
+]) {
+  test(`reverse generation uses ${description}`, () => {
+    assert.deepEqual(declarationOrder(declare(unit(declarations, bodies.map(body))).result), expected);
+  });
+}
+
+test('reverse placement does not search past missing immediate counterparts', () => {
+  const source = unit(['procedure Zeta;', 'procedure Alpha;'],
+    ['TDemo.Zeta', 'TDemo.MissingPrevious', 'TDemo.Missing', 'TDemo.MissingNext', 'TDemo.Alpha'].map(body));
+  assert.deepEqual(declarationOrder(declare(source).result), ['Missing', 'Zeta', 'Alpha']);
+});
+
+test('reverse placement prefers protected over private and public neighbors', () => {
+  for (const other of ['private', 'public']) {
+    const source = unit([other, 'procedure Before;', 'protected', 'procedure After;'],
+      ['TDemo.Before', 'TDemo.Missing', 'TDemo.After'].map(body));
+    const { result, repaired } = declare(source);
+    assert.equal(repaired.access, 'protected');
+    assert.match(result, /protected\n    procedure Missing;\n    procedure After;/);
+  }
+});
+
+test('private is preferred when no protected neighbor exists, retaining strict visibility', () => {
+  for (const section of ['private', 'strict private', 'strict protected']) {
+    const source = unit([section, 'procedure Before;', 'public', 'procedure After;'],
+      ['TDemo.Before', 'TDemo.Missing', 'TDemo.After'].map(body));
+    const { repaired } = declare(source);
+    assert.equal(repaired.access, section.replace(' ', '-'));
+  }
+});
+
+test('neighbors in separate visibility blocks use the previous block', () => {
+  const source = unit(['protected', 'procedure After;', 'private', 'FValue: Integer;',
+    'protected', 'procedure Before;'], ['TDemo.Before', 'TDemo.Missing', 'TDemo.After'].map(body));
+  assert.deepEqual(declarationOrder(declare(source).result), ['After', 'Before', 'Missing']);
+});
+
+test('alphabetical fallback uses public declarations across blocks and keeps overloads together', () => {
+  const source = unit(['private', 'procedure Alpha;', 'public', 'procedure Zeta;',
+    'protected', 'procedure Other;', 'public', 'procedure Omega;'], [body('TDemo.Missing')]);
+  const { result, repaired } = declare(source);
+  assert.equal(repaired.access, 'public');
+  assert.match(result, /public\n    procedure Missing;\n    procedure Zeta;/);
+  const overloaded = unit(['procedure Missing(Value: Integer); overload;'],
+    ['procedure TDemo.Missing(Value: string);\nbegin\nend;']);
+  const created = declare(overloaded).result;
+  assert.match(created, /procedure Missing\(Value: Integer\); overload;\n    procedure Missing\(Value: string\); overload;/);
+});
+
+test('empty public blocks accept declarations after fields; absent public gets a new block', () => {
+  const empty = unit(['FValue: Integer;', 'property Value: Integer read FValue;'], [body('TDemo.Missing')]);
+  assert.match(declare(empty).result, /property Value: Integer read FValue;\n    procedure Missing;\n  end;/);
+  const absent = unit(['private', 'FValue: Integer;'], [body('TDemo.Missing')]).replace('  public\n', '').replace('    private\n', '  private\n');
+  const { result, after } = declare(absent);
+  assert.match(result, /FValue: Integer;\n  public\n    procedure Missing;\n  end;/);
+  assert.equal(readClassLayout(result, after.roots[0].offset).members.find(member => member.name === 'FValue').access, 'private');
+});
+
+test('nested class visibility does not leak into the outer class or its insertion anchors', () => {
+  const source = unit(['private', 'type', 'TInner = class', 'public', 'procedure Inner;', 'end;', 'procedure Before;'],
+    ['TDemo.Before', 'TDemo.Missing'].map(body));
+  const initial = modelFor(source);
+  assert.equal(initial.routineNodes.find(node => node.name === 'Before').access, 'private');
+  const { repaired } = declare(source);
+  assert.equal(repaired.access, 'private');
+});
+
+test('anonymous record fields and inline visibility labels retain the correct class boundary', () => {
+  const source = unit(['private', 'FData: record', 'Value: Integer;', 'end;', 'public procedure Before;'],
+    ['TDemo.Before', 'TDemo.Missing'].map(body));
+  const { result, repaired } = declare(source);
+  assert.equal(repaired.access, 'public');
+  assert.ok(result.indexOf('procedure Missing;') > result.indexOf('public procedure Before;'));
+  assert.ok(result.includes('FData: record\n    Value: Integer;\n    end;'));
+});
+
+test('shorthand classes expand while forward-only or unavailable owners reject creation', () => {
+  const source = 'unit CreateSample;\ninterface\ntype\n  TDemo = class(TObject); // class note\nimplementation\n' + body('TDemo.Missing') + '\nend.';
+  const { result } = declare(source);
+  assert.match(result, /TDemo = class\(TObject\)\n  public\n    procedure Missing;\n  end; \/\/ class note/);
+  for (const altered of [source.replace('class(TObject)', 'class'), source.replace('  TDemo = class(TObject); // class note\n', '')]) {
+    const model = modelFor(altered);
+    const target = model.routineNodes.find(node => node.name === 'Missing');
+    assert.match(planRoutineCounterpart(altered, model, target.implementationOffset).reason, /class definition/);
+  }
+});
+
+test('reverse generation retains defaults, calling conventions, generic parameters and class modifiers', () => {
+  const source = `unit CreateSample;
+interface
+type
+  TOuter<T: class> = class
+  type
+    TInner<U> = class
+    public
+    end;
+  end;
+implementation
+class function TOuter<T>.TInner<U>.Missing<V>(
+  const Text: string = 'a  b''c'; Value: V = nil): U; stdcall;
+begin
+end;
+end.`;
+  const { result, repaired } = declare(source);
+  assert.match(result, /class function Missing<V>\( const Text: string = 'a  b''c'; Value: V = nil\): U; stdcall;/);
+  assert.equal(repaired.parent.name, 'TInner');
+  assert.ok(result.includes('class function TOuter<T>.TInner<U>.Missing<V>('));
+});
+
+test('reverse anchors include multiline directives, trailing notes and attached documentation/attributes', () => {
+  const source = unit(['procedure Before;', '  reintroduce;', '  virtual; // trailing note',
+    '// documentation for After', '[SomeAttribute]', 'procedure After;'],
+    ['TDemo.Before', 'TDemo.Missing', 'TDemo.After'].map(body));
+  const { result } = declare(source);
+  assert.match(result, /virtual; \/\/ trailing note\n    procedure Missing;/);
+  assert.ok(result.includes('// documentation for After\n    [SomeAttribute]\n    procedure After;'));
+  const nextOnly = unit(['// documentation', '[SomeAttribute]', 'procedure After;'],
+    ['TDemo.Missing', 'TDemo.After'].map(body));
+  assert.match(declare(nextOnly).result, /procedure Missing;\n    \/\/ documentation\n    \[SomeAttribute\]\n    procedure After;/);
+});
+
+test('global reverse generation uses interface neighbors and ignores other classes', () => {
+  const source = `unit CreateSample;
+interface
+procedure After;
+procedure Before;
+implementation
+${body('Before')}
+${body('TOther.Work')}
+${body('Missing')}
+${body('After')}
+end.`;
+  const { result, repaired } = declare(source);
+  assert.match(result, /interface\nprocedure After;\nprocedure Missing;\nprocedure Before;/);
+  assert.ok(repaired.declarationOffset < result.indexOf('implementation'));
+});
+
+test('global declarations append after interface types when none exist and preserve literal/comment headers', () => {
+  const source = `unit CreateSample;
+interface
+type TItem = Integer;
+var Item: TItem;
+implementation
+function Missing(Value: TItem { type note }; const Text: string = 'a  b'): Integer; cdecl;
+begin
+  Result := Value;
+end;
+end.`;
+  const { result } = declare(source);
+  assert.match(result, /var Item: TItem;\n\nfunction Missing\(Value: TItem \{ type note \}; const Text: string = 'a  b'\): Integer; cdecl;\n\nimplementation/);
+});
+
+test('overload repairs update directives and expand abbreviated headings without changing bodies', () => {
+  const source = unit(['procedure Missing(Value: Integer); reintroduce; virtual;'], [
+    'procedure TDemo.Missing; // heading note\nbegin\n  Use(Value);\nend;',
+    'procedure TDemo.Missing(Value: string);\nbegin\n  Use(Value);\nend;'
+  ]);
+  const model = modelFor(source);
+  const target = model.routineNodes.find(node => node.missingCounterpart === 'declaration');
+  const plan = planRoutineCounterpart(source, model, target.implementationOffset);
+  assert.equal(plan.reason, undefined);
+  const result = applyCounterpart(source, plan);
+  assert.match(result, /procedure Missing\(Value: Integer\); reintroduce; overload; virtual;/);
+  assert.match(result, /procedure Missing\(Value: string\); overload;/);
+  assert.ok(result.includes('procedure TDemo.Missing(Value: Integer); // heading note\nbegin\n  Use(Value);\nend;'));
+  assert.equal(result.slice(plan.caretOffset, plan.caretOffset + 7), 'Missing');
+  assert.equal(modelFor(result).routineNodes.filter(node => node.missingCounterpart).length, 0);
+  assert.equal(plan.edits.length, 3);
+});
+
+test('global private overloads remain private while their directives are made consistent', () => {
+  const source = 'unit CreateSample;\ninterface\nimplementation\nprocedure Missing(Value: string);\nbegin\nend;\nprocedure Missing(Value: Integer);\nbegin\nend;\nend.';
+  const model = modelFor(source);
+  const plan = planRoutineCounterpart(source, model, source.lastIndexOf('Missing(Value: Integer)'));
+  assert.equal(plan.reason, undefined);
+  const result = applyCounterpart(source, plan);
+  assert.match(result, /interface\n\nprocedure Missing\(Value: Integer\); overload;\n\nimplementation/);
+  assert.match(result, /implementation\nprocedure Missing\(Value: string\); overload;/);
+  assert.equal(modelFor(result).routineNodes.filter(node => node.declarationOffset < result.indexOf('implementation')).length, 1);
+});
+
+test('invalid overload signatures and property contracts reject all changes', () => {
+  for (const [declarations, implementation] of [
+    [['function Missing(Value: Integer): Integer;'], 'function TDemo.Missing(Value: Integer): string;'],
+    [['procedure Missing(var Value: Integer);'], 'procedure TDemo.Missing(const Value: Integer);'],
+    [['function Missing: Integer;', 'property Value: Integer read Missing;'], 'function TDemo.Missing(Index: Integer): Integer;'],
+    [['Missing: Integer;'], 'procedure TDemo.Missing;']
+  ]) {
+    const source = unit(declarations, [implementation + '\nbegin\nend;']);
+    const model = modelFor(source);
+    const target = model.routineNodes.find(node => node.missingCounterpart === 'declaration');
+    const plan = planRoutineCounterpart(source, model, target.implementationOffset);
+    assert.ok(plan.reason);
+    assert.equal(plan.edits, undefined);
+  }
+});
+
+test('a caret inside a top-level body works, while local routines and existing counterparts are rejected', () => {
+  const source = unit([], ['procedure TDemo.Missing;\n  procedure Local;\n  begin\n  end;\nbegin\n  Local;\nend;']);
+  const model = modelFor(source);
+  const caret = source.lastIndexOf('Local;');
+  assert.equal(declare(source, 'Missing', caret).plan.direction, 'declaration');
+  assert.match(planRoutineCounterpart(source, model, source.indexOf('Local;')).reason, /Local routines/);
+  const paired = unit(['procedure Missing(Value: Integer);'], ['procedure TDemo.Missing;\nbegin\nend;']);
+  assert.match(planRoutineCounterpart(paired, modelFor(paired), paired.indexOf('TDemo.Missing') + 6).reason, /already has a declaration/);
+});
+
+test('reverse generation honors CRLF and tab indentation', () => {
+  const source = 'unit CreateSample;\ninterface\ntype\n\tTDemo = class\n\tprivate\n\t\tprocedure Before;\n\tend;\nimplementation\n'
+    + [body('TDemo.Before'), body('TDemo.Missing')].join('\n') + '\nend.';
+  const text = source.replace(/\n/g, '\r\n');
+  const plan = planRoutineCounterpart(text, modelFor(text), text.lastIndexOf('Missing'), { insertSpaces: false, tabSize: 4 });
+  assert.equal(plan.reason, undefined);
+  assert.equal(plan.edits[0].text, '\t\tprocedure Missing;\r\n');
+});
+
+test('reverse creation and overload repairs are one undoable edit with the caret on the new declaration', async () => {
+  const source = unit(['procedure Missing(Value: Integer);'], [
+    'procedure TDemo.Missing;\nbegin\nend;', 'procedure TDemo.Missing(Value: string);\nbegin\nend;'
+  ]);
+  const env = editorHarness(source);
+  const position = env.document.positionAt(source.lastIndexOf('Missing(Value: string)'));
+  env.editor.selection = new env.vscode.Selection(position, position);
+  const command = createImplementationCommand(env.vscode, { readyModel: env.readyModel });
+  assert.equal(await command(), true);
+  assert.equal(env.edits.length, 1);
+  assert.equal(env.edits[0].insertions.length, 3);
+  const current = modelFor(env.document.getText());
+  const target = current.routineNodes.find(node => node.signature.includes('Value: string'));
+  assert.equal(env.document.offsetAt(env.editor.selection.active), target.declarationOffset);
+  assert.equal(await command(), false);
+  assert.equal(env.edits.length, 1);
+  env.undo();
+  assert.equal(env.document.getText(), source);
+});
+
+test('the command performs shorthand class expansion using the same undo group', async () => {
+  const source = 'unit CreateSample;\ninterface\ntype\n  TDemo = class(TObject);\nimplementation\n' + body('TDemo.Missing') + '\nend.';
+  const env = editorHarness(source);
+  assert.equal(await createImplementationCommand(env.vscode, { readyModel: env.readyModel })(), true);
+  assert.equal(env.edits.length, 1);
+  assert.ok(env.edits[0].insertions[0].endOffset > env.edits[0].insertions[0].offset);
+  env.undo();
+  assert.equal(env.document.getText(), source);
+});
+
+test('line comments in implementation headers remain legal in the copied declaration', () => {
+  const source = 'unit CreateSample;\ninterface\nimplementation\nfunction Missing(\n  // parameter note\n  Value: Integer): Integer;\nbegin\n  Result := Value;\nend;\nend.';
+  const { result } = declare(source);
+  assert.ok(result.includes('// parameter note\n Value: Integer): Integer;'));
+  assert.equal(modelFor(result).routineNodes.filter(node => node.name === 'Missing').length, 1);
+});
+
+test('nested empty interfaces with GUIDs do not disturb outer private visibility', () => {
+  const source = unit(['private', 'type', 'IEmpty = interface', "['{01234567-89AB-CDEF-0123-456789ABCDEF}']", 'end;', 'procedure Before;'],
+    ['TDemo.Before', 'TDemo.Missing'].map(body));
+  const { repaired } = declare(source);
+  assert.equal(repaired.access, 'private');
+});
+
+test('overload repair supplies an omitted function result type and preserves defining comments', () => {
+  const source = unit(['function Missing: Integer;'], [
+    'function TDemo.Missing { heading note };\nbegin\n  Result := 1;\nend;',
+    'function TDemo.Missing(Value: Integer): Integer;\nbegin\n  Result := Value;\nend;'
+  ]);
+  const model = modelFor(source);
+  const target = model.routineNodes.find(node => node.missingCounterpart === 'declaration');
+  const plan = planRoutineCounterpart(source, model, target.implementationOffset);
+  assert.equal(plan.reason, undefined);
+  assert.match(applyCounterpart(source, plan), /function TDemo\.Missing: Integer \{ heading note \};/);
+});
+
+test('a conditional visibility label is rejected even when its following declaration is outside the guard', () => {
+  const source = unit(['{$IFDEF FEATURE}', 'protected', '{$ENDIF}', 'procedure Before;'],
+    ['TDemo.Before', 'TDemo.Missing'].map(body));
+  const model = modelFor(source);
+  const target = model.routineNodes.find(node => node.name === 'Missing');
+  assert.match(planRoutineCounterpart(source, model, target.implementationOffset).reason, /visibility section is conditional/);
 });
