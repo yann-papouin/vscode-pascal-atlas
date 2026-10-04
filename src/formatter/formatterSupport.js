@@ -175,6 +175,16 @@ function runFormatter(executable, args, workingDirectory, cancellationToken) {
   });
 }
 
+function quoteCommandArgument(argument) {
+  const value = String(argument);
+  if (!/[\s"]/.test(value)) return value;
+  return `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"`;
+}
+
+function formatCommandLine(executable, args) {
+  return [executable, ...args].map(quoteCommandArgument).join(' ');
+}
+
 async function formatDocument(context, document, cancellationToken, output) {
   const executable = findFormatterExecutable(document);
   if (!executable || !fs.existsSync(executable)) {
@@ -242,12 +252,9 @@ async function formatDocument(context, document, cancellationToken, output) {
       ),
       fs.promises.writeFile(configPath, formatterConfig, "utf8")
     ]);
-    await runFormatter(
-      executable,
-      ["-silent", "-e", "CodePage65001", "-config", configPath, inputPath],
-      temporaryDirectory,
-      cancellationToken
-    );
+    const args = ["-silent", "-config", configPath, inputPath];
+    output.info(`Formatter command: ${formatCommandLine(executable, args)}`);
+    await runFormatter(executable, args, temporaryDirectory, cancellationToken);
 
     let formatted = await fs.promises.readFile(inputPath, "utf8");
     if (formatted.charCodeAt(0) === 0xfeff) {
@@ -320,9 +327,9 @@ function lineFormattingEdit(document, lineNumber, options = {}) {
     return desiredIndent.length === currentIndentLength
       ? undefined
       : vscode.TextEdit.replace(
-          new vscode.Range(lineNumber, 0, lineNumber, currentIndentLength),
-          desiredIndent
-        );
+        new vscode.Range(lineNumber, 0, lineNumber, currentIndentLength),
+        desiredIndent
+      );
   }
   return lines[lineNumber] === line.text
     ? undefined
@@ -367,9 +374,9 @@ function continuationFormattingEdit(document, lineNumber) {
   return desiredIndent.length === currentIndentLength
     ? undefined
     : vscode.TextEdit.replace(
-        new vscode.Range(lineNumber, 0, lineNumber, currentIndentLength),
-        desiredIndent
-      );
+      new vscode.Range(lineNumber, 0, lineNumber, currentIndentLength),
+      desiredIndent
+    );
 }
 
 function registerKeywordHighlighting(context) {
