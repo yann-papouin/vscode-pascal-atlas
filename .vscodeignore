@@ -1,0 +1,12 @@
+src/**
+test/**
+.migration/**
+.git/**
+.vscode/**
+node_modules/**
+out/test/**
+tsconfig*.json
+package-lock.json
+.vscode-test/**
+out/package.json
+out/resources/**

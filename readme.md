@@ -130,10 +130,19 @@ Pascal Atlas is independently developed by **Yann Papouin** and is not affiliate
 
 ### Development and publishing
 
+All extension modules, workers, browser clients, and tests are written in strict TypeScript. The build emits extension and worker modules to `out/src` and browser bundles to `out/webview`; static resources remain at the extension root.
+
 ```powershell
+npm ci
+npm run check-types
 npm test
+npm run test:integration
 npm run package
 ```
+
+Run `npm run test:host` for an isolated Extension Development Host smoke test. Set `VSCODE_EXECUTABLE` to use an installed VS Code executable, or `VSCODE_VERSION=1.140.0` to download and test the minimum supported version. The host tests use temporary workspace, profile, and extension folders under `.vscode-test`.
+
+Use `npm run watch`, `npm run watch:webviews`, and `npm run watch:webview-types` in separate terminals to watch extension/test compilation, browser bundles, and browser type checking.
 
 After configuring a Marketplace Publisher, publish with:
 

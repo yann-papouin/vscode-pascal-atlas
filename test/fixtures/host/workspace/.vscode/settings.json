@@ -1,0 +1,22 @@
+{
+  "pascalAtlas.dependencies.autoInstall": false,
+  "pascalAtlas.encoding.enabled": false,
+  "pascalAtlas.diagnostics.compiler.enabled": false,
+  "pascalAtlas.diagnostics.syntax.debounceMs": 0,
+  "pascalAtlas.navigation.isolatePlatformSources": false,
+  "pascalAtlas.paths.enabled": false,
+  "pascalAtlas.projectGroups.autoDetect": false,
+  "pascalAtlas.classNavigator.aiSteps.enabled": false,
+  "pascalAtlas.classNavigator.pauseWhenCollapsed": false,
+  "pascalAtlas.classNavigator.defaultOpenBelowExplorer": false,
+  "pascalAtlas.symbols.compiled.enabled": false,
+  "pascalAtlas.missingUnits.enabled": false,
+  "pascalAtlas.formatter.formatOnSave": false,
+  "pascalAtlas.formatter.executablePath": "",
+  "update.mode": "none",
+  "extensions.autoUpdate": false,
+  "extensions.autoCheckUpdates": false,
+  "telemetry.telemetryLevel": "off",
+  "security.workspace.trust.enabled": false,
+  "window.restoreWindows": "none"
+}

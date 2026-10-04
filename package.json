@@ -8,7 +8,7 @@
 	"icon": "media/pascal-atlas-icon.png",
 	"license": "MIT",
 	"engines": {
-		"vscode": "^1.85.0"
+		"vscode": "^1.140.0"
 	},
 	"categories": [
 		"Programming Languages",
@@ -24,7 +24,7 @@
 		"vallenta",
 		"lsp"
 	],
-	"main": "./src/extension.js",
+	"main": "./out/src/extension.js",
 	"extensionPack": [
 		"VallentaStudio.vallenta-studio",
 		"ms-vscode.cpptools"
@@ -2352,10 +2352,27 @@
 		}
 	},
 	"scripts": {
-		"test": "node --test test/*.test.js",
-		"test:integration": "node --test test/*.integration.js",
-		"package": "npx --yes @vscode/vsce package --allow-missing-repository --allow-star-activation",
-		"publish": "npx --yes @vscode/vsce publish --allow-missing-repository --allow-star-activation",
-		"publish:patch": "npx --yes @vscode/vsce publish patch --allow-missing-repository --allow-star-activation"
+		"check-types": "tsc --noEmit && tsc -p tsconfig.webview.json",
+		"build": "tsc && tsc -p tsconfig.webview.json && npm run build:webviews",
+		"build:webviews": "esbuild src/webview/classNavigatorClient.ts src/webview/controlCenterClient.ts --bundle --platform=browser --format=iife --target=es2022 --outdir=out/webview --sourcemap",
+		"watch": "tsc --watch",
+		"test": "npm run build && node --test out/test/*.test.js",
+		"test:integration": "npm run build && node --test out/test/*.integration.js",
+		"vscode:prepublish": "npm run build",
+		"package": "vsce package --allow-missing-repository --allow-star-activation",
+		"publish": "vsce publish --allow-missing-repository --allow-star-activation",
+		"publish:patch": "vsce publish patch --allow-missing-repository --allow-star-activation",
+		"test:host": "npm run build && node out/test/runExtensionHost.js",
+		"watch:webviews": "esbuild src/webview/classNavigatorClient.ts src/webview/controlCenterClient.ts --bundle --platform=browser --format=iife --target=es2022 --outdir=out/webview --sourcemap --watch",
+		"watch:webview-types": "tsc -p tsconfig.webview.json --watch"
+	},
+	"devDependencies": {
+		"@types/node": "18.19.130",
+		"@types/vscode": "1.140.0",
+		"@types/vscode-webview": "1.57.5",
+		"@vscode/test-electron": "3.1.0",
+		"@vscode/vsce": "4.0.0",
+		"esbuild": "0.28.2",
+		"typescript": "6.0.3"
 	}
 }

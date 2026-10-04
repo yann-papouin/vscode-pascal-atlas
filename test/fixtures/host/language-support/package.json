@@ -1,0 +1,27 @@
+{
+  "name": "pascal-atlas-host-language-fixture",
+  "publisher": "local-test",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "pascal",
+        "extensions": [
+          ".pas"
+        ],
+        "aliases": [
+          "Pascal"
+        ]
+      },
+      {
+        "id": "objectpascal",
+        "aliases": [
+          "Object Pascal"
+        ]
+      }
+    ]
+  }
+}
