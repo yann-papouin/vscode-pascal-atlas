@@ -14,7 +14,7 @@ const {
 } = require('../src/usesQuickFix');
 
 test('source index cache restores unchanged workspaces and invalidates changed files', async t => {
-  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'pascal-union-source-cache-'));
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'pascal-atlas-source-cache-'));
   t.after(() => fs.promises.rm(root, { recursive: true, force: true }));
   const sourcePath = path.join(root, 'CacheSample.pas');
   const cachePath = path.join(root, '.cache', 'source-index.json.gz');
@@ -72,7 +72,7 @@ end.
 
 test('missing-unit assistance is driven by compiler diagnostics instead of speculative Problems', () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'extension.js'), 'utf8');
-  assert.doesNotMatch(extensionSource, /createDiagnosticCollection\(['"]pascalUnion\.missingUnits/);
+  assert.doesNotMatch(extensionSource, /createDiagnosticCollection\(['"]pascalAtlas\.missingUnits/);
   assert.doesNotMatch(extensionSource, /Unknown type.*missing Unit in uses/);
   assert.match(extensionSource, /unknownSymbolFromDiagnostic\(diagnostic\.message\)/);
   assert.match(extensionSource, /registerCodeActionsProvider\(/);

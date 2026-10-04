@@ -20,7 +20,7 @@ const { initializeFirstRunSettings } = require('./defaultSettings');
 const { registerEncodingSupport } = require('./encodingSupport');
 const { registerClassNavigator } = require('./classNavigator');
 const { CompiledSymbolWorkerClient } = require('./compiledSymbolWorkerClient');
-const { PascalUnionControlCenterProvider } = require('./controlCenter');
+const { PascalAtlasControlCenterProvider } = require('./controlCenter');
 const { migrateLegacyFormatterSettings, registerFormatter } = require('./formatter/formatterSupport');
 const { registerExplorerSupport } = require('./explorerSupport');
 const { editorUri, findVisibleEditor, shouldRetireEditor } = require('./editorDecorationLifecycle');
@@ -35,7 +35,7 @@ const {
   isPascalVisibilityDirectiveAt
 } = require('./syntacticColoring');
 const {
-  collectUnionPaths,
+  collectPascalAtlasPaths,
   discoverLoadedProjects,
   ensureVallentaProjectGroups,
   normalizeKey
@@ -95,18 +95,18 @@ const execFileAsync = promisify(execFile);
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
-const MANAGED_PATHS_KEY = 'pascalUnion.managedPaths';
-const GLOBAL_MANAGED_PATHS_KEY = 'pascalUnion.globalManagedPaths';
-const DECORATION_SNAPSHOT_STATE_KEY = 'pascalUnion.decorationSnapshotsV4';
-const SOURCE_UNIT_LOCATION_STATE_KEY = 'pascalUnion.sourceUnitLocationsV1';
-const output = vscode.window.createOutputChannel('Pascal Union');
+const MANAGED_PATHS_KEY = 'pascalAtlas.managedPaths';
+const GLOBAL_MANAGED_PATHS_KEY = 'pascalAtlas.globalManagedPaths';
+const DECORATION_SNAPSHOT_STATE_KEY = 'pascalAtlas.decorationSnapshotsV4';
+const SOURCE_UNIT_LOCATION_STATE_KEY = 'pascalAtlas.sourceUnitLocationsV1';
+const output = vscode.window.createOutputChannel('Pascal Atlas');
 const INTERACTIVE_LOOKUP_TIMEOUT = Symbol('interactiveLookupTimeout');
 let syncPromise = Promise.resolve();
 let debounceTimer;
 let compiledSymbols;
 let backgroundDiagnostics;
 
-const UNION_COLOR_KEYS = {
+const PASCAL_ATLAS_COLOR_KEYS = {
   unit: 'unit',
   class: 'type',
   variable: 'variable',
@@ -117,10 +117,10 @@ const UNION_COLOR_KEYS = {
 };
 
 function semanticEditorColor(tokenType, uri) {
-  const unionConfiguration = vscode.workspace.getConfiguration('pascalUnion', uri);
-  if (!unionConfiguration.get('coloring.colors.useDefault', true)) {
-    const configuredColor = unionConfiguration.get(
-      `coloring.colors.${UNION_COLOR_KEYS[tokenType]}`,
+  const paConfiguration = vscode.workspace.getConfiguration('pascalAtlas', uri);
+  if (!paConfiguration.get('coloring.colors.useDefault', true)) {
+    const configuredColor = paConfiguration.get(
+      `coloring.colors.${PASCAL_ATLAS_COLOR_KEYS[tokenType]}`,
       ''
     );
     if (typeof configuredColor === 'string' && /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i.test(configuredColor)) {
@@ -308,7 +308,7 @@ class CompiledSymbolSupport {
   }
 
   typingDecorationDelay(document) {
-    return vscode.workspace.getConfiguration('pascalUnion', document?.uri)
+    return vscode.workspace.getConfiguration('pascalAtlas', document?.uri)
       .get('coloring.typingDelayMs', 750);
   }
 
@@ -568,7 +568,7 @@ class CompiledSymbolSupport {
       item
     ]));
     const sharedOwners = this.context.workspaceState.get(
-      `pascalUnion.dcpOwnersV1:${this.dcpFingerprint}`,
+      `pascalAtlas.dcpOwnersV1:${this.dcpFingerprint}`,
       {}
     );
     if (sharedOwners && typeof sharedOwners === 'object' && !Array.isArray(sharedOwners)) {
@@ -592,7 +592,7 @@ class CompiledSymbolSupport {
   }
 
   featureEnabled(key, fallback = true, document) {
-    const configuration = vscode.workspace.getConfiguration('pascalUnion', document?.uri);
+    const configuration = vscode.workspace.getConfiguration('pascalAtlas', document?.uri);
     return configuration.get('enabled', true) && configuration.get(key, fallback);
   }
 
@@ -611,14 +611,14 @@ class CompiledSymbolSupport {
       uri: document.uri.toString(),
       fileName: document.fileName,
       languageId: document.languageId,
-      isPlatformSource: document.languageId === 'pascal-union-platform'
+      isPlatformSource: document.languageId === 'pascal-atlas-platform'
         || this.isPlatformSourceDocument(document),
       isWorkspaceDocument: Boolean(vscode.workspace.getWorkspaceFolder(document.uri))
     };
   }
 
   persistentDecorationCacheEnabled(document) {
-    return vscode.workspace.getConfiguration('pascalUnion', document?.uri)
+    return vscode.workspace.getConfiguration('pascalAtlas', document?.uri)
       .get('coloring.persistedCache.enabled', true);
   }
 
@@ -805,7 +805,7 @@ class CompiledSymbolSupport {
         // A cache miss falls through to tdump; cache corruption is self-healing.
       }
     }
-    const temporaryBpl = path.join(os.tmpdir(), `pascal-union-${randomUUID()}.bpl`);
+    const temporaryBpl = path.join(os.tmpdir(), `pascal-atlas-${randomUUID()}.bpl`);
     try {
       await fs.promises.copyFile(bplPath, temporaryBpl);
       const args = ['-ns', '-q'];
@@ -846,7 +846,7 @@ class CompiledSymbolSupport {
       } catch {
         // Cache misses and damaged cache files are rebuilt from tdump below.
       }
-      const temporaryBpl = path.join(os.tmpdir(), `pascal-union-rtti-${randomUUID()}.bpl`);
+      const temporaryBpl = path.join(os.tmpdir(), `pascal-atlas-rtti-${randomUUID()}.bpl`);
       try {
         await fs.promises.copyFile(bplPath, temporaryBpl);
         try {
@@ -899,7 +899,7 @@ class CompiledSymbolSupport {
     const startedAt = Date.now();
     const promise = (async () => {
       let cachePath;
-      const parsedCacheEnabled = vscode.workspace.getConfiguration('pascalUnion')
+      const parsedCacheEnabled = vscode.workspace.getConfiguration('pascalAtlas')
         .get('symbols.compiled.parsedCache.enabled', true);
       try {
         const stat = await fs.promises.stat(bplPath);
@@ -1278,7 +1278,7 @@ class CompiledSymbolSupport {
     const signature = [...unitNames].sort().join(';');
     if (this.dcpHintCache.has(signature)) return this.dcpHintCache.get(signature);
     const promise = (async () => {
-      const storageKey = `pascalUnion.dcpHintsV2:${this.dcpFingerprint}:${signature}`;
+      const storageKey = `pascalAtlas.dcpHintsV2:${this.dcpFingerprint}:${signature}`;
       const persisted = asStringArray(this.context.workspaceState.get(storageKey, []));
       if (persisted.length > 0) {
         const byBase = new Map(this.bplPaths.map(item => [
@@ -1387,7 +1387,7 @@ class CompiledSymbolSupport {
       owners[unitName] = path.basename(bplPath, path.extname(bplPath)).toLowerCase();
     }
     return this.context.workspaceState.update(
-      `pascalUnion.dcpOwnersV1:${this.dcpFingerprint}`,
+      `pascalAtlas.dcpOwnersV1:${this.dcpFingerprint}`,
       owners
     );
   }
@@ -1421,7 +1421,7 @@ class CompiledSymbolSupport {
     const key = document.uri.toString();
     const cached = this.documentPackagePromises.get(key);
     if (cached?.version === document.version) return cached.promise;
-    const packageLimit = vscode.workspace.getConfiguration('pascalUnion', document.uri)
+    const packageLimit = vscode.workspace.getConfiguration('pascalAtlas', document.uri)
       .get('symbols.compiled.initialPackageLimit', 8);
     const analysis = this.documentAnalysis(document);
     const ownUnitNames = new Set([
@@ -1571,7 +1571,7 @@ class CompiledSymbolSupport {
     }
     const promise = (async () => {
       let cachePath;
-      const parsedCacheEnabled = vscode.workspace.getConfiguration('pascalUnion')
+      const parsedCacheEnabled = vscode.workspace.getConfiguration('pascalAtlas')
         .get('symbols.compiled.parsedCache.enabled', true);
       try {
         const stat = await fs.promises.stat(bplPath);
@@ -2715,7 +2715,7 @@ class CompiledSymbolSupport {
         }
       });
     }
-    const waitMs = vscode.workspace.getConfiguration('pascalUnion', document.uri)
+    const waitMs = vscode.workspace.getConfiguration('pascalAtlas', document.uri)
       .get('navigation.interactiveWaitMs', 100);
     const compiledLocation = await new Promise(resolve => {
       let settled = false;
@@ -2888,7 +2888,7 @@ class CompiledSymbolSupport {
 
   virtualUri(info) {
     const uri = vscode.Uri.from({
-      scheme: 'pascal-union-binary',
+      scheme: 'pascal-atlas-binary',
       path: info.kind === 'unit'
         ? `/${info.symbol}.pas`
         : `/${info.namespace || 'CompiledPackage'}.${info.symbol}.pas`,
@@ -3003,7 +3003,7 @@ class CompiledSymbolSupport {
       }
     }
 
-    const waitMs = vscode.workspace.getConfiguration('pascalUnion', document.uri)
+    const waitMs = vscode.workspace.getConfiguration('pascalAtlas', document.uri)
       .get('completion.interactiveWaitMs', 60);
     const packageData = await this.packageDataWithin(document, waitMs);
     for (const unit of packageData?.usedUnitIndexes || []) {
@@ -3138,7 +3138,7 @@ class CompiledSymbolSupport {
   register() {
     const selector = [{ language: 'pascal', scheme: 'file' }];
     this.context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider(
-      'pascal-union-binary',
+      'pascal-atlas-binary',
       { provideTextDocumentContent: uri => this.virtualDocuments.get(uri.toString()) || '' }
     ));
     this.context.subscriptions.push(vscode.languages.registerDefinitionProvider(selector, {
@@ -3286,7 +3286,7 @@ class CompiledSymbolSupport {
       }
       const activeUri = vscode.window.activeTextEditor?.document.uri.toString();
       for (const editor of editors) {
-        const inactiveDelay = vscode.workspace.getConfiguration('pascalUnion', editor.document.uri)
+        const inactiveDelay = vscode.workspace.getConfiguration('pascalAtlas', editor.document.uri)
           .get('coloring.inactiveEditorDelayMs', 350);
         this.scheduleDecorate(editor, editor.document.uri.toString() === activeUri
           ? 0
@@ -3335,7 +3335,7 @@ class CompiledSymbolSupport {
         item => item.document.uri.toString() === event.document.uri.toString()
       );
       if (editor) {
-        const configuration = vscode.workspace.getConfiguration('pascalUnion', editor.document.uri);
+        const configuration = vscode.workspace.getConfiguration('pascalAtlas', editor.document.uri);
         const active = vscode.window.activeTextEditor?.document.uri.toString() === event.document.uri.toString();
         this.scheduleDecorate(editor, active
           ? configuration.get('coloring.typingDelayMs', 750)
@@ -3344,7 +3344,7 @@ class CompiledSymbolSupport {
     }));
     this.context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(document => {
       const key = document.uri.toString();
-      if ((document.languageId === 'pascal-union-platform' || this.isPlatformSourceDocument(document))
+      if ((document.languageId === 'pascal-atlas-platform' || this.isPlatformSourceDocument(document))
         && (!vscode.window.activeTextEditor
           || vscode.window.activeTextEditor.document.uri.toString() === key)) {
         // Closing a preview can emit didClose before active-editor changed.
@@ -3378,17 +3378,17 @@ class CompiledSymbolSupport {
       }
     }));
     this.context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-      if (!event.affectsConfiguration('pascalUnion.coloring')
-        && !event.affectsConfiguration('pascalUnion.symbols.compiled')
-        && !event.affectsConfiguration('pascalUnion.enabled')) return;
-      if (event.affectsConfiguration('pascalUnion.coloring.colors')) {
+      if (!event.affectsConfiguration('pascalAtlas.coloring')
+        && !event.affectsConfiguration('pascalAtlas.symbols.compiled')
+        && !event.affectsConfiguration('pascalAtlas.enabled')) return;
+      if (event.affectsConfiguration('pascalAtlas.coloring.colors')) {
         this.rebuildDecorationTypes(vscode.window.activeTextEditor?.document?.uri);
         for (const state of this.decorationStates.values()) state.hasApplied = false;
       }
       for (const editor of vscode.window.visibleTextEditors) this.scheduleDecorate(editor, 0);
     }));
     this.context.subscriptions.push(vscode.window.onDidChangeActiveColorTheme(() => {
-      if (!vscode.workspace.getConfiguration('pascalUnion')
+      if (!vscode.workspace.getConfiguration('pascalAtlas')
         .get('coloring.colors.useDefault', true)) return;
       this.rebuildDecorationTypes(vscode.window.activeTextEditor?.document?.uri);
       for (const state of this.decorationStates.values()) state.hasApplied = false;
@@ -3932,13 +3932,13 @@ class UsesQuickFixSupport {
   }
 
   enabled(document) {
-    const configuration = vscode.workspace.getConfiguration('pascalUnion', document?.uri);
+    const configuration = vscode.workspace.getConfiguration('pascalAtlas', document?.uri);
     return configuration.get('enabled', true) && configuration.get('missingUnits.enabled', true);
   }
 
   async unitCandidates(document, symbol) {
     if (isPascalIntrinsicIdentifier(symbol)) return [];
-    const compiledFallback = vscode.workspace.getConfiguration('pascalUnion', document.uri)
+    const compiledFallback = vscode.workspace.getConfiguration('pascalAtlas', document.uri)
       .get('missingUnits.compiledFallback', true);
     const index = compiledFallback ? await this.fullCombinedIndex() : await this.combinedIndex();
     return filterAddUnitCandidates(index.get(symbol.toLowerCase()));
@@ -4027,7 +4027,7 @@ class UsesQuickFixSupport {
     const editor = vscode.window.activeTextEditor;
     if (!editor || !['pascal', 'objectpascal'].includes(editor.document.languageId)) return;
     if (!this.enabled(editor.document)) {
-      vscode.window.showInformationMessage('Pascal Union: missing-Unit assistance is disabled.');
+      vscode.window.showInformationMessage('Pascal Atlas: missing-Unit assistance is disabled.');
       return;
     }
     const document = editor.document;
@@ -4078,7 +4078,7 @@ class UsesQuickFixSupport {
       item => item.document.uri.toString() === document.uri.toString()
     );
     if (!editor) return;
-    const configuration = vscode.workspace.getConfiguration('pascalUnion', document.uri);
+    const configuration = vscode.workspace.getConfiguration('pascalAtlas', document.uri);
     if (!configuration.get('enabled', true) || !configuration.get('coloring.enabled', true)) {
       editor.setDecorations(this.knownTypeDecoration, []);
       return;
@@ -4097,7 +4097,7 @@ class UsesQuickFixSupport {
     const actions = [];
     const seen = new Set();
     for (const diagnostic of context.diagnostics || []) {
-      if (diagnostic.source === 'Pascal Union') continue;
+      if (diagnostic.source === 'Pascal Atlas') continue;
       const symbol = unknownSymbolFromDiagnostic(diagnostic.message);
       if (!symbol || isPascalIntrinsicIdentifier(symbol)) continue;
       const symbolRange = document.getWordRangeAtPosition(
@@ -4149,7 +4149,7 @@ class UsesQuickFixSupport {
   scheduleDiagnostics(document) {
     const key = document.uri.toString();
     clearTimeout(this.refreshTimers.get(key));
-    const delay = vscode.workspace.getConfiguration('pascalUnion', document.uri)
+    const delay = vscode.workspace.getConfiguration('pascalAtlas', document.uri)
       .get('missingUnits.debounceMs', 350);
     this.refreshTimers.set(key, setTimeout(() => {
       this.refreshTimers.delete(key);
@@ -4160,7 +4160,7 @@ class UsesQuickFixSupport {
   }
 
   register() {
-    this.context.subscriptions.push(vscode.commands.registerCommand('pascalUnion.addUnit', async () => {
+    this.context.subscriptions.push(vscode.commands.registerCommand('pascalAtlas.addUnit', async () => {
       await this.addUnitAtCursor();
     }));
     this.context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(document => {
@@ -4178,8 +4178,8 @@ class UsesQuickFixSupport {
       { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
     ));
     this.context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-      if (!event.affectsConfiguration('pascalUnion.missingUnits')
-        && !event.affectsConfiguration('pascalUnion.enabled')) return;
+      if (!event.affectsConfiguration('pascalAtlas.missingUnits')
+        && !event.affectsConfiguration('pascalAtlas.enabled')) return;
       for (const document of vscode.workspace.textDocuments) this.scheduleDiagnostics(document);
     }));
     for (const document of vscode.workspace.textDocuments) this.scheduleDiagnostics(document);
@@ -4250,7 +4250,7 @@ function minimalSourceRoots(values) {
 
 async function restartLanguageServices() {
   const shouldRestart = vscode.workspace
-    .getConfiguration('pascalUnion')
+    .getConfiguration('pascalAtlas')
     .get('restartActiveLsp', true);
   if (!shouldRestart) {
     return;
@@ -4260,7 +4260,7 @@ async function restartLanguageServices() {
 }
 
 function automaticProjectGroupDetectionEnabled(resource) {
-  const configuration = vscode.workspace.getConfiguration('pascalUnion', resource);
+  const configuration = vscode.workspace.getConfiguration('pascalAtlas', resource);
   return configuration.get('enabled', true)
     && configuration.get('projectGroups.autoDetect', true);
 }
@@ -4269,7 +4269,7 @@ async function detectWorkspaceProjectGroups(workspaceFolder, options = {}) {
   if (!options.force && !automaticProjectGroupDetectionEnabled(workspaceFolder.uri)) {
     return { changed: false, discoveredGroups: [], addedGroups: [] };
   }
-  const configuration = vscode.workspace.getConfiguration('pascalUnion', workspaceFolder.uri);
+  const configuration = vscode.workspace.getConfiguration('pascalAtlas', workspaceFolder.uri);
   const result = await ensureVallentaProjectGroups(workspaceFolder.uri.fsPath, {
     activateFirstProject: configuration.get('projectGroups.activateFirstProject', true)
   });
@@ -4345,12 +4345,12 @@ async function syncWorkspace(context, workspaceFolder, options = {}) {
   }
 
   const includeNested = vscode.workspace
-    .getConfiguration('pascalUnion', workspaceFolder.uri)
+    .getConfiguration('pascalAtlas', workspaceFolder.uri)
     .get('includeNestedSourceDirectories', true);
   // Vallenta already discovers the Delphi installation's complete source tree.
   // Keep RTL/VCL roots in our private source index, but do not inject them into
   // Vallenta's global libraryPath where they cause a redundant LSP restart.
-  const managedPaths = await collectUnionPaths(projects, includeNested);
+  const managedPaths = await collectPascalAtlasPaths(projects, includeNested);
   const stateKey = `${MANAGED_PATHS_KEY}:${workspaceRoot}`;
   const workspaceManaged = asStringArray(context.workspaceState.get(stateKey, []));
   // libraryPath is global, so paths managed by the previously active workspace
@@ -4423,13 +4423,13 @@ function enqueueSync(context, options = {}) {
     .then(() => syncAll(context, options))
     .catch(error => {
       output.appendLine(`Synchronization failed: ${error.stack || error.message}`);
-      vscode.window.showErrorMessage(`Pascal Union: ${error.message}`);
+      vscode.window.showErrorMessage(`Pascal Atlas: ${error.message}`);
     });
   return syncPromise;
 }
 
 function automaticPathSyncEnabled() {
-  const configuration = vscode.workspace.getConfiguration('pascalUnion');
+  const configuration = vscode.workspace.getConfiguration('pascalAtlas');
   return configuration.get('enabled', true) && configuration.get('paths.enabled', true);
 }
 
@@ -4493,7 +4493,7 @@ async function syncVallentaEncodingWarningSetting() {
     return false;
   }
   const ignoreWarning = vscode.workspace
-    .getConfiguration('pascalUnion')
+    .getConfiguration('pascalAtlas')
     .get('diagnostics.ignoreUtf8ConversionWarning', true);
   const vallentaConfiguration = vscode.workspace.getConfiguration('vallenta.studio');
   const encodingCheckEnabled = !ignoreWarning;
@@ -4505,7 +4505,7 @@ async function syncVallentaEncodingWarningSetting() {
   );
   output.appendLine(
     `${encodingCheckEnabled ? 'Enabled' : 'Suppressed'} Vallenta's ANSI-to-UTF-8 recommendation warning `
-    + 'from the Pascal Union diagnostics preference.'
+    + 'from the Pascal Atlas diagnostics preference.'
   );
   return true;
 }
@@ -4544,7 +4544,7 @@ async function activate(context) {
   });
   registerDependencySupport(context, output);
   registerEncodingSupport(context, output);
-  const controlCenter = new PascalUnionControlCenterProvider(context, output);
+  const controlCenter = new PascalAtlasControlCenterProvider(context, output);
   controlCenter.register();
   void migrateLegacyFormatterSettings().catch(error => {
     output.appendLine(`Formatter setting migration skipped: ${error.message}`);
@@ -4553,7 +4553,7 @@ async function activate(context) {
   registerExplorerSupport(context, output);
 
   // This extension activates eagerly, before Vallenta's onLanguage activation.
-  // Bootstrap from the persisted union so Vallenta's project evaluator inherits
+  // Bootstrap from the persisted extension so Vallenta's project evaluator inherits
   // DCC_UnitSearchPath before it starts the first language server.
   const bootstrapPaths = asStringArray(
     vscode.workspace.getConfiguration('vallenta.studio').get('libraryPath', [])
@@ -4575,7 +4575,7 @@ async function activate(context) {
     ))
   ]);
   const platformSourceRoots = minimalSourceRoots(delphiSourceRoots());
-  const persistentSourceCacheEnabled = vscode.workspace.getConfiguration('pascalUnion')
+  const persistentSourceCacheEnabled = vscode.workspace.getConfiguration('pascalAtlas')
     .get('symbols.sourceCache.enabled', true);
   const sourceCachePath = (label, roots) => {
     if (!persistentSourceCacheEnabled || roots.length === 0) return undefined;
@@ -4735,12 +4735,12 @@ async function activate(context) {
   }).catch(error => {
     output.appendLine(`RAD/VCL background source index failed: ${error.stack || error.message}`);
   });
-  context.subscriptions.push(vscode.commands.registerCommand('pascalUnion.sync', async () => {
+  context.subscriptions.push(vscode.commands.registerCommand('pascalAtlas.sync', async () => {
     output.show(true);
     await enqueueSync(context);
-    vscode.window.showInformationMessage('Pascal Union paths synchronized.');
+    vscode.window.showInformationMessage('Pascal Atlas paths synchronized.');
   }));
-  context.subscriptions.push(vscode.commands.registerCommand('pascalUnion.projects.detect', async () => {
+  context.subscriptions.push(vscode.commands.registerCommand('pascalAtlas.projects.detect', async () => {
     output.show(true);
     const results = await detectAllWorkspaceProjectGroups({ force: true });
     await activateVallentaForProjectGroups(results);
@@ -4748,17 +4748,17 @@ async function activate(context) {
     const groups = results.reduce((total, result) => total + result.discoveredGroups.length, 0);
     const added = results.reduce((total, result) => total + result.addedGroups.length, 0);
     vscode.window.showInformationMessage(
-      `Pascal Union: Found ${groups} groupproj file(s); added ${added} to Vallenta.`
+      `Pascal Atlas: Found ${groups} groupproj file(s); added ${added} to Vallenta.`
     );
   }));
-  context.subscriptions.push(vscode.commands.registerCommand('pascalUnion.restore', async () => {
+  context.subscriptions.push(vscode.commands.registerCommand('pascalAtlas.restore', async () => {
     for (const folder of vscode.workspace.workspaceFolders || []) {
       await restoreWorkspace(context, folder);
     }
     await restartLanguageServices();
-    vscode.window.showInformationMessage('Pascal Union managed paths removed.');
+    vscode.window.showInformationMessage('Pascal Atlas managed paths removed.');
   }));
-  context.subscriptions.push(vscode.commands.registerCommand('pascalUnion.showPaths', async () => {
+  context.subscriptions.push(vscode.commands.registerCommand('pascalAtlas.showPaths', async () => {
     output.show(true);
     for (const folder of vscode.workspace.workspaceFolders || []) {
       const stateKey = `${MANAGED_PATHS_KEY}:${folder.uri.fsPath}`;
@@ -4769,10 +4769,10 @@ async function activate(context) {
       }
     }
   }));
-  context.subscriptions.push(vscode.commands.registerCommand('pascalUnion.goToDefinition', async () => {
+  context.subscriptions.push(vscode.commands.registerCommand('pascalAtlas.goToDefinition', async () => {
     await compiledSymbols.navigateToDefinition();
   }));
-  context.subscriptions.push(vscode.commands.registerCommand('pascalUnion.peekAllDefinitions', async () => {
+  context.subscriptions.push(vscode.commands.registerCommand('pascalAtlas.peekAllDefinitions', async () => {
     await compiledSymbols.navigateToAllDefinitions();
   }));
 
@@ -4792,15 +4792,15 @@ async function activate(context) {
   }
 
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-    if (!event.affectsConfiguration('pascalUnion.paths.enabled')
-      && !event.affectsConfiguration('pascalUnion.projectGroups.autoDetect')
-      && !event.affectsConfiguration('pascalUnion.projectGroups.activateFirstProject')
-      && !event.affectsConfiguration('pascalUnion.includeNestedSourceDirectories')
-      && !event.affectsConfiguration('pascalUnion.enabled')) return;
+    if (!event.affectsConfiguration('pascalAtlas.paths.enabled')
+      && !event.affectsConfiguration('pascalAtlas.projectGroups.autoDetect')
+      && !event.affectsConfiguration('pascalAtlas.projectGroups.activateFirstProject')
+      && !event.affectsConfiguration('pascalAtlas.includeNestedSourceDirectories')
+      && !event.affectsConfiguration('pascalAtlas.enabled')) return;
     scheduleSync(context);
   }));
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-    if (!event.affectsConfiguration('pascalUnion.diagnostics.ignoreUtf8ConversionWarning')) return;
+    if (!event.affectsConfiguration('pascalAtlas.diagnostics.ignoreUtf8ConversionWarning')) return;
     void syncVallentaEncodingWarningSetting().catch(error => {
       output.appendLine(`Could not synchronize the UTF-8 conversion warning preference: ${error.message}`);
     });

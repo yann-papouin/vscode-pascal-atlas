@@ -1,4 +1,4 @@
-# Pascal Union
+# Pascal Atlas
 
 [English](#english)
 
@@ -6,7 +6,7 @@
 
 A VS Code workspace suite for **Delphi / Object Pascal** that brings cross-project symbols, structural navigation, project-group management, build/run, formatting, and diagnostics into one consistent experience.
 
-Pascal Union is designed for real Delphi workspaces made up of `.groupproj`, `.dproj`, `.dpk`, `.dpr`, and large collections of `.pas` files. It works alongside Vallenta Studio and fills important gaps around cross-package symbols, compiled-package interfaces, project navigation, and command-line build/run workflows.
+Pascal Atlas is designed for real Delphi workspaces made up of `.groupproj`, `.dproj`, `.dpk`, `.dpr`, and large collections of `.pas` files. It works alongside Vallenta Studio and fills important gaps around cross-package symbols, compiled-package interfaces, project navigation, and command-line build/run workflows.
 
 ### Key features
 
@@ -22,7 +22,7 @@ Pascal Union is designed for real Delphi workspaces made up of `.groupproj`, `.d
 
 #### Compiled Package interface recovery
 
-When a dependency provides only DCP/BPL artifacts and no Pascal source, Pascal Union can use tools from the local RAD Studio installation to recover public symbols and provide:
+When a dependency provides only DCP/BPL artifacts and no Pascal source, Pascal Atlas can use tools from the local RAD Studio installation to recover public symbols and provide:
 
 - semantic highlighting for types and members;
 - Go to Definition, hover details, and member completion;
@@ -63,11 +63,11 @@ AI analysis runs only when explicitly requested and can be disabled completely.
 
 #### Project-group build and run
 
-Pascal Union uses the installed Delphi command-line toolchain directly. It does not start RAD Studio or run `bds.exe`.
+Pascal Atlas uses the installed Delphi command-line toolchain directly. It does not start RAD Studio or run `bds.exe`.
 
 - Package commands: Build, Compile, and Clean.
 - Project Group commands: Build All, Compile All, Clean All, and Run.
-- Selectable startup project, Debug/Release configuration, and Win32/Win64 platform for Pascal Union Run and build commands.
+- Selectable startup project, Debug/Release configuration, and Win32/Win64 platform for Pascal Atlas Run and build commands.
 - Optional status-bar actions for Build All, Run, platform, and configuration.
 - Concise build summaries with aligned `[ERROR]` / `[WARN]` diagnostics, also published to Problems.
 - Run does not attach a debugger and redirects standard output, standard error, and the exit result to the VS Code Debug Console.
@@ -75,7 +75,7 @@ Pascal Union uses the installed Delphi command-line toolchain directly. It does 
 
 #### Integrated Delphi Formatter
 
-The former **Delphi Personal Formatter** is now built into Pascal Union:
+The former **Delphi Personal Formatter** is now built into Pascal Atlas:
 
 - Acts as the default formatter for Pascal and Object Pascal.
 - Uses RAD Studio's `Formatter.exe`; the separate Pascal Formatter extension is not required.
@@ -98,16 +98,16 @@ When the default syntax standard is enabled, its detailed options reflect the bu
 
 ### Quick start
 
-1. Install Pascal Union and accept installation of the required companion extensions.
+1. Install Pascal Atlas and accept installation of the required companion extensions.
 2. Open a Delphi workspace containing a `.groupproj`, `.dproj`, or `.dpk`.
-3. Pascal Union discovers the project group, synchronizes search paths, and analyzes the active Pascal file first.
+3. Pascal Atlas discovers the project group, synchronizes search paths, and analyzes the active Pascal file first.
 4. Use **Delphi Navigator** in Explorer for class navigation or switch it to Project view.
 5. Ctrl+Click to navigate, or use the Project/Package context menu to build or run. Use Vallenta Studio for Delphi debugging.
-6. Open **Pascal Union → Features and Settings** from the Activity Bar to configure each feature page.
+6. Open **Pascal Atlas → Features and Settings** from the Activity Bar to configure each feature page.
 
 ### Settings
 
-Pascal Union provides a visual settings center and registers the same options in VS Code's main Settings editor. To keep navigation compact, related options are consolidated into seven top-level pages: General, Editing, Navigation & Symbols, Formatting, Projects & Files, Build & Debug, and Diagnostics. The settings center is displayed in English.
+Pascal Atlas provides a visual settings center and registers the same options in VS Code's main Settings editor. To keep navigation compact, related options are consolidated into seven top-level pages: General, Editing, Navigation & Symbols, Formatting, Projects & Files, Build & Debug, and Diagnostics. The settings center is displayed in English.
 
 Every major capability has an independent switch. The symbol palette can be reset to the bundled defaults without changing unrelated coloring behavior.
 
@@ -119,13 +119,13 @@ Every major capability has an independent switch. The symbol palette can be rese
 - `ms-vscode.cpptools`, currently retained as a Vallenta/LSP companion;
 - a licensed local RAD Studio/Delphi toolchain for formatting, compiling, debugging, or compiled-package recovery.
 
-When dependency auto-installation is enabled, Pascal Union checks Vallenta Studio and C/C++. The separate **Pascal Formatter** and **Pascal** extensions are not required; enabling multiple Pascal language extensions may register duplicate completion or navigation providers.
+When dependency auto-installation is enabled, Pascal Atlas checks Vallenta Studio and C/C++. The separate **Pascal Formatter** and **Pascal** extensions are not required; enabling multiple Pascal language extensions may register duplicate completion or navigation providers.
 
 ### Privacy and independence
 
-Pascal Union contains no telemetry and does not upload source code to a service operated by BORING. Project analysis, formatting, compilation, and symbol recovery run locally. Only the explicitly invoked AI routine-steps feature sends the selected routine to the language-model provider chosen by the user in VS Code.
+Pascal Atlas contains no telemetry and does not upload source code to a service operated by BORING. Project analysis, formatting, compilation, and symbol recovery run locally. Only the explicitly invoked AI routine-steps feature sends the selected routine to the language-model provider chosen by the user in VS Code.
 
-Pascal Union is independently developed by **BORING** and is not affiliated with, authorized by, endorsed by, or maintained by Vallenta or Embarcadero Technologies. Vallenta Studio, RAD Studio, and related tools are installed separately and remain subject to their own licenses. See `NOTICE.md` for the complete notice.
+Pascal Atlas is independently developed by **BORING** and is not affiliated with, authorized by, endorsed by, or maintained by Vallenta or Embarcadero Technologies. Vallenta Studio, RAD Studio, and related tools are installed separately and remain subject to their own licenses. See `NOTICE.md` for the complete notice.
 
 ### Development and publishing
 

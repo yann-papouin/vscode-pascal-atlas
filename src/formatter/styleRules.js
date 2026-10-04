@@ -6,7 +6,7 @@ const LINE_BREAK_OPTIONS = ['Yes', 'No', 'AsIs'];
 const LINE_BREAK_LABELS = ['Always break', 'Never break', 'Keep as is'];
 const CAPITALIZATION_OPTIONS = ['lowercase', 'UPPERCASE', 'FirstUpper', 'AsIs'];
 const CAPITALIZATION_LABELS = ['Lowercase', 'Uppercase', 'Capitalize', 'Keep as is'];
-const STYLE_PROFILE_KIND = 'pascal-union-formatter-style';
+const STYLE_PROFILE_KIND = 'pascal-atlas-formatter-style';
 
 const STYLE_RULES = Object.freeze([
   { group: 'Indentation', key: 'style.indentation.tabSize', option: 'DelphiFormatter.TabSize', label: 'Tab width', type: 'number', min: 1, max: 16, step: 1, defaultValue: 2 },
@@ -110,7 +110,7 @@ function parseStyleProfile(text) {
   }
   if (!profile || profile.kind !== STYLE_PROFILE_KIND || profile.version !== 1
     || !profile.rules || typeof profile.rules !== 'object' || Array.isArray(profile.rules)) {
-    throw new Error('This is not a Pascal Union formatting profile, or its version is unsupported.');
+    throw new Error('This is not a Pascal Atlas formatting profile, or its version is unsupported.');
   }
   const result = new Map();
   for (const rule of STYLE_RULES) {

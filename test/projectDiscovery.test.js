@@ -11,7 +11,7 @@ const {
 } = require('../src/projectDiscovery');
 
 function fixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pascal-union-projects-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pascal-atlas-projects-'));
   const source = path.join(root, 'Source');
   const projectDirectory = path.join(source, 'Demo');
   fs.mkdirSync(projectDirectory, { recursive: true });

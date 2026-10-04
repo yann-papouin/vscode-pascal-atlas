@@ -261,7 +261,7 @@ class PascalReferenceSupport {
   scheduleAutomaticInterfaceGuid(event) {
     const document = event.document;
     if (!['pascal', 'objectpascal'].includes(document.languageId)
-      || !vscode.workspace.getConfiguration('pascalUnion', document.uri)
+      || !vscode.workspace.getConfiguration('pascalAtlas', document.uri)
         .get('completion.interfaceGuid.enabled', true)
       || this.automaticGuidEdits.has(document.uri.toString())
       || event.contentChanges.length !== 1
@@ -313,7 +313,7 @@ class PascalReferenceSupport {
         provideImplementation: (document, position, token) =>
           this.findImplementations(document, position, token)
       }),
-      vscode.commands.registerCommand('pascalUnion.insertGuid', () => this.insertGuid()),
+      vscode.commands.registerCommand('pascalAtlas.insertGuid', () => this.insertGuid()),
       vscode.workspace.onDidChangeTextDocument(event => {
         this.scheduleAutomaticInterfaceGuid(event);
       })

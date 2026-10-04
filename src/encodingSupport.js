@@ -1,7 +1,7 @@
 'use strict';
 
-const STATE_KEY = 'pascalUnion.encoding.managedSettings.v1';
-const DPROJ_LANGUAGE_ID = 'pascal-union-dproj';
+const STATE_KEY = 'pascalAtlas.encoding.managedSettings.v1';
+const DPROJ_LANGUAGE_ID = 'pascal-atlas-dproj';
 const DELPHI_LANGUAGE_IDS = Object.freeze(['pascal', 'objectpascal', DPROJ_LANGUAGE_ID]);
 const DPROJ_ASSOCIATIONS = Object.freeze(['*.dproj', '*.DPROJ']);
 
@@ -116,8 +116,8 @@ class EncodingPolicy {
     const vscode = this.vscode;
     this.context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('pascalUnion.encoding')
-          || event.affectsConfiguration('pascalUnion.enabled')) void this.sync();
+        if (event.affectsConfiguration('pascalAtlas.encoding')
+          || event.affectsConfiguration('pascalAtlas.enabled')) void this.sync();
       }),
       vscode.workspace.onDidOpenTextDocument(document => {
         void this.applying.then(() => this.reconcileOpenDocument(document));
@@ -137,13 +137,13 @@ class EncodingPolicy {
 
   async applyCurrentConfiguration() {
     const vscode = this.vscode;
-    const union = vscode.workspace.getConfiguration('pascalUnion');
-    const enabled = union.get('enabled', true) && union.get('encoding.enabled', true);
+    const pa = vscode.workspace.getConfiguration('pascalAtlas');
+    const enabled = pa.get('enabled', true) && pa.get('encoding.enabled', true);
     if (!enabled) return this.restore();
 
-    const delphiEncoding = union.get('encoding.delphiDefault', 'gb2312');
-    const otherEncoding = union.get('encoding.otherDefault', 'utf8');
-    const detectExisting = union.get('encoding.detectExisting', true);
+    const delphiEncoding = pa.get('encoding.delphiDefault', 'gb2312');
+    const otherEncoding = pa.get('encoding.otherDefault', 'utf8');
+    const detectExisting = pa.get('encoding.detectExisting', true);
     const target = configurationTarget(vscode);
     const store = target.id === 'workspace' ? this.context.workspaceState : this.context.globalState;
     let state = store.get(STATE_KEY);
@@ -232,10 +232,10 @@ class EncodingPolicy {
     if (!isDprojDocument(document) || document.isDirty || typeof document.encoding !== 'string') return;
     const key = document.uri.toString();
     if (this.reopening.has(key)) return;
-    const union = this.vscode.workspace.getConfiguration('pascalUnion', document.uri);
-    if (!union.get('enabled', true)
-      || !union.get('encoding.enabled', true)
-      || !union.get('encoding.respectDprojDeclaration', true)) return;
+    const pa = this.vscode.workspace.getConfiguration('pascalAtlas', document.uri);
+    if (!pa.get('enabled', true)
+      || !pa.get('encoding.enabled', true)
+      || !pa.get('encoding.respectDprojDeclaration', true)) return;
     try {
       const bytes = await this.vscode.workspace.fs.readFile(document.uri);
       const declared = declaredXmlEncoding(bytes);
@@ -252,9 +252,9 @@ class EncodingPolicy {
 
   async reconcileOpenDocument(document) {
     if (!document || document.uri?.scheme !== 'file' || document.isDirty) return;
-    const union = this.vscode.workspace.getConfiguration('pascalUnion', document.uri);
-    if (!union.get('enabled', true) || !union.get('encoding.enabled', true)) return;
-    if (isDprojDocument(document) && union.get('encoding.respectDprojDeclaration', true)) {
+    const pa = this.vscode.workspace.getConfiguration('pascalAtlas', document.uri);
+    if (!pa.get('enabled', true) || !pa.get('encoding.enabled', true)) return;
+    if (isDprojDocument(document) && pa.get('encoding.respectDprojDeclaration', true)) {
       await this.honorDprojDeclaration(document);
       if (document.isClosed || document.isDirty) return;
     }
@@ -267,7 +267,7 @@ class EncodingPolicy {
     if (!pasFile && document.encoding !== 'utf8') return;
 
     const delphi = /\.(?:pas|dpr|dpk|dproj)$/i.test(fileName);
-    const fallback = union.get(delphi ? 'encoding.delphiDefault' : 'encoding.otherDefault', delphi ? 'gb2312' : 'utf8');
+    const fallback = pa.get(delphi ? 'encoding.delphiDefault' : 'encoding.otherDefault', delphi ? 'gb2312' : 'utf8');
     if (fallback === 'utf8') return;
     const key = document.uri.toString();
     if (this.reopening.has(key)) return;

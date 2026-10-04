@@ -13,7 +13,7 @@ const {
 } = require('../src/delphiProjectModel');
 
 function fixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pascal-union-build-model-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pascal-atlas-build-model-'));
   const source = path.join(root, 'Source');
   const packageDir = path.join(source, 'Demo.Package');
   const appDir = path.join(source, 'Demo.App');

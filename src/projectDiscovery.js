@@ -311,7 +311,7 @@ async function walkSourceDirectories(root) {
   return [...sourceDirectories];
 }
 
-async function collectUnionPaths(projectFiles, includeNestedSourceDirectories = true) {
+async function collectPascalAtlasPaths(projectFiles, includeNestedSourceDirectories = true) {
   const candidates = [];
   for (const projectFile of projectFiles) {
     const projectDir = path.dirname(projectFile);
@@ -324,7 +324,7 @@ async function collectUnionPaths(projectFiles, includeNestedSourceDirectories = 
 }
 
 module.exports = {
-  collectUnionPaths,
+  collectPascalAtlasPaths,
   decodeXml,
   discoverLoadedProjects,
   dprojSearchPaths,

@@ -2,8 +2,8 @@
 
 const { createHash } = require('node:crypto');
 
-const AI_STEP_CACHE_STATE_KEY = 'pascalUnion.classNavigator.aiSteps.cache.v1';
-const AI_STEP_CHUNK_CACHE_STATE_KEY = 'pascalUnion.classNavigator.aiSteps.chunkCache.v1';
+const AI_STEP_CACHE_STATE_KEY = 'pascalAtlas.classNavigator.aiSteps.cache.v1';
+const AI_STEP_CHUNK_CACHE_STATE_KEY = 'pascalAtlas.classNavigator.aiSteps.chunkCache.v1';
 const AI_STEP_PROMPT_VERSION = 8;
 const DEFAULT_MAX_SOURCE_CHARACTERS = 24000;
 

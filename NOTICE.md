@@ -2,7 +2,7 @@
 
 Copyright (c) 2026 BORING.
 
-Pascal Union is an independent companion extension. It is not affiliated with,
+Pascal Atlas is an independent companion extension. It is not affiliated with,
 authorized by, endorsed by, or maintained by Vallenta or Embarcadero Technologies.
 
 Vallenta Studio is installed separately from the Visual Studio Marketplace and remains

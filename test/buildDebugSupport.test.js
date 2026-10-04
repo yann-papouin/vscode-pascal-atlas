@@ -105,7 +105,7 @@ test('formal builds do not inherit language-server unit search paths', () => {
 
 test('foreground build suppresses internal runner command echo and Run uses Debug Console', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'buildDebugSupport.js'), 'utf8');
-  const runner = fs.readFileSync(path.join(__dirname, '..', 'resources', 'pascal-union-build-runner.ps1'), 'utf8');
+  const runner = fs.readFileSync(path.join(__dirname, '..', 'resources', 'pascal-atlas-build-runner.ps1'), 'utf8');
   assert.match(source, /task\.presentationOptions\s*=\s*\{[\s\S]*?echo:\s*false/);
   assert.match(source, /showReuseMessage:\s*false/);
   assert.match(source, /'-File', runnerPath/);
@@ -119,7 +119,7 @@ test('foreground build suppresses internal runner command echo and Run uses Debu
   assert.match(runner, /errorCount/);
   assert.match(runner, /\[\?25h/);
   assert.match(runner, /\[\?25l/);
-  assert.match(runner, /PASCAL_UNION_BUILD_RESULT/);
+  assert.match(runner, /PASCAL_ATLAS_BUILD_RESULT/);
   assert.match(runner, /exit 0/);
   assert.match(source, /DebugAdapterInlineImplementation/);
   assert.match(source, /category:\s*'stdout'/);
@@ -162,92 +162,92 @@ test('manifest keeps project commands out of the native Explorer and exposes the
   );
   assert.equal(manifest.contributes.menus['explorer/context'], undefined);
   const treeMenus = manifest.contributes.menus['view/item/context'];
-  const packageMenus = treeMenus.filter(item => item.when.includes('viewItem == pascalUnion.projectNavigator.package'));
-  const projectMenus = treeMenus.filter(item => item.when.includes('pascalUnion.navigator.mode == project')
-    && !item.when.includes('viewItem == pascalUnion.projectNavigator.package')
+  const packageMenus = treeMenus.filter(item => item.when.includes('viewItem == pascalAtlas.projectNavigator.package'));
+  const projectMenus = treeMenus.filter(item => item.when.includes('pascalAtlas.navigator.mode == project')
+    && !item.when.includes('viewItem == pascalAtlas.projectNavigator.package')
     && !item.when.includes('!viewItem'));
   const backgroundMenus = treeMenus.filter(item => item.when.includes('!viewItem'));
   assert.deepEqual(
     packageMenus.map(item => item.command),
     [
-      'pascalUnion.build.buildPackage',
-      'pascalUnion.build.compilePackage',
-      'pascalUnion.build.cleanPackage'
+      'pascalAtlas.build.buildPackage',
+      'pascalAtlas.build.compilePackage',
+      'pascalAtlas.build.cleanPackage'
     ]
   );
   assert.deepEqual(
     projectMenus.map(item => item.command),
     [
-      'pascalUnion.build.buildGroup',
-      'pascalUnion.build.compileGroup',
-      'pascalUnion.build.cleanGroup',
-      'pascalUnion.run.group',
-      'pascalUnion.build.selectConfiguration',
-      'pascalUnion.build.selectPlatform'
+      'pascalAtlas.build.buildGroup',
+      'pascalAtlas.build.compileGroup',
+      'pascalAtlas.build.cleanGroup',
+      'pascalAtlas.run.group',
+      'pascalAtlas.build.selectConfiguration',
+      'pascalAtlas.build.selectPlatform'
     ]
   );
   assert.deepEqual(backgroundMenus, [], 'VS Code does not expose a blank TreeView background context-menu contribution point');
   assert.ok(
-    [...packageMenus, ...projectMenus].every(item => item.group.startsWith('1_pascalUnion@')),
+    [...packageMenus, ...projectMenus].every(item => item.group.startsWith('1_pascalAtlas@')),
     'project tree commands must share an early dedicated separator group'
   );
-  assert.equal(Object.keys(manifest.contributes.configuration.properties).some(key => key.startsWith('pascalUnion.debugger.')), false);
-  assert.ok(manifest.contributes.configuration.properties['pascalUnion.build.terminalSummary']);
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.build.output.showErrors'].default, true);
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.build.output.showWarnings'].default, true);
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.build.output.showOther'].default, true);
+  assert.equal(Object.keys(manifest.contributes.configuration.properties).some(key => key.startsWith('pascalAtlas.debugger.')), false);
+  assert.ok(manifest.contributes.configuration.properties['pascalAtlas.build.terminalSummary']);
+  assert.equal(manifest.contributes.configuration.properties['pascalAtlas.build.output.showErrors'].default, true);
+  assert.equal(manifest.contributes.configuration.properties['pascalAtlas.build.output.showWarnings'].default, true);
+  assert.equal(manifest.contributes.configuration.properties['pascalAtlas.build.output.showOther'].default, true);
   const terminalToolbar = manifest.contributes.menus['view/title'].filter(item =>
     item.when.includes('view == terminal') && /toggle(?:Errors|Warnings|Other)/.test(item.command)
   );
   assert.equal(terminalToolbar.length, 6);
-  assert.ok(terminalToolbar.every(item => item.when.includes('pascalUnion.buildTerminalActive')));
+  assert.ok(terminalToolbar.every(item => item.when.includes('pascalAtlas.buildTerminalActive')));
   const commands = new Map(manifest.contributes.commands.map(item => [item.command, item]));
-  assert.equal(commands.get('pascalUnion.build.toggleErrorsChecked').title, '✓ Show Errors');
-  assert.equal(commands.get('pascalUnion.build.toggleWarningsChecked').title, '✓ Show Warnings');
-  assert.equal(commands.get('pascalUnion.build.toggleOtherChecked').title, '✓ Show Other Messages');
-  assert.deepEqual(commands.get('pascalUnion.build.toggleErrorsChecked').icon, {
+  assert.equal(commands.get('pascalAtlas.build.toggleErrorsChecked').title, '✓ Show Errors');
+  assert.equal(commands.get('pascalAtlas.build.toggleWarningsChecked').title, '✓ Show Warnings');
+  assert.equal(commands.get('pascalAtlas.build.toggleOtherChecked').title, '✓ Show Other Messages');
+  assert.deepEqual(commands.get('pascalAtlas.build.toggleErrorsChecked').icon, {
     light: 'media/build-filter-error-checked-light.svg',
     dark: 'media/build-filter-error-checked-dark.svg'
   });
-  assert.deepEqual(commands.get('pascalUnion.build.toggleWarningsChecked').icon, {
+  assert.deepEqual(commands.get('pascalAtlas.build.toggleWarningsChecked').icon, {
     light: 'media/build-filter-warning-checked-light.svg',
     dark: 'media/build-filter-warning-checked-dark.svg'
   });
-  assert.deepEqual(commands.get('pascalUnion.build.toggleOtherChecked').icon, {
+  assert.deepEqual(commands.get('pascalAtlas.build.toggleOtherChecked').icon, {
     light: 'media/build-filter-info-checked-light.svg',
     dark: 'media/build-filter-info-checked-dark.svg'
   });
   assert.equal(
-    manifest.contributes.configuration.properties['pascalUnion.diagnostics.ignoreUtf8ConversionWarning'].default,
+    manifest.contributes.configuration.properties['pascalAtlas.diagnostics.ignoreUtf8ConversionWarning'].default,
     true
   );
   assert.ok(manifest.contributes.menus['view/title'].some(item =>
-    item.command === 'pascalUnion.build.selectOutputFilters' && item.when.includes('view == terminal')));
+    item.command === 'pascalAtlas.build.selectOutputFilters' && item.when.includes('view == terminal')));
   assert.ok(manifest.contributes.menus['view/title'].some(item =>
-    item.command === 'pascalUnion.classNavigator.find'
-      && item.when.includes('pascalUnion.navigator.mode == class')));
+    item.command === 'pascalAtlas.classNavigator.find'
+      && item.when.includes('pascalAtlas.navigator.mode == class')));
   assert.equal(manifest.contributes.commands.find(item =>
-    item.command === 'pascalUnion.classNavigator.find').icon, '$(search)');
+    item.command === 'pascalAtlas.classNavigator.find').icon, '$(search)');
   assert.equal(manifest.contributes.views.explorer.find(item =>
-    item.id === 'pascalUnion.classNavigator').type, 'webview');
+    item.id === 'pascalAtlas.classNavigator').type, 'webview');
   assert.equal(manifest.contributes.views.explorer.some(item =>
-    item.id === 'pascalUnion.classNavigatorSearch'), false);
+    item.id === 'pascalAtlas.classNavigatorSearch'), false);
   const webviewContextMenu = manifest.contributes.menus['webview/context'];
   assert.ok(Array.isArray(webviewContextMenu));
-  assert.ok(webviewContextMenu.every(item => item.when.includes("webviewId == 'pascalUnion.classNavigator'")));
+  assert.ok(webviewContextMenu.every(item => item.when.includes("webviewId == 'pascalAtlas.classNavigator'")));
   assert.ok(webviewContextMenu.some(item =>
-    item.command === 'pascalUnion.classNavigator.generateAiSteps'
+    item.command === 'pascalAtlas.classNavigator.generateAiSteps'
       && item.when.includes("webviewSection == 'classSymbol'")));
   assert.ok(webviewContextMenu.some(item =>
-    item.command === 'pascalUnion.classNavigator.context.buildPackage'
+    item.command === 'pascalAtlas.classNavigator.context.buildPackage'
       && item.when.includes("webviewSection == 'projectPackage'")));
   assert.ok(webviewContextMenu.some(item =>
-    item.command === 'pascalUnion.classNavigator.context.runGroup'
+    item.command === 'pascalAtlas.classNavigator.context.runGroup'
       && item.when.includes("webviewSection == 'projectGroup'")));
-  assert.doesNotMatch(navigatorSource, /registerWebviewViewProvider\('pascalUnion\.classNavigatorSearch'/);
+  assert.doesNotMatch(navigatorSource, /registerWebviewViewProvider\('pascalAtlas\.classNavigatorSearch'/);
   assert.doesNotMatch(navigatorSource, /createQuickPick\(\)/);
-  assert.doesNotMatch(navigatorSource, /registerCommand\('pascalUnion\.classNavigator\.selectSort',[\s\S]{0,1200}?showQuickPick/);
-  assert.match(navigatorSource, /new ClassNavigatorWebview\(vscode, 'pascalUnion\.classNavigator'/);
+  assert.doesNotMatch(navigatorSource, /registerCommand\('pascalAtlas\.classNavigator\.selectSort',[\s\S]{0,1200}?showQuickPick/);
+  assert.match(navigatorSource, /new ClassNavigatorWebview\(vscode, 'pascalAtlas\.classNavigator'/);
   assert.match(navigatorSource, /WEBVIEW_CONTEXT_COMMANDS\.map[\s\S]*?tree\.selection\[0\][\s\S]*?executeCommand\(command, target\)/);
   assert.match(navigatorSource, /workspaceState\.update\(SEARCH_OPTIONS_STATE_KEY, navigatorSearchOptions\)/);
   assert.match(navigatorWebviewSource, /id="scope"[\s\S]*?Current file[\s\S]*?Global/);
@@ -260,22 +260,22 @@ test('manifest keeps project commands out of the native Explorer and exposes the
   assert.match(navigatorSource, /navigatorSearchSession[\s\S]*?tree\.hideSearch\(\)/);
   assert.match(navigatorSource, /tree\.sortPanelOpen[\s\S]*?tree\.hideSort\(\)/);
   const navigatorSearchKeybinding = manifest.contributes.keybindings.find(item =>
-    item.command === 'pascalUnion.classNavigator.find');
+    item.command === 'pascalAtlas.classNavigator.find');
   assert.equal(navigatorSearchKeybinding.key, 'ctrl+alt+n');
   assert.match(navigatorSearchKeybinding.when, /editorLangId/);
-  assert.match(navigatorSearchKeybinding.when, /focusedView == pascalUnion\.classNavigator/);
-  assert.match(navigatorSearchKeybinding.when, /pascalUnion\.classNavigator\.webviewFocused/);
-  assert.match(navigatorSource, /onFocusChanged:[\s\S]*?pascalUnion\.classNavigator\.webviewFocused/);
+  assert.match(navigatorSearchKeybinding.when, /focusedView == pascalAtlas\.classNavigator/);
+  assert.match(navigatorSearchKeybinding.when, /pascalAtlas\.classNavigator\.webviewFocused/);
+  assert.match(navigatorSource, /onFocusChanged:[\s\S]*?pascalAtlas\.classNavigator\.webviewFocused/);
   assert.match(navigatorSource, /onSearchClosed: restoreState => closeNavigatorSearch\(true, restoreState\)/);
   assert.match(navigatorSource, /restoreNavigatorSearchSession[\s\S]*?preserveFocus: true[\s\S]*?TextEditorRevealType\.AtTop[\s\S]*?tree\.restoreSearchState/);
   assert.equal(manifest.contributes.submenus, undefined);
   for (const location of ['terminal/context', 'terminal/title/context']) {
     const menu = manifest.contributes.menus[location];
     for (const suffix of ['Errors', 'Warnings', 'Other']) {
-      const unchecked = menu.find(item => item.command === `pascalUnion.build.toggle${suffix}`);
-      const checked = menu.find(item => item.command === `pascalUnion.build.toggle${suffix}Checked`);
-      assert.match(unchecked.when, new RegExp(`!config\\.pascalUnion\\.build\\.output\\.show${suffix}`));
-      assert.match(checked.when, new RegExp(`(?<!!)config\\.pascalUnion\\.build\\.output\\.show${suffix}`));
+      const unchecked = menu.find(item => item.command === `pascalAtlas.build.toggle${suffix}`);
+      const checked = menu.find(item => item.command === `pascalAtlas.build.toggle${suffix}Checked`);
+      assert.match(unchecked.when, new RegExp(`!config\\.pascalAtlas\\.build\\.output\\.show${suffix}`));
+      assert.match(checked.when, new RegExp(`(?<!!)config\\.pascalAtlas\\.build\\.output\\.show${suffix}`));
       assert.equal(checked.group, unchecked.group);
       const icon = manifest.contributes.commands.find(item => item.command === checked.command).icon;
       assert.equal(typeof icon, 'object');
@@ -284,76 +284,76 @@ test('manifest keeps project commands out of the native Explorer and exposes the
     }
   }
   assert.deepEqual(
-    ['pascalUnion.build.toggleErrors', 'pascalUnion.build.toggleWarnings', 'pascalUnion.build.toggleOther']
+    ['pascalAtlas.build.toggleErrors', 'pascalAtlas.build.toggleWarnings', 'pascalAtlas.build.toggleOther']
       .map(command => manifest.contributes.commands.find(item => item.command === command).title),
     ['Show Errors', 'Show Warnings', 'Show Other Messages']
   );
   assert.match(source, /createQuickPick\(\)[\s\S]*?canSelectMany\s*=\s*true/);
   assert.match(source, /onDidChangeSelection\([\s\S]*?buildTerminalSession\?\.setFilters\(next\)/);
-  assert.doesNotMatch(source, /showQuickPick\(items,\s*\{[\s\S]*?Pascal Union: Build Output/);
-  assert.ok(manifest.contributes.configuration.properties['pascalUnion.build.completionNotification']);
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.build.showStatusBar'].default, true);
-  assert.ok(manifest.contributes.configuration.properties['pascalUnion.projectNavigator.enabled']);
-  assert.ok(manifest.contributes.configuration.properties['pascalUnion.projectNavigator.contextMenus.enabled']);
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.run.buildBeforeRun'].default, 'ifOutdated');
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.run.console'], undefined);
-  assert.ok(manifest.contributes.debuggers.some(item => item.type === 'pascal-union-run'));
+  assert.doesNotMatch(source, /showQuickPick\(items,\s*\{[\s\S]*?Pascal Atlas: Build Output/);
+  assert.ok(manifest.contributes.configuration.properties['pascalAtlas.build.completionNotification']);
+  assert.equal(manifest.contributes.configuration.properties['pascalAtlas.build.showStatusBar'].default, true);
+  assert.ok(manifest.contributes.configuration.properties['pascalAtlas.projectNavigator.enabled']);
+  assert.ok(manifest.contributes.configuration.properties['pascalAtlas.projectNavigator.contextMenus.enabled']);
+  assert.equal(manifest.contributes.configuration.properties['pascalAtlas.run.buildBeforeRun'].default, 'ifOutdated');
+  assert.equal(manifest.contributes.configuration.properties['pascalAtlas.run.console'], undefined);
+  assert.ok(manifest.contributes.debuggers.some(item => item.type === 'pascal-atlas-run'));
   assert.ok(manifest.contributes.commands.some(item =>
-    item.command === 'pascalUnion.run.stop' && item.enablement === 'pascalUnion.runInProgress'));
+    item.command === 'pascalAtlas.run.stop' && item.enablement === 'pascalAtlas.runInProgress'));
   assert.equal(manifest.contributes.commands.find(item =>
-    item.command === 'pascalUnion.run.group').enablement, '!pascalUnion.executionBusy');
-  assert.equal(manifest.contributes.commands.some(item => item.command.startsWith('pascalUnion.debug.')), false);
+    item.command === 'pascalAtlas.run.group').enablement, '!pascalAtlas.executionBusy');
+  assert.equal(manifest.contributes.commands.some(item => item.command.startsWith('pascalAtlas.debug.')), false);
   assert.ok(manifest.contributes.keybindings.some(item =>
-    item.command === 'pascalUnion.run.stop' && item.key === 'shift+f5'));
-  assert.match(source, /this\.statusItems\.stop\.command\s*=\s*this\.runInProgress[\s\S]*?'pascalUnion\.run\.stop'[\s\S]*?'workbench\.action\.debug\.stop'/);
+    item.command === 'pascalAtlas.run.stop' && item.key === 'shift+f5'));
+  assert.match(source, /this\.statusItems\.stop\.command\s*=\s*this\.runInProgress[\s\S]*?'pascalAtlas\.run\.stop'[\s\S]*?'workbench\.action\.debug\.stop'/);
   assert.match(source, /if \(executionActive\) \{[\s\S]*?statusItems\.run\.hide\(\)[\s\S]*?statusItems\.stop\.show\(\)/);
   assert.equal(manifest.contributes.configurationDefaults['debug.showInStatusBar'], undefined);
-  assert.ok(manifest.contributes.menus['view/title'].some(item => item.command === 'pascalUnion.projectNavigator.actions'
+  assert.ok(manifest.contributes.menus['view/title'].some(item => item.command === 'pascalAtlas.projectNavigator.actions'
     && item.group === '1_projectActions@1'));
-  assert.equal(manifest.contributes.menus['view/title'].some(item => item.command === 'pascalUnion.projectNavigator.actions'
+  assert.equal(manifest.contributes.menus['view/title'].some(item => item.command === 'pascalAtlas.projectNavigator.actions'
     && item.group.startsWith('navigation')), false, 'project actions belong only in the view overflow menu');
-  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.navigator.toggleMode').icon, '$(arrow-swap)');
-  assert.equal(manifest.contributes.menus['view/title'].find(item => item.command === 'pascalUnion.navigator.toggleMode').group, 'navigation@99');
-  assert.ok(manifest.contributes.menus['view/title'].some(item => item.command === 'pascalUnion.openSettings'
-    && item.when.includes('pascalUnion.navigator.mode == class')
+  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalAtlas.navigator.toggleMode').icon, '$(arrow-swap)');
+  assert.equal(manifest.contributes.menus['view/title'].find(item => item.command === 'pascalAtlas.navigator.toggleMode').group, 'navigation@99');
+  assert.ok(manifest.contributes.menus['view/title'].some(item => item.command === 'pascalAtlas.openSettings'
+    && item.when.includes('pascalAtlas.navigator.mode == class')
     && !item.group.startsWith('navigation')),
   'class mode needs a real overflow action so its native ellipsis matches project mode');
-  assert.equal(manifest.contributes.menus['view/title'].some(item => item.command === 'pascalUnion.classNavigator.refresh'), false);
-  assert.match(navigatorSource, /new ClassNavigatorWebview\(vscode, 'pascalUnion\.classNavigator'/);
+  assert.equal(manifest.contributes.menus['view/title'].some(item => item.command === 'pascalAtlas.classNavigator.refresh'), false);
+  assert.match(navigatorSource, /new ClassNavigatorWebview\(vscode, 'pascalAtlas\.classNavigator'/);
   assert.match(navigatorWebviewSource, /const expanded = new Set\(saved\.expanded \|\| \[\]\)/);
   assert.match(navigatorSource, /this\.changed\.fire\(routine\)/,
     'AI completion must refresh only the completed routine subtree');
   assert.match(navigatorSource, /combinedChanged\.fire\(element\)/,
     'the combined navigator must preserve granular TreeDataProvider events');
-  assert.ok(manifest.contributes.commands.some(item => item.command === 'pascalUnion.classNavigator.stopAiGeneration'));
+  assert.ok(manifest.contributes.commands.some(item => item.command === 'pascalAtlas.classNavigator.stopAiGeneration'));
   assert.equal(manifest.contributes.commands.some(item =>
-    item.command === 'pascalUnion.classNavigator.generateAllAiSteps'), false);
+    item.command === 'pascalAtlas.classNavigator.generateAllAiSteps'), false);
   assert.ok(manifest.contributes.commands.some(item =>
-    item.command === 'pascalUnion.classNavigator.generateDetailedAiSteps'));
+    item.command === 'pascalAtlas.classNavigator.generateDetailedAiSteps'));
   for (const command of [
-    'pascalUnion.classNavigator.generateAiSteps',
-    'pascalUnion.classNavigator.generateDetailedAiSteps'
+    'pascalAtlas.classNavigator.generateAiSteps',
+    'pascalAtlas.classNavigator.generateDetailedAiSteps'
   ]) {
     const menu = manifest.contributes.menus['view/item/context'].find(item => item.command === command);
-    assert.ok(menu?.when.includes('pascalUnion.classNavigator.(routine|type)'));
+    assert.ok(menu?.when.includes('pascalAtlas.classNavigator.(routine|type)'));
     assert.equal(manifest.contributes.menus['view/title'].some(item => item.command === command), false);
   }
-  assert.ok(manifest.contributes.menus['view/title'].some(item => item.command === 'pascalUnion.classNavigator.stopAiGeneration'
-    && item.when.includes('pascalUnion.classNavigator.aiGenerating')));
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.classNavigator.aiSteps.batch.delayMs'], undefined);
-  assert.equal(manifest.contributes.configuration.properties['pascalUnion.classNavigator.aiSteps.batch.maxConsecutiveErrors'], undefined);
-  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.build.buildPackage').title, 'Build');
-  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.build.compilePackage').title, 'Compile');
-  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.build.cleanPackage').title, 'Clean');
-  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.build.buildGroup').title, 'Build All');
-  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.build.compileGroup').title, 'Compile All');
-  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalUnion.build.cleanGroup').title, 'Clean All');
-  assert.equal(manifest.contributes.views.explorer.some(item => item.id === 'pascalUnion.projectNavigator'), false);
-  assert.equal(manifest.contributes.views.explorer.find(item => item.id === 'pascalUnion.classNavigator').name, 'Delphi Navigator');
-  assert.equal(Object.keys(manifest.contributes.configuration.properties).some(key => key.startsWith('pascalUnion.explorer.projectMarkers')), false);
-  assert.ok(manifest.contributes.problemMatchers.some(item => item.name === 'pascalUnionDelphi'));
+  assert.ok(manifest.contributes.menus['view/title'].some(item => item.command === 'pascalAtlas.classNavigator.stopAiGeneration'
+    && item.when.includes('pascalAtlas.classNavigator.aiGenerating')));
+  assert.equal(manifest.contributes.configuration.properties['pascalAtlas.classNavigator.aiSteps.batch.delayMs'], undefined);
+  assert.equal(manifest.contributes.configuration.properties['pascalAtlas.classNavigator.aiSteps.batch.maxConsecutiveErrors'], undefined);
+  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalAtlas.build.buildPackage').title, 'Build');
+  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalAtlas.build.compilePackage').title, 'Compile');
+  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalAtlas.build.cleanPackage').title, 'Clean');
+  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalAtlas.build.buildGroup').title, 'Build All');
+  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalAtlas.build.compileGroup').title, 'Compile All');
+  assert.equal(manifest.contributes.commands.find(item => item.command === 'pascalAtlas.build.cleanGroup').title, 'Clean All');
+  assert.equal(manifest.contributes.views.explorer.some(item => item.id === 'pascalAtlas.projectNavigator'), false);
+  assert.equal(manifest.contributes.views.explorer.find(item => item.id === 'pascalAtlas.classNavigator').name, 'Delphi Navigator');
+  assert.equal(Object.keys(manifest.contributes.configuration.properties).some(key => key.startsWith('pascalAtlas.explorer.projectMarkers')), false);
+  assert.ok(manifest.contributes.problemMatchers.some(item => item.name === 'pascalAtlasDelphi'));
   const classicMatcher = new RegExp(manifest.contributes.problemMatchers
-    .find(item => item.name === 'pascalUnionDelphiClassic').pattern.regexp);
+    .find(item => item.name === 'pascalAtlasDelphiClassic').pattern.regexp);
   const error = classicMatcher.exec('[ERROR] FootballStatistics.dpr(16): error E2029: Statement expected');
   const warning = classicMatcher.exec('[WARN]  Unit1.pas(42): warning W1036: Variable might not have been initialized');
   assert.equal(error?.[1], 'FootballStatistics.dpr');

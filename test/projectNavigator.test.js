@@ -40,12 +40,12 @@ test('project navigator groups group/application files above package nodes', () 
   const roots = projectNavigationModel(model);
   assert.equal(roots.length, 1);
   assert.equal(roots[0].label, 'Demo');
-  assert.equal(roots[0].contextValue, 'pascalUnion.projectNavigator.project');
+  assert.equal(roots[0].contextValue, 'pascalAtlas.projectNavigator.project');
   assert.deepEqual(roots[0].children.map(item => item.label), [
     'Demo.groupproj', 'DemoApp.dpr', 'Core'
   ]);
   const packageItem = roots[0].children[2];
-  assert.equal(packageItem.contextValue, 'pascalUnion.projectNavigator.package');
+  assert.equal(packageItem.contextValue, 'pascalAtlas.projectNavigator.package');
   assert.deepEqual(packageItem.children.map(item => item.label), ['Core.dpk', 'Core.dproj']);
   assert.ok(packageItem.children.every(item => item.kind === 'file'));
 });

@@ -174,7 +174,7 @@ function plainControlExpansion(prefix, baseIndent, editorOptions = {}) {
 }
 
 function completionEnabled(vscode, document) {
-  const configuration = vscode.workspace.getConfiguration('pascalUnion', document.uri);
+  const configuration = vscode.workspace.getConfiguration('pascalAtlas', document.uri);
   return configuration.get('enabled', true)
     && configuration.get('completion.enabled', true);
 }
@@ -228,7 +228,7 @@ function registerImmediateSpaceExpansion(context, vscode) {
     );
   };
   const disposable = vscode.commands.registerCommand(
-    'pascalUnion.completion.typeSpace',
+    'pascalAtlas.completion.typeSpace',
     typeSpace
   );
   context.subscriptions.push(disposable);

@@ -2,7 +2,7 @@
 
 const vscode = require('vscode');
 
-const PLATFORM_LANGUAGE_ID = 'pascal-union-platform';
+const PLATFORM_LANGUAGE_ID = 'pascal-atlas-platform';
 const MANAGED_ASSOCIATION_VALUE = PLATFORM_LANGUAGE_ID;
 
 function platformSourceAssociationPatterns(installationPath) {
@@ -37,7 +37,7 @@ function mergedAssociations(existing, patterns, enabled) {
 }
 
 async function synchronizePlatformSourceIsolation(output) {
-  const enabled = vscode.workspace.getConfiguration('pascalUnion')
+  const enabled = vscode.workspace.getConfiguration('pascalAtlas')
     .get('navigation.isolatePlatformSources', true);
   const installationPath = vscode.workspace.getConfiguration('vallenta.studio')
     .get('installationPath', '');
@@ -64,7 +64,7 @@ function registerPlatformSourceIsolation(context, output) {
     output.appendLine(`Platform source isolation setup failed: ${error.message}`);
   });
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-    if (!event.affectsConfiguration('pascalUnion.navigation.isolatePlatformSources')
+    if (!event.affectsConfiguration('pascalAtlas.navigation.isolatePlatformSources')
       && !event.affectsConfiguration('vallenta.studio.installationPath')) return;
     void synchronizePlatformSourceIsolation(output).catch(error => {
       output.appendLine(`Platform source isolation refresh failed: ${error.message}`);

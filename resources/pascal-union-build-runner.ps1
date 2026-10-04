@@ -6,23 +6,23 @@ $OutputEncoding = $utf8
 # caret. Restore it while this task is active, then hide it again at the end.
 [Console]::Write(([char]27).ToString() + '[?25h')
 $toolArgs = @()
-if ($env:PASCAL_UNION_BUILD_ARGS) {
+if ($env:PASCAL_ATLAS_BUILD_ARGS) {
   $json = [Text.Encoding]::UTF8.GetString(
-    [Convert]::FromBase64String($env:PASCAL_UNION_BUILD_ARGS)
+    [Convert]::FromBase64String($env:PASCAL_ATLAS_BUILD_ARGS)
   )
   $toolArgs = @($json | ConvertFrom-Json)
 }
 
 $errorCount = 0
 $warningCount = 0
-if ($env:PASCAL_UNION_BUILD_DIAGNOSTICS) {
-  [IO.File]::WriteAllText($env:PASCAL_UNION_BUILD_DIAGNOSTICS, '', $utf8)
+if ($env:PASCAL_ATLAS_BUILD_DIAGNOSTICS) {
+  [IO.File]::WriteAllText($env:PASCAL_ATLAS_BUILD_DIAGNOSTICS, '', $utf8)
 }
-$displayTarget = $env:PASCAL_UNION_BUILD_LABEL -replace '^\S+\s+', ''
+$displayTarget = $env:PASCAL_ATLAS_BUILD_LABEL -replace '^\S+\s+', ''
 Write-Host ('Build ' + $displayTarget) -ForegroundColor Cyan
 Write-Host ''
 
-& $env:PASCAL_UNION_BUILD_TOOL @toolArgs 2>&1 | ForEach-Object {
+& $env:PASCAL_ATLAS_BUILD_TOOL @toolArgs 2>&1 | ForEach-Object {
   $line = [string]$_
   if ($line -match '^\s*Embarcadero Delphi for .+ compiler version ') {
     return
@@ -41,8 +41,8 @@ Write-Host ''
   if ($isError) {
     $errorCount++
     $diagnosticLine = '[ERROR] ' + $displayLine
-    if ($env:PASCAL_UNION_BUILD_DIAGNOSTICS) {
-      [IO.File]::AppendAllText($env:PASCAL_UNION_BUILD_DIAGNOSTICS, $diagnosticLine + [Environment]::NewLine, $utf8)
+    if ($env:PASCAL_ATLAS_BUILD_DIAGNOSTICS) {
+      [IO.File]::AppendAllText($env:PASCAL_ATLAS_BUILD_DIAGNOSTICS, $diagnosticLine + [Environment]::NewLine, $utf8)
     }
     Write-Host $diagnosticLine -ForegroundColor Red
     return
@@ -50,8 +50,8 @@ Write-Host ''
   if ($isWarning) {
     $warningCount++
     $diagnosticLine = '[WARN]  ' + $displayLine
-    if ($env:PASCAL_UNION_BUILD_DIAGNOSTICS) {
-      [IO.File]::AppendAllText($env:PASCAL_UNION_BUILD_DIAGNOSTICS, $diagnosticLine + [Environment]::NewLine, $utf8)
+    if ($env:PASCAL_ATLAS_BUILD_DIAGNOSTICS) {
+      [IO.File]::AppendAllText($env:PASCAL_ATLAS_BUILD_DIAGNOSTICS, $diagnosticLine + [Environment]::NewLine, $utf8)
     }
     Write-Host $diagnosticLine -ForegroundColor Yellow
     return
@@ -63,7 +63,7 @@ $code = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
 $timer.Stop()
 $state = if ($code -eq 0) { 'BUILD SUCCEEDED' } else { 'BUILD FAILED' }
 $color = if ($code -eq 0) { 'Green' } else { 'Red' }
-if ($env:PASCAL_UNION_BUILD_SUMMARY -ne 'false') {
+if ($env:PASCAL_ATLAS_BUILD_SUMMARY -ne 'false') {
   Write-Host ''
   Write-Host ($state + ': ' + $displayTarget) -ForegroundColor $color
   $errorLabel = if ($errorCount -eq 1) { '1 error' } else { $errorCount.ToString() + ' errors' }
@@ -75,7 +75,7 @@ if ($env:PASCAL_UNION_BUILD_SUMMARY -ne 'false') {
 # VS Code prints the complete process command whenever a task process exits
 # non-zero. Persist the real compiler result for the extension and let this
 # small host task exit cleanly, so a Delphi error remains one concise line.
-if ($env:PASCAL_UNION_BUILD_RESULT) {
-  Set-Content -LiteralPath $env:PASCAL_UNION_BUILD_RESULT -Value $code -Encoding ASCII
+if ($env:PASCAL_ATLAS_BUILD_RESULT) {
+  Set-Content -LiteralPath $env:PASCAL_ATLAS_BUILD_RESULT -Value $code -Encoding ASCII
 }
 exit 0

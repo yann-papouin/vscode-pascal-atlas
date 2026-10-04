@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "Pascal Union Numeric Literals",
-  "scopeName": "source.pascal-union.numeric",
+  "name": "Pascal Atlas Numeric Literals",
+  "scopeName": "source.pascal-atlas.numeric",
   "injectionSelector": "L:source.pascal -comment -string -meta.preprocessor",
   "patterns": [
     {

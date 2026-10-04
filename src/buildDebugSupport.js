@@ -15,9 +15,9 @@ const {
 const { evaluateProjectProperties, readProjectInfo } = require('./diagnosticCore');
 const { ProjectNavigatorProvider } = require('./projectNavigator');
 
-const STARTUP_KEY = 'pascalUnion.run.groupStartupProjects';
-const SELECTION_KEY = 'pascalUnion.build.selections';
-const DETAILS_KEY = 'pascalUnion.delphiProjectDetails.v1';
+const STARTUP_KEY = 'pascalAtlas.run.groupStartupProjects';
+const SELECTION_KEY = 'pascalAtlas.build.selections';
+const DETAILS_KEY = 'pascalAtlas.delphiProjectDetails.v1';
 // CSI 2 J clears the visible viewport; CSI 3 J also drops xterm's scrollback.
 // Both are needed when a filter changes, otherwise hidden lines remain visible
 // after the user scrolls upward even though the current viewport was redrawn.
@@ -414,15 +414,15 @@ class BuildDebugSupport {
       platform: vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 36),
       configuration: vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 35)
     };
-    this.statusItems.build.name = 'Pascal Union Build All';
-    this.statusItems.build.command = 'pascalUnion.build.buildGroup';
-    this.statusItems.run.name = 'Pascal Union Run';
-    this.statusItems.run.command = 'pascalUnion.run.group';
-    this.statusItems.stop.name = 'Pascal Union Stop';
-    this.statusItems.platform.name = 'Pascal Union Platform';
-    this.statusItems.platform.command = 'pascalUnion.build.selectPlatform';
-    this.statusItems.configuration.name = 'Pascal Union Build Configuration';
-    this.statusItems.configuration.command = 'pascalUnion.build.selectConfiguration';
+    this.statusItems.build.name = 'Pascal Atlas Build All';
+    this.statusItems.build.command = 'pascalAtlas.build.buildGroup';
+    this.statusItems.run.name = 'Pascal Atlas Run';
+    this.statusItems.run.command = 'pascalAtlas.run.group';
+    this.statusItems.stop.name = 'Pascal Atlas Stop';
+    this.statusItems.platform.name = 'Pascal Atlas Platform';
+    this.statusItems.platform.command = 'pascalAtlas.build.selectPlatform';
+    this.statusItems.configuration.name = 'Pascal Atlas Build Configuration';
+    this.statusItems.configuration.command = 'pascalAtlas.build.selectConfiguration';
     this.buildInProgress = false;
     this.runInProgress = false;
     this.runLaunchInProgress = false;
@@ -431,7 +431,7 @@ class BuildDebugSupport {
     this.lastBuildResult = undefined;
     this.buildTerminal = undefined;
     this.buildTerminalSession = undefined;
-    this.buildDiagnostics = vscode.languages.createDiagnosticCollection('pascalUnion.build');
+    this.buildDiagnostics = vscode.languages.createDiagnosticCollection('pascalAtlas.build');
     this.runAdapters = new Map();
   }
 
@@ -461,19 +461,19 @@ class BuildDebugSupport {
         this.buildTerminalSession = undefined;
         this.updateBuildTerminalContext();
       }),
-      vscode.tasks.registerTaskProvider('pascal-union', {
+      vscode.tasks.registerTaskProvider('pascal-atlas', {
         provideTasks: () => this.provideTasks(),
         resolveTask: () => undefined
       }),
       vscode.debug.onDidStartDebugSession(session => {
-        if (session.type === 'pascal-union-run') this.activeRunSession = session;
+        if (session.type === 'pascal-atlas-run') this.activeRunSession = session;
         this.refreshStatusBar();
       }),
       vscode.debug.onDidTerminateDebugSession(session => {
         if (session === this.activeRunSession) this.activeRunSession = undefined;
         this.refreshStatusBar();
       }),
-      vscode.debug.registerDebugAdapterDescriptorFactory('pascal-union-run', {
+      vscode.debug.registerDebugAdapterDescriptorFactory('pascal-atlas-run', {
         createDebugAdapterDescriptor: session => {
           const adapter = this.runAdapters.get(session.configuration.runId)
             || new RunDebugAdapter(session.configuration);
@@ -487,13 +487,13 @@ class BuildDebugSupport {
   }
 
   updateContexts() {
-    void vscode.commands.executeCommand('setContext', 'pascalUnion.hasProjectGroups', this.model.groups.size > 0);
+    void vscode.commands.executeCommand('setContext', 'pascalAtlas.hasProjectGroups', this.model.groups.size > 0);
   }
 
   updateBuildTerminalContext(terminal = vscode.window.activeTerminal) {
     void vscode.commands.executeCommand(
       'setContext',
-      'pascalUnion.buildTerminalActive',
+      'pascalAtlas.buildTerminalActive',
       Boolean(this.buildTerminal && terminal === this.buildTerminal)
     );
   }
@@ -514,9 +514,9 @@ class BuildDebugSupport {
       }
     }
     this.context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-      if (event.affectsConfiguration('pascalUnion.projectNavigator')) this.projectNavigator.refresh();
-      if (event.affectsConfiguration('pascalUnion.build')) this.refreshStatusBar();
-      if (event.affectsConfiguration('pascalUnion.build.output')) this.refreshBuildTerminalFilters();
+      if (event.affectsConfiguration('pascalAtlas.projectNavigator')) this.projectNavigator.refresh();
+      if (event.affectsConfiguration('pascalAtlas.build')) this.refreshStatusBar();
+      if (event.affectsConfiguration('pascalAtlas.build.output')) this.refreshBuildTerminalFilters();
     }));
   }
 
@@ -537,7 +537,7 @@ class BuildDebugSupport {
   refreshStatusBar() {
     const items = Object.values(this.statusItems);
     const group = this.statusGroup();
-    const enabled = vscode.workspace.getConfiguration('pascalUnion').get('build.showStatusBar', true);
+    const enabled = vscode.workspace.getConfiguration('pascalAtlas').get('build.showStatusBar', true);
     if (!enabled || !group) {
       for (const item of items) item.hide();
       return;
@@ -549,7 +549,7 @@ class BuildDebugSupport {
     this.statusItems.build.text = this.buildInProgress ? '$(sync~spin) Building' : '$(tools) Build All';
     this.statusItems.build.tooltip = this.lastBuildResult || `Build entire project group: ${groupLabel}`;
     const runActive = this.runInProgress || this.runLaunchInProgress;
-    this.statusItems.run.command = 'pascalUnion.run.group';
+    this.statusItems.run.command = 'pascalAtlas.run.group';
     this.statusItems.run.text = this.runLaunchInProgress
         ? '$(sync~spin) Starting'
         : '$(run) Run';
@@ -559,11 +559,11 @@ class BuildDebugSupport {
         ? 'Preparing to start the startup project'
       : `Run the startup project in ${groupLabel} without attaching the debugger`;
     const debugActive = Boolean(vscode.debug.activeDebugSession
-      && vscode.debug.activeDebugSession.type !== 'pascal-union-run');
+      && vscode.debug.activeDebugSession.type !== 'pascal-atlas-run');
     const executionActive = this.runInProgress || debugActive;
     this.statusItems.stop.text = '$(debug-stop) Stop';
     this.statusItems.stop.command = this.runInProgress
-      ? 'pascalUnion.run.stop'
+      ? 'pascalAtlas.run.stop'
       : 'workbench.action.debug.stop';
     this.statusItems.stop.tooltip = this.runInProgress
       ? 'Stop the current Run process (Shift+F5)'
@@ -572,8 +572,8 @@ class BuildDebugSupport {
     this.statusItems.platform.tooltip = `Target platform: ${resolved.platform} (click to change)`;
     this.statusItems.configuration.text = `$(symbol-enum) ${resolved.configuration}`;
     this.statusItems.configuration.tooltip = `Build configuration: ${resolved.configuration} (click to change)`;
-    void vscode.commands.executeCommand('setContext', 'pascalUnion.runInProgress', this.runInProgress);
-    void vscode.commands.executeCommand('setContext', 'pascalUnion.executionBusy', Boolean(
+    void vscode.commands.executeCommand('setContext', 'pascalAtlas.runInProgress', this.runInProgress);
+    void vscode.commands.executeCommand('setContext', 'pascalAtlas.executionBusy', Boolean(
       runActive || vscode.debug.activeDebugSession
     ));
     this.statusItems.build.show();
@@ -590,26 +590,26 @@ class BuildDebugSupport {
 
   registerCommands() {
     const command = (name, handler) => this.context.subscriptions.push(vscode.commands.registerCommand(name, handler));
-    command('pascalUnion.build.compilePackage', (uri, selected) => this.runPackageCommand('Make', uri, selected));
-    command('pascalUnion.build.buildPackage', (uri, selected) => this.runPackageCommand('Build', uri, selected));
-    command('pascalUnion.build.cleanPackage', (uri, selected) => this.runPackageCommand('Clean', uri, selected));
-    command('pascalUnion.build.compileGroup', uri => this.runGroupCommand('Make', uri));
-    command('pascalUnion.build.buildGroup', uri => this.runGroupCommand('Build', uri));
-    command('pascalUnion.build.cleanGroup', uri => this.runGroupCommand('Clean', uri));
-    command('pascalUnion.build.selectConfiguration', uri => this.selectBuildValue(uri, 'configuration'));
-    command('pascalUnion.build.selectPlatform', uri => this.selectBuildValue(uri, 'platform'));
-    command('pascalUnion.build.selectOutputFilters', () => this.selectBuildOutputFilters());
-    command('pascalUnion.build.toggleErrors', () => this.toggleBuildOutput('errors'));
-    command('pascalUnion.build.toggleWarnings', () => this.toggleBuildOutput('warnings'));
-    command('pascalUnion.build.toggleOther', () => this.toggleBuildOutput('other'));
-    command('pascalUnion.build.toggleErrorsChecked', () => this.toggleBuildOutput('errors'));
-    command('pascalUnion.build.toggleWarningsChecked', () => this.toggleBuildOutput('warnings'));
-    command('pascalUnion.build.toggleOtherChecked', () => this.toggleBuildOutput('other'));
-    command('pascalUnion.run.selectStartupProject', uri => this.selectStartupProjectForUri(uri, true));
-    command('pascalUnion.run.group', uri => this.startRunCommand(uri));
-    command('pascalUnion.run.stop', () => this.stopRun());
-    command('pascalUnion.projectNavigator.actions', uri => this.showProjectActions(uri));
-    command('pascalUnion.projectNavigator.refresh', () => this.model.refresh());
+    command('pascalAtlas.build.compilePackage', (uri, selected) => this.runPackageCommand('Make', uri, selected));
+    command('pascalAtlas.build.buildPackage', (uri, selected) => this.runPackageCommand('Build', uri, selected));
+    command('pascalAtlas.build.cleanPackage', (uri, selected) => this.runPackageCommand('Clean', uri, selected));
+    command('pascalAtlas.build.compileGroup', uri => this.runGroupCommand('Make', uri));
+    command('pascalAtlas.build.buildGroup', uri => this.runGroupCommand('Build', uri));
+    command('pascalAtlas.build.cleanGroup', uri => this.runGroupCommand('Clean', uri));
+    command('pascalAtlas.build.selectConfiguration', uri => this.selectBuildValue(uri, 'configuration'));
+    command('pascalAtlas.build.selectPlatform', uri => this.selectBuildValue(uri, 'platform'));
+    command('pascalAtlas.build.selectOutputFilters', () => this.selectBuildOutputFilters());
+    command('pascalAtlas.build.toggleErrors', () => this.toggleBuildOutput('errors'));
+    command('pascalAtlas.build.toggleWarnings', () => this.toggleBuildOutput('warnings'));
+    command('pascalAtlas.build.toggleOther', () => this.toggleBuildOutput('other'));
+    command('pascalAtlas.build.toggleErrorsChecked', () => this.toggleBuildOutput('errors'));
+    command('pascalAtlas.build.toggleWarningsChecked', () => this.toggleBuildOutput('warnings'));
+    command('pascalAtlas.build.toggleOtherChecked', () => this.toggleBuildOutput('other'));
+    command('pascalAtlas.run.selectStartupProject', uri => this.selectStartupProjectForUri(uri, true));
+    command('pascalAtlas.run.group', uri => this.startRunCommand(uri));
+    command('pascalAtlas.run.stop', () => this.stopRun());
+    command('pascalAtlas.projectNavigator.actions', uri => this.showProjectActions(uri));
+    command('pascalAtlas.projectNavigator.refresh', () => this.model.refresh());
   }
 
   executionBusyMessage() {
@@ -620,7 +620,7 @@ class BuildDebugSupport {
 
   async startRunCommand(uri) {
     const busy = this.executionBusyMessage();
-    if (busy) return void vscode.window.showInformationMessage(`Pascal Union：${busy}`);
+    if (busy) return void vscode.window.showInformationMessage(`Pascal Atlas：${busy}`);
     this.runLaunchInProgress = true;
     this.refreshStatusBar();
     try {
@@ -634,13 +634,13 @@ class BuildDebugSupport {
   async stopRun() {
     if (!this.runInProgress) return;
     const session = this.activeRunSession
-      || (vscode.debug.activeDebugSession?.type === 'pascal-union-run' ? vscode.debug.activeDebugSession : undefined);
+      || (vscode.debug.activeDebugSession?.type === 'pascal-atlas-run' ? vscode.debug.activeDebugSession : undefined);
     if (session) await vscode.debug.stopDebugging(session);
     else this.activeRunAdapter?.terminate();
   }
 
   buildOutputFilters() {
-    const configuration = vscode.workspace.getConfiguration('pascalUnion');
+    const configuration = vscode.workspace.getConfiguration('pascalAtlas');
     return {
       errors: configuration.get('build.output.showErrors', true),
       warnings: configuration.get('build.output.showWarnings', true),
@@ -660,7 +660,7 @@ class BuildDebugSupport {
     };
     const key = keys[category];
     if (!key) return;
-    const configuration = vscode.workspace.getConfiguration('pascalUnion');
+    const configuration = vscode.workspace.getConfiguration('pascalAtlas');
     const target = vscode.workspace.workspaceFolders?.length
       ? vscode.ConfigurationTarget.Workspace
       : vscode.ConfigurationTarget.Global;
@@ -677,7 +677,7 @@ class BuildDebugSupport {
     ];
     const picker = vscode.window.createQuickPick();
     picker.canSelectMany = true;
-    picker.title = 'Pascal Union: Build Output';
+    picker.title = 'Pascal Atlas: Build Output';
     picker.placeholder = 'Select the items to show. Changes take effect immediately; no confirmation needed.';
     picker.items = items;
     picker.selectedItems = items.filter(item => filters[item.category]);
@@ -700,13 +700,13 @@ class BuildDebugSupport {
       current = next;
       if (!changed.length) return;
       updateQueue = updateQueue.then(async () => {
-        const configuration = vscode.workspace.getConfiguration('pascalUnion');
+        const configuration = vscode.workspace.getConfiguration('pascalAtlas');
         for (const item of changed) {
           const suffix = item.category.charAt(0).toUpperCase() + item.category.slice(1);
           await configuration.update(`build.output.show${suffix}`, next[item.category], target);
         }
       }).catch(error => {
-        console.error('Pascal Union: failed to persist build output filters', error);
+        console.error('Pascal Atlas: failed to persist build output filters', error);
       });
     }));
     disposables.push(picker.onDidAccept(() => picker.hide()));
@@ -727,7 +727,7 @@ class BuildDebugSupport {
       this.buildTerminal = undefined;
     });
     this.buildTerminalSession = session;
-    this.buildTerminal = vscode.window.createTerminal({ name: 'Pascal Union Build', pty: session });
+    this.buildTerminal = vscode.window.createTerminal({ name: 'Pascal Atlas Build', pty: session });
     this.updateBuildTerminalContext();
     return session;
   }
@@ -755,7 +755,7 @@ class BuildDebugSupport {
         item.message,
         severity
       );
-      diagnostic.source = 'Pascal Union Build';
+      diagnostic.source = 'Pascal Atlas Build';
       if (item.code) diagnostic.code = item.code;
       const entry = grouped.get(key) || { uri, diagnostics: [] };
       entry.diagnostics.push(diagnostic);
@@ -771,12 +771,12 @@ class BuildDebugSupport {
       { label: '$(tools) Build All', description: group.name, action: () => this.runGroupCommand('Build', group) },
       { label: '$(run-all) Compile All', description: group.name, action: () => this.runGroupCommand('Make', group) },
       { label: '$(trash) Clean All', description: group.name, action: () => this.runGroupCommand('Clean', group) },
-      { label: '$(run) Run', description: group.name, action: () => vscode.commands.executeCommand('pascalUnion.run.group', group) },
+      { label: '$(run) Run', description: group.name, action: () => vscode.commands.executeCommand('pascalAtlas.run.group', group) },
       { label: '$(list-selection) Select Startup Project', description: group.name, action: () => this.selectStartupProject(group, true) },
       { label: '$(settings-gear) Select Build Configuration', description: group.name, action: () => this.selectBuildValue(vscode.Uri.file(group.groupDir), 'configuration') },
       { label: '$(symbol-enum) Select Build Platform', description: group.name, action: () => this.selectBuildValue(vscode.Uri.file(group.groupDir), 'platform') }
     ], {
-      title: `Pascal Union：${group.name}`,
+      title: `Pascal Atlas：${group.name}`,
       placeHolder: 'Select a project group action'
     });
     if (picked) await picked.action();
@@ -791,7 +791,7 @@ class BuildDebugSupport {
       const environment = readRsvarsEnvironment(rsvars);
       const frameworkDir = environment.FrameworkDir
         || path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET', 'Framework', 'v4.0.30319');
-      const msbuild = vscode.workspace.getConfiguration('pascalUnion').get('build.msbuildPath', '')
+      const msbuild = vscode.workspace.getConfiguration('pascalAtlas').get('build.msbuildPath', '')
         || vscode.workspace.getConfiguration('vallenta.studio').get('msbuildPath', '')
         || path.join(frameworkDir, 'MSBuild.exe');
       return {
@@ -814,7 +814,7 @@ class BuildDebugSupport {
   selection(targetPath, fallback = {}) {
     const all = this.context.workspaceState.get(SELECTION_KEY, {});
     const saved = all[this.selectionKey(targetPath)] || {};
-    const configuration = vscode.workspace.getConfiguration('pascalUnion');
+    const configuration = vscode.workspace.getConfiguration('pascalAtlas');
     return {
       configuration: saved.configuration || configuration.get('build.configuration', 'auto') || fallback.configuration || 'auto',
       platform: saved.platform || configuration.get('build.platform', 'auto') || fallback.platform || 'auto'
@@ -901,7 +901,7 @@ class BuildDebugSupport {
       for (const projectPath of uri.projectPaths) {
         const project = this.model.project(projectPath) || minimalProjectDescriptor(projectPath);
         const result = await this.enqueue(() => this.buildProject(project, target));
-        if (result !== 0 && vscode.workspace.getConfiguration('pascalUnion').get('build.stopGroupOnFailure', true)) break;
+        if (result !== 0 && vscode.workspace.getConfiguration('pascalAtlas').get('build.stopGroupOnFailure', true)) break;
       }
       return;
     }
@@ -917,7 +917,7 @@ class BuildDebugSupport {
   }
 
   async saveForProjects(projectPaths) {
-    if (!vscode.workspace.getConfiguration('pascalUnion').get('build.saveBeforeBuild', true)) return true;
+    if (!vscode.workspace.getConfiguration('pascalAtlas').get('build.saveBeforeBuild', true)) return true;
     const roots = projectPaths.map(projectPath => path.dirname(projectPath));
     const projectFiles = new Set(projectPaths.map(normalizeKey));
     for (const projectPath of projectPaths) {
@@ -938,13 +938,13 @@ class BuildDebugSupport {
   }
 
   async buildProject(project, target, overrides = {}) {
-    if (!vscode.workspace.getConfiguration('pascalUnion').get('build.enabled', true)) {
-      void vscode.window.showWarningMessage('Pascal Union production builds are disabled in settings.');
+    if (!vscode.workspace.getConfiguration('pascalAtlas').get('build.enabled', true)) {
+      void vscode.window.showWarningMessage('Pascal Atlas production builds are disabled in settings.');
       return 1;
     }
     if (!await this.saveForProjects([project.projectPath])) return 1;
     const tools = await this.tools().catch(error => {
-      void vscode.window.showErrorMessage(`Pascal Union：${error.message}`);
+      void vscode.window.showErrorMessage(`Pascal Atlas：${error.message}`);
       return undefined;
     });
     if (!tools) return 1;
@@ -963,11 +963,11 @@ class BuildDebugSupport {
   }
 
   async buildGroup(group, target, overrides = {}) {
-    if (!vscode.workspace.getConfiguration('pascalUnion').get('build.enabled', true)) {
-      void vscode.window.showWarningMessage('Pascal Union production builds are disabled in settings.');
+    if (!vscode.workspace.getConfiguration('pascalAtlas').get('build.enabled', true)) {
+      void vscode.window.showWarningMessage('Pascal Atlas production builds are disabled in settings.');
       return 1;
     }
-    if (!vscode.workspace.getConfiguration('pascalUnion').get('build.stopGroupOnFailure', true)) {
+    if (!vscode.workspace.getConfiguration('pascalAtlas').get('build.stopGroupOnFailure', true)) {
       let finalExitCode = 0;
       for (const projectPath of group.projectPaths) {
         const project = this.model.project(projectPath) || minimalProjectDescriptor(projectPath);
@@ -978,7 +978,7 @@ class BuildDebugSupport {
     }
     if (!await this.saveForProjects(group.projectPaths)) return 1;
     const tools = await this.tools().catch(error => {
-      void vscode.window.showErrorMessage(`Pascal Union：${error.message}`);
+      void vscode.window.showErrorMessage(`Pascal Atlas：${error.message}`);
       return undefined;
     });
     if (!tools) return 1;
@@ -993,7 +993,7 @@ class BuildDebugSupport {
 
   async executeBuild(label, executable, args, cwd, environment) {
     if (!fs.existsSync(executable)) {
-      void vscode.window.showErrorMessage(`Pascal Union: Build tool not found: ${executable}`);
+      void vscode.window.showErrorMessage(`Pascal Atlas: Build tool not found: ${executable}`);
       return 1;
     }
     this.backgroundDiagnostics?.suspendCompiler?.('foreground build');
@@ -1001,10 +1001,10 @@ class BuildDebugSupport {
     this.lastBuildResult = undefined;
     this.refreshStatusBar();
     const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(cwd));
-    const configuration = vscode.workspace.getConfiguration('pascalUnion');
+    const configuration = vscode.workspace.getConfiguration('pascalAtlas');
     const terminalSummary = configuration.get('build.terminalSummary', true);
     const powershell = path.join(process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-    const runnerPath = path.join(this.context.extensionPath, 'resources', 'pascal-union-build-runner.ps1');
+    const runnerPath = path.join(this.context.extensionPath, 'resources', 'pascal-atlas-build-runner.ps1');
     const useRunner = fs.existsSync(powershell) && fs.existsSync(runnerPath);
     const preparedTerminalSession = useRunner ? this.ensureBuildTerminal() : undefined;
     if (preparedTerminalSession) {
@@ -1024,18 +1024,18 @@ class BuildDebugSupport {
     const executionEnvironment = useRunner
       ? {
           ...buildEnvironment,
-          PASCAL_UNION_BUILD_TOOL: executable,
-          PASCAL_UNION_BUILD_ARGS: Buffer.from(JSON.stringify(args), 'utf8').toString('base64'),
-          PASCAL_UNION_BUILD_LABEL: label,
-          PASCAL_UNION_BUILD_RESULT: resultPath,
-          PASCAL_UNION_BUILD_DIAGNOSTICS: diagnosticsPath,
-          PASCAL_UNION_BUILD_SUMMARY: terminalSummary ? 'true' : 'false'
+          PASCAL_ATLAS_BUILD_TOOL: executable,
+          PASCAL_ATLAS_BUILD_ARGS: Buffer.from(JSON.stringify(args), 'utf8').toString('base64'),
+          PASCAL_ATLAS_BUILD_LABEL: label,
+          PASCAL_ATLAS_BUILD_RESULT: resultPath,
+          PASCAL_ATLAS_BUILD_DIAGNOSTICS: diagnosticsPath,
+          PASCAL_ATLAS_BUILD_SUMMARY: terminalSummary ? 'true' : 'false'
         }
       : buildEnvironment;
     this.output.appendLine(`Foreground build: ${executable} ${args.join(' ')}`);
     const startedAt = Date.now();
     try {
-      const timeoutSeconds = vscode.workspace.getConfiguration('pascalUnion').get('build.timeoutSeconds', 1800);
+      const timeoutSeconds = vscode.workspace.getConfiguration('pascalAtlas').get('build.timeoutSeconds', 1800);
       let taskExitCode;
       if (useRunner) {
         const session = preparedTerminalSession;
@@ -1059,12 +1059,12 @@ class BuildDebugSupport {
       } else {
         const processExecution = new vscode.ProcessExecution(executable, args, { cwd, env: buildEnvironment });
         const task = new vscode.Task(
-          { type: 'pascal-union', label },
+          { type: 'pascal-atlas', label },
           folder || vscode.TaskScope.Workspace,
           label,
-          'Pascal Union',
+          'Pascal Atlas',
           processExecution,
-          ['$pascalUnionDelphi', '$pascalUnionDelphiClassic']
+          ['$pascalAtlasDelphi', '$pascalAtlasDelphiClassic']
         );
         task.group = vscode.TaskGroup.Build;
         task.presentationOptions = {
@@ -1107,8 +1107,8 @@ class BuildDebugSupport {
       this.lastBuildResult = `${label}: ${succeeded ? 'succeeded' : 'failed'}; exit code ${exitCode}; duration ${duration}`;
       this.output.appendLine(`${label}: ${succeeded ? 'BUILD SUCCEEDED' : 'BUILD FAILED'} (exit ${exitCode}, ${duration}).`);
       if (configuration.get('build.completionNotification', true)) {
-        if (succeeded) void vscode.window.showInformationMessage(`Pascal Union: ${label} build succeeded in ${duration}.`);
-        else void vscode.window.showErrorMessage(`Pascal Union: ${label} build failed with exit code ${exitCode} in ${duration}.`);
+        if (succeeded) void vscode.window.showInformationMessage(`Pascal Atlas: ${label} build succeeded in ${duration}.`);
+        else void vscode.window.showErrorMessage(`Pascal Atlas: ${label} build failed with exit code ${exitCode} in ${duration}.`);
       }
       return exitCode;
     } finally {
@@ -1162,7 +1162,7 @@ class BuildDebugSupport {
   }
 
   shouldBuildBeforeRun(descriptors) {
-    const mode = vscode.workspace.getConfiguration('pascalUnion').get('run.buildBeforeRun', 'ifOutdated');
+    const mode = vscode.workspace.getConfiguration('pascalAtlas').get('run.buildBeforeRun', 'ifOutdated');
     if (mode === 'always') return true;
     if (mode === 'never') return false;
     return descriptors.some(descriptor => {
@@ -1176,7 +1176,7 @@ class BuildDebugSupport {
 
   async runGroup(uri) {
     if (this.runInProgress) {
-      return void vscode.window.showInformationMessage('Pascal Union: A Run process is already running.');
+      return void vscode.window.showInformationMessage('Pascal Atlas: A Run process is already running.');
     }
     const group = this.groupFromTarget(uri) || await this.pickGroup(uri?.fsPath || '');
     if (!group) return void vscode.window.showWarningMessage('There is no runnable Delphi Project Group in the current workspace.');
@@ -1210,7 +1210,7 @@ class BuildDebugSupport {
     try {
       await this.runInDebugConsole(descriptor, args, tools?.environment || {});
     } catch (error) {
-      void vscode.window.showErrorMessage(`Pascal Union: Run failed: ${error.message}`);
+      void vscode.window.showErrorMessage(`Pascal Atlas: Run failed: ${error.message}`);
     } finally {
       this.runInProgress = false;
       this.refreshStatusBar();
@@ -1220,7 +1220,7 @@ class BuildDebugSupport {
   async runInDebugConsole(descriptor, args, environment) {
     const runId = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const configuration = {
-      type: 'pascal-union-run',
+      type: 'pascal-atlas-run',
       request: 'launch',
       name: `Run ${descriptor.name}`,
       displayName: descriptor.name,
@@ -1266,15 +1266,15 @@ class BuildDebugSupport {
         if (selected.platform !== 'auto') args.push(`/p:Platform=${selected.platform}`);
         const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(group.groupPath));
         const task = new vscode.Task(
-          { type: 'pascal-union', target, group: group.groupPath },
+          { type: 'pascal-atlas', target, group: group.groupPath },
           folder || vscode.TaskScope.Workspace,
           `${target} ${group.name}`,
-          'Pascal Union',
+          'Pascal Atlas',
           new vscode.ProcessExecution(tools.msbuild, args, {
             cwd: group.groupDir,
             env: formalBuildEnvironment(tools.environment)
           }),
-          ['$pascalUnionDelphi', '$pascalUnionDelphiClassic']
+          ['$pascalAtlasDelphi', '$pascalAtlasDelphiClassic']
         );
         task.group = vscode.TaskGroup.Build;
         tasks.push(task);

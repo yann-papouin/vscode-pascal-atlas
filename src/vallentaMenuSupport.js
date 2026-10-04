@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const VALLENTA_COMMAND_PREFIX = 'vallenta.studio.';
-const BACKUP_FILE = 'package.json.pascal-union-editor-context-backup';
+const BACKUP_FILE = 'package.json.pascal-atlas-editor-context-backup';
 
 function removeVallentaEditorContextMenus(manifest) {
   const editorContext = manifest?.contributes?.menus?.['editor/context'];

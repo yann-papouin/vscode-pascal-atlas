@@ -11,7 +11,7 @@ const {
 const { evaluateProjectProperties, readProjectInfo } = require('./diagnosticCore');
 
 const CACHE_VERSION = 1;
-const CACHE_KEY = 'pascalUnion.delphiProjectModel.v1';
+const CACHE_KEY = 'pascalAtlas.delphiProjectModel.v1';
 
 function xmlValue(xml, name) {
   const match = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, 'i').exec(xml);

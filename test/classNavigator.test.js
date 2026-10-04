@@ -917,7 +917,7 @@ test('navigator webview emits a syntactically valid self-contained client script
   assert.match(html, /vscode\.setState\(\{ expanded:/);
   assert.match(html, /html, body \{[^}]*height:100%;[^}]*min-height:0;[^}]*overflow:hidden;/);
   assert.match(html, /#tree, #results \{[^}]*min-height:0;[^}]*overflow:auto;/);
-  assert.match(html, /font-family:'pascal-union-codicon'/);
+  assert.match(html, /font-family:'pascal-atlas-codicon'/);
   assert.match(html, /font-src vscode-webview:\/\/test/);
   assert.match(html, /twisty::before \{ content:'\\eab6'; \}/);
   assert.match(html, /twisty\.expanded::before \{ content:'\\eab4'; \}/);

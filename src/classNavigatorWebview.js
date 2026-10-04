@@ -8,7 +8,7 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  @font-face { font-family:'pascal-union-codicon'; font-display:block; src:url("${safeCodiconFontUri}") format('truetype'); }
+  @font-face { font-family:'pascal-atlas-codicon'; font-display:block; src:url("${safeCodiconFontUri}") format('truetype'); }
   :root { color-scheme: light dark; }
   html, body { width:100%; height:100%; min-height:0; margin:0; padding:0; color:var(--vscode-foreground); background:var(--vscode-sideBar-background); font:var(--vscode-font-weight) var(--vscode-font-size)/22px var(--vscode-font-family); overflow:hidden; }
   body { display:flex; flex-direction:column; }
@@ -37,7 +37,7 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
   .row:hover { background:var(--vscode-list-hoverBackground); }
   .row.selected, .row.selected:hover { color:var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); background:var(--vscode-list-inactiveSelectionBackground, rgba(127,127,127,.24)); }
   body.tree-focus .row.selected, .result.active { color:var(--vscode-list-activeSelectionForeground, var(--vscode-foreground)); background:var(--vscode-list-activeSelectionBackground, rgba(0,122,204,.55)); }
-  .codicon { display:inline-block; font-family:'pascal-union-codicon' !important; font-size:16px; font-style:normal; font-weight:normal !important; line-height:1; text-align:center; text-rendering:auto; -webkit-font-smoothing:antialiased; }
+  .codicon { display:inline-block; font-family:'pascal-atlas-codicon' !important; font-size:16px; font-style:normal; font-weight:normal !important; line-height:1; text-align:center; text-rendering:auto; -webkit-font-smoothing:antialiased; }
   .twisty { display:flex; flex:0 0 16px; width:16px; height:22px; padding:0; border:0; outline:0; align-items:center; justify-content:center; color:var(--vscode-icon-foreground); background:transparent; cursor:pointer; }
   .twisty.empty { visibility:hidden; }
   .twisty::before { content:'\\eab6'; }
@@ -201,7 +201,7 @@ function navigatorWebviewHtml(webview, codiconFontUri = '') {
     if (mode === 'class' && (node.kind === 'type' || node.kind === 'routine')) return 'classSymbol';
     if (mode !== 'project') return undefined;
     if (node.kind === 'package') return 'projectPackage';
-    if (node.kind === 'project') return node.contextValue === 'pascalUnion.projectNavigator.project'
+    if (node.kind === 'project') return node.contextValue === 'pascalAtlas.projectNavigator.project'
       ? 'projectGroup'
       : 'looseProjectGroup';
     return undefined;

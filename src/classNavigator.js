@@ -21,22 +21,22 @@ const {
 
 const PASCAL_LANGUAGE_IDS = new Set(['pascal', 'objectpascal']);
 const STRUCTURE_KINDS = new Set(['class', 'interface', 'record', 'object']);
-const EXPLORER_LAYOUT_STATE_KEY = 'pascalUnion.classNavigator.explorerLayoutVersion';
-const NAVIGATOR_MODE_STATE_KEY = 'pascalUnion.navigator.mode';
+const EXPLORER_LAYOUT_STATE_KEY = 'pascalAtlas.classNavigator.explorerLayoutVersion';
+const NAVIGATOR_MODE_STATE_KEY = 'pascalAtlas.navigator.mode';
 const EXPLORER_LAYOUT_VERSION = 1;
-const EXPANDED_ROUTINES_STATE_KEY = 'pascalUnion.classNavigator.expandedRoutines';
-const SEARCH_OPTIONS_STATE_KEY = 'pascalUnion.classNavigator.searchOptions';
+const EXPANDED_ROUTINES_STATE_KEY = 'pascalAtlas.classNavigator.expandedRoutines';
+const SEARCH_OPTIONS_STATE_KEY = 'pascalAtlas.classNavigator.searchOptions';
 const WEBVIEW_CONTEXT_COMMANDS = [
-  ['buildPackage', 'pascalUnion.build.buildPackage'],
-  ['compilePackage', 'pascalUnion.build.compilePackage'],
-  ['cleanPackage', 'pascalUnion.build.cleanPackage'],
-  ['buildGroup', 'pascalUnion.build.buildGroup'],
-  ['compileGroup', 'pascalUnion.build.compileGroup'],
-  ['cleanGroup', 'pascalUnion.build.cleanGroup'],
-  ['runGroup', 'pascalUnion.run.group'],
-  ['selectStartupProject', 'pascalUnion.run.selectStartupProject'],
-  ['selectConfiguration', 'pascalUnion.build.selectConfiguration'],
-  ['selectPlatform', 'pascalUnion.build.selectPlatform']
+  ['buildPackage', 'pascalAtlas.build.buildPackage'],
+  ['compilePackage', 'pascalAtlas.build.compilePackage'],
+  ['cleanPackage', 'pascalAtlas.build.cleanPackage'],
+  ['buildGroup', 'pascalAtlas.build.buildGroup'],
+  ['compileGroup', 'pascalAtlas.build.compileGroup'],
+  ['cleanGroup', 'pascalAtlas.build.cleanGroup'],
+  ['runGroup', 'pascalAtlas.run.group'],
+  ['selectStartupProject', 'pascalAtlas.run.selectStartupProject'],
+  ['selectConfiguration', 'pascalAtlas.build.selectConfiguration'],
+  ['selectPlatform', 'pascalAtlas.build.selectPlatform']
 ];
 const MEMBER_ACCESS_ORDER = new Map([
   ['public', 0],
@@ -1328,7 +1328,7 @@ class ClassNavigatorProvider {
   }
 
   configuration() {
-    const config = this.vscode.workspace.getConfiguration('pascalUnion.classNavigator');
+    const config = this.vscode.workspace.getConfiguration('pascalAtlas.classNavigator');
     return {
       showUses: config.get('showUses', true),
       showGlobalRoutines: config.get('showGlobalRoutines', true),
@@ -1348,7 +1348,7 @@ class ClassNavigatorProvider {
   }
 
   aiConfiguration(document = this.activeDocument()) {
-    const config = this.vscode.workspace.getConfiguration('pascalUnion', document?.uri);
+    const config = this.vscode.workspace.getConfiguration('pascalAtlas', document?.uri);
     return {
       enabled: config.get('classNavigator.aiSteps.enabled', true),
       provider: config.get('classNavigator.aiSteps.provider', 'oaicopilot'),
@@ -1740,7 +1740,7 @@ class ClassNavigatorProvider {
     // occur in another editor. Qualifying the TreeItem id prevents VS Code
     // from reusing the other document's expansion state during a jump.
     item.id = documentUri ? `${documentUri}::${node.id}` : node.id;
-    item.contextValue = `pascalUnion.classNavigator.${node.kind}`;
+    item.contextValue = `pascalAtlas.classNavigator.${node.kind}`;
     const accessColor = node.access
       ? new vscode.ThemeColor(accessColorId(node.access))
       : undefined;
@@ -1826,7 +1826,7 @@ class ClassNavigatorProvider {
     }
     if (Number.isInteger(node.offset) || Number.isInteger(node.declarationOffset)) {
       item.command = {
-        command: 'pascalUnion.classNavigator.open',
+        command: 'pascalAtlas.classNavigator.open',
         title: 'Go to',
         arguments: [node]
       };
@@ -2046,7 +2046,7 @@ function classNavigatorHtml(webview) {
 function registerClassNavigator(context, output, vscodeApi, projectProvider, projectSourceIndexPromise) {
   const vscode = vscodeApi || require('vscode');
   const provider = new ClassNavigatorProvider(vscode, output, context);
-  const initialConfiguration = vscode.workspace.getConfiguration('pascalUnion');
+  const initialConfiguration = vscode.workspace.getConfiguration('pascalAtlas');
   let navigatorMode = context.workspaceState.get(NAVIGATOR_MODE_STATE_KEY, 'class');
   if (!initialConfiguration.get('classNavigator.enabled', true)
     && initialConfiguration.get('projectNavigator.enabled', true)
@@ -2057,17 +2057,17 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
   const activeProvider = () => navigatorMode === 'project' && projectProvider
     ? projectProvider
     : provider;
-  const tree = new ClassNavigatorWebview(vscode, 'pascalUnion.classNavigator', {
+  const tree = new ClassNavigatorWebview(vscode, 'pascalAtlas.classNavigator', {
     getRoots: () => activeProvider().getChildren(),
     serializeNode: node => serializeNavigatorNode(node, {
-      projectDefaultExpansion: vscode.workspace.getConfiguration('pascalUnion')
+      projectDefaultExpansion: vscode.workspace.getConfiguration('pascalAtlas')
         .get('projectNavigator.defaultExpansion', 'firstLevel')
     }),
     nodePath: navigatorNodePath,
     capabilities: () => ({
-      aiSteps: vscode.workspace.getConfiguration('pascalUnion').get('classNavigator.aiSteps.enabled', true),
+      aiSteps: vscode.workspace.getConfiguration('pascalAtlas').get('classNavigator.aiSteps.enabled', true),
       aiGenerating: Boolean(activeAiCancellation),
-      projectContextMenus: vscode.workspace.getConfiguration('pascalUnion')
+      projectContextMenus: vscode.workspace.getConfiguration('pascalAtlas')
         .get('projectNavigator.contextMenus.enabled', true)
     }),
     onOpen: node => navigatorMode === 'project' && node.kind === 'file'
@@ -2083,19 +2083,19 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
         typeOrder: ['declaration', 'alphabetical']
       };
       if (!allowed[message.key]?.includes(message.value)) return;
-      await vscode.workspace.getConfiguration('pascalUnion.classNavigator')
+      await vscode.workspace.getConfiguration('pascalAtlas.classNavigator')
         .update(message.key, message.value, true);
     },
     onFocusChanged: focused => vscode.commands.executeCommand(
       'setContext',
-      'pascalUnion.classNavigator.webviewFocused',
+      'pascalAtlas.classNavigator.webviewFocused',
       Boolean(focused)
     )
   });
   const webviewRegistration = tree.register(context);
   void vscode.commands.executeCommand(
     'setContext',
-    'pascalUnion.classNavigator.webviewFocused',
+    'pascalAtlas.classNavigator.webviewFocused',
     false
   );
   const navigationRangeDecoration = vscode.window.createTextEditorDecorationType({
@@ -2118,7 +2118,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     void tree.updateCapabilities();
     return vscode.commands.executeCommand(
       'setContext',
-      'pascalUnion.classNavigator.aiGenerating',
+      'pascalAtlas.classNavigator.aiGenerating',
       Boolean(value)
     );
   };
@@ -2175,7 +2175,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
   const showNavigationHighlight = (editor, node, focusOffset) => {
     clearNavigationHighlight();
     if (!editor || !node) return;
-    const config = vscode.workspace.getConfiguration('pascalUnion', editor.document.uri);
+    const config = vscode.workspace.getConfiguration('pascalAtlas', editor.document.uri);
     if (!config.get('classNavigator.highlightRange.enabled', true)) return;
     const text = editor.document.getText();
     const highlightNode = highlightNodeForExpandedSteps(
@@ -2254,12 +2254,12 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     tree.message = document ? undefined : 'Open a Pascal/Delphi, DPK, or DPROJ file to view its structure.';
   };
   const followEnabled = () => {
-    const config = vscode.workspace.getConfiguration('pascalUnion');
+    const config = vscode.workspace.getConfiguration('pascalAtlas');
     return config.get('enabled', true)
       && config.get('classNavigator.enabled', true)
       && config.get('classNavigator.followCursor', true);
   };
-  const pauseWhileCollapsed = () => vscode.workspace.getConfiguration('pascalUnion')
+  const pauseWhileCollapsed = () => vscode.workspace.getConfiguration('pascalAtlas')
     .get('classNavigator.pauseWhenCollapsed', true);
   const navigatorCanTrack = () => navigatorMode === 'class' && followEnabled()
     && (!pauseWhileCollapsed() || navigatorVisible);
@@ -2280,7 +2280,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       candidate.end.line - candidate.start.line > largest.end.line - largest.start.line
         ? candidate
         : largest);
-    const configuredOffset = vscode.workspace.getConfiguration('pascalUnion', editor.document.uri)
+    const configuredOffset = vscode.workspace.getConfiguration('pascalAtlas', editor.document.uri)
       .get('classNavigator.scrollFollowOffsetLines', 1);
     const line = Math.min(
       editor.document.lineCount - 1,
@@ -2324,7 +2324,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     if (followTimer) clearTimeout(followTimer);
     followTimer = undefined;
     if (!navigatorCanTrack()) return;
-    const config = vscode.workspace.getConfiguration('pascalUnion');
+    const config = vscode.workspace.getConfiguration('pascalAtlas');
     const delay = reason === 'scroll'
       ? config.get('classNavigator.scrollFollowDelayMs', 0)
       : 0;
@@ -2366,7 +2366,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     if (layoutPending
       || navigatorMode !== 'class'
       || context.workspaceState.get(EXPLORER_LAYOUT_STATE_KEY, 0) >= EXPLORER_LAYOUT_VERSION) return;
-    const config = vscode.workspace.getConfiguration('pascalUnion');
+    const config = vscode.workspace.getConfiguration('pascalAtlas');
     const editor = vscode.window.activeTextEditor;
     if (!config.get('enabled', true)
       || !config.get('classNavigator.enabled', true)
@@ -2415,7 +2415,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
   };
 
   const setNavigatorMode = async mode => {
-    const configuration = vscode.workspace.getConfiguration('pascalUnion');
+    const configuration = vscode.workspace.getConfiguration('pascalAtlas');
     const next = mode === 'project'
       && projectProvider
       && configuration.get('projectNavigator.enabled', true)
@@ -2427,7 +2427,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     if (followTimer) clearTimeout(followTimer);
     followTimer = undefined;
     await context.workspaceState.update(NAVIGATOR_MODE_STATE_KEY, navigatorMode);
-    await vscode.commands.executeCommand('setContext', 'pascalUnion.navigator.mode', navigatorMode);
+    await vscode.commands.executeCommand('setContext', 'pascalAtlas.navigator.mode', navigatorMode);
     updatePresentation();
     activeProvider().refresh?.();
     tree.setMode(navigatorMode);
@@ -2447,7 +2447,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       documentUri: document.uri.toString(),
       nodeId: node.id
     };
-    const holdMs = vscode.workspace.getConfiguration('pascalUnion')
+    const holdMs = vscode.workspace.getConfiguration('pascalAtlas')
       .get('classNavigator.navigationClickHoldMs', 120);
     navigationHoldUntil = Date.now() + Math.max(0, holdMs);
     const position = document.positionAt(Math.min(offset, document.getText().length));
@@ -2456,11 +2456,11 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       // Match Explorer's single-click navigation: reveal the destination while
       // keeping focus on the tree. The native active selection therefore stays
       // blue instead of flashing blue and immediately turning inactive gray.
-      preserveFocus: options.preserveFocus ?? vscode.workspace.getConfiguration('pascalUnion')
+      preserveFocus: options.preserveFocus ?? vscode.workspace.getConfiguration('pascalAtlas')
         .get('classNavigator.keepFocusOnNavigationClick', true),
       selection: new vscode.Range(position, position)
     });
-    const revealConfig = vscode.workspace.getConfiguration('pascalUnion');
+    const revealConfig = vscode.workspace.getConfiguration('pascalAtlas');
     const revealMode = revealConfig.get('classNavigator.navigationReveal.mode', 'smart');
     const sourceRange = nodeSourceRanges(document.getText(), node, offset)[0];
     if (sourceRange) {
@@ -2650,7 +2650,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       const offset = Math.max(0, Math.min(document.getText().length, result.offset || 0));
       const position = document.positionAt(offset);
       navigationLock = { documentUri: document.uri.toString(), nodeId: result.node?.id || result.id };
-      const holdMs = vscode.workspace.getConfiguration('pascalUnion')
+      const holdMs = vscode.workspace.getConfiguration('pascalAtlas')
         .get('classNavigator.navigationClickHoldMs', 120);
       navigationHoldUntil = Date.now() + Math.max(0, holdMs);
       const editor = await vscode.window.showTextDocument(document, {
@@ -2717,7 +2717,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     };
     navigatorSearchResults.clear();
     try {
-      await vscode.commands.executeCommand('pascalUnion.classNavigator.focus');
+      await vscode.commands.executeCommand('pascalAtlas.classNavigator.focus');
     } catch {}
     tree.showSearch(navigatorSearchOptions);
   };
@@ -2906,7 +2906,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     const detailed = generationMode === 'detailed';
     const settings = aiSettingsForMode(document, generationMode);
     if (!settings.enabled) {
-      void vscode.window.showInformationMessage('Enable "AI Routine Steps" in Pascal Union settings first.');
+      void vscode.window.showInformationMessage('Enable "AI Routine Steps" in Pascal Atlas settings first.');
       return;
     }
     const model = provider.model();
@@ -2999,7 +2999,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     }
     const settings = aiSettingsForMode(document, generationMode);
     if (!settings.enabled) {
-      void vscode.window.showInformationMessage('Enable "AI Routine Steps" in Pascal Union settings first.');
+      void vscode.window.showInformationMessage('Enable "AI Routine Steps" in Pascal Atlas settings first.');
       return;
     }
     if (requestedNode?.kind !== 'type') return;
@@ -3158,7 +3158,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     if (navigatorMode === 'class') scheduleFollow('cursor');
   };
 
-  void vscode.commands.executeCommand('setContext', 'pascalUnion.navigator.mode', navigatorMode);
+  void vscode.commands.executeCommand('setContext', 'pascalAtlas.navigator.mode', navigatorMode);
   void setAiGeneratingContext(false);
   tree.setMode(navigatorMode);
   const combinedChangeSubscription = combinedChanged.event(() => tree.refresh());
@@ -3182,7 +3182,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
     ...(projectChangeSubscription ? [projectChangeSubscription] : []),
     navigationRangeDecoration,
     ...WEBVIEW_CONTEXT_COMMANDS.map(([name, command]) => vscode.commands.registerCommand(
-      `pascalUnion.classNavigator.context.${name}`,
+      `pascalAtlas.classNavigator.context.${name}`,
       () => {
         const target = tree.selection[0];
         if (target) return vscode.commands.executeCommand(command, target);
@@ -3207,30 +3207,30 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       persistExpandedRoutines();
       refreshHighlightForRoutineExpansion(provider.routineForNode(event.element));
     }),
-    vscode.commands.registerCommand('pascalUnion.classNavigator.refresh', () => {
+    vscode.commands.registerCommand('pascalAtlas.classNavigator.refresh', () => {
       activeProvider().refresh?.();
       combinedChanged.fire(undefined);
       updatePresentation();
       scheduleFollow('cursor');
     }),
-    vscode.commands.registerCommand('pascalUnion.classNavigator.selectSort', () => {
+    vscode.commands.registerCommand('pascalAtlas.classNavigator.selectSort', () => {
       if (navigatorMode !== 'class') return;
       if (tree.sortPanelOpen) return tree.hideSort();
-      const config = vscode.workspace.getConfiguration('pascalUnion.classNavigator');
+      const config = vscode.workspace.getConfiguration('pascalAtlas.classNavigator');
       const memberOrder = config.get('memberOrder', 'visibility');
       tree.showSort({
         memberOrder: memberOrder === 'source' ? 'implementation' : memberOrder,
         typeOrder: config.get('typeOrder', 'declaration')
       });
     }),
-    vscode.commands.registerCommand('pascalUnion.classNavigator.find', showNavigatorSearch),
-    vscode.commands.registerCommand('pascalUnion.navigator.showProjects', () => setNavigatorMode('project')),
-    vscode.commands.registerCommand('pascalUnion.navigator.showClasses', () => setNavigatorMode('class')),
+    vscode.commands.registerCommand('pascalAtlas.classNavigator.find', showNavigatorSearch),
+    vscode.commands.registerCommand('pascalAtlas.navigator.showProjects', () => setNavigatorMode('project')),
+    vscode.commands.registerCommand('pascalAtlas.navigator.showClasses', () => setNavigatorMode('class')),
     vscode.commands.registerCommand(
-      'pascalUnion.navigator.toggleMode',
+      'pascalAtlas.navigator.toggleMode',
       () => setNavigatorMode(navigatorMode === 'project' ? 'class' : 'project')
     ),
-    vscode.commands.registerCommand('pascalUnion.classNavigator.show', async () => {
+    vscode.commands.registerCommand('pascalAtlas.classNavigator.show', async () => {
       await setNavigatorMode('class');
       const firstNode = provider.model()?.roots?.[0];
       if (!firstNode) {
@@ -3240,7 +3240,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       await tree.reveal(firstNode, { select: false, focus: true, expand: false });
     }),
     vscode.commands.registerCommand(
-      'pascalUnion.classNavigator.generateAiSteps',
+      'pascalAtlas.classNavigator.generateAiSteps',
       node => {
         const target = node?.kind ? node : tree.selection[0];
         return target?.kind === 'type'
@@ -3249,7 +3249,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       }
     ),
     vscode.commands.registerCommand(
-      'pascalUnion.classNavigator.generateDetailedAiSteps',
+      'pascalAtlas.classNavigator.generateDetailedAiSteps',
       node => {
         const target = node?.kind ? node : tree.selection[0];
         return target?.kind === 'type'
@@ -3258,10 +3258,10 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       }
     ),
     vscode.commands.registerCommand(
-      'pascalUnion.classNavigator.stopAiGeneration',
+      'pascalAtlas.classNavigator.stopAiGeneration',
       stopAiGeneration
     ),
-    vscode.commands.registerCommand('pascalUnion.classNavigator.open', openNode),
+    vscode.commands.registerCommand('pascalAtlas.classNavigator.open', openNode),
     vscode.window.onDidChangeActiveTextEditor(() => {
       clearNavigationHighlight();
       navigationLock = undefined;
@@ -3305,19 +3305,19 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       if (navigatorMode === 'class' && document === provider.activeDocument()) refresh();
     }),
     vscode.workspace.onDidChangeConfiguration(event => {
-      if (event.affectsConfiguration('pascalUnion.classNavigator.highlightRange.enabled')
-        || event.affectsConfiguration('pascalUnion.classNavigator.aiSteps.highlightRange')) {
+      if (event.affectsConfiguration('pascalAtlas.classNavigator.highlightRange.enabled')
+        || event.affectsConfiguration('pascalAtlas.classNavigator.aiSteps.highlightRange')) {
         clearNavigationHighlight();
       }
-      if (event.affectsConfiguration('pascalUnion.classNavigator')) {
-        const config = vscode.workspace.getConfiguration('pascalUnion.classNavigator');
+      if (event.affectsConfiguration('pascalAtlas.classNavigator')) {
+        const config = vscode.workspace.getConfiguration('pascalAtlas.classNavigator');
         const memberOrder = config.get('memberOrder', 'visibility');
         void tree.updateSortSettings({
           memberOrder: memberOrder === 'source' ? 'implementation' : memberOrder,
           typeOrder: config.get('typeOrder', 'declaration')
         });
         refresh();
-      } else if (event.affectsConfiguration('pascalUnion.enabled')) refresh();
+      } else if (event.affectsConfiguration('pascalAtlas.enabled')) refresh();
     }),
     {
       dispose() {
@@ -3327,7 +3327,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
         void setAiGeneratingContext(false);
         void vscode.commands.executeCommand(
           'setContext',
-          'pascalUnion.classNavigator.webviewFocused',
+          'pascalAtlas.classNavigator.webviewFocused',
           false
         );
         if (refreshTimer) clearTimeout(refreshTimer);

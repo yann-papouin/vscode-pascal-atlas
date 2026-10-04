@@ -2,7 +2,7 @@
 
 const { maskPascalNonCode } = require('./binarySymbols');
 
-const PASCAL_LANGUAGE_IDS = new Set(['pascal', 'objectpascal', 'pascal-union-platform']);
+const PASCAL_LANGUAGE_IDS = new Set(['pascal', 'objectpascal', 'pascal-atlas-platform']);
 const BRACKET_COLOR_COUNT = 6;
 
 const PASCAL_INDENTATION_RULES = Object.freeze({
@@ -146,9 +146,9 @@ function registerPascalGenericBracketColoring(context, vscode) {
     if (!editor || !PASCAL_LANGUAGE_IDS.has(editor.document.languageId)) return;
     const bracketColoringEnabled = vscode.workspace.getConfiguration('editor', editor.document.uri)
       .get('bracketPairColorization.enabled', true);
-    const unionEnabled = vscode.workspace.getConfiguration('pascalUnion', editor.document.uri)
+    const paEnabled = vscode.workspace.getConfiguration('pascalAtlas', editor.document.uri)
       .get('enabled', true);
-    if (!bracketColoringEnabled || !unionEnabled) {
+    if (!bracketColoringEnabled || !paEnabled) {
       clear(editor);
       return;
     }
@@ -185,7 +185,7 @@ function registerPascalGenericBracketColoring(context, vscode) {
     }),
     vscode.workspace.onDidChangeConfiguration(event => {
       if (!event.affectsConfiguration('editor.bracketPairColorization')
-        && !event.affectsConfiguration('pascalUnion.enabled')) return;
+        && !event.affectsConfiguration('pascalAtlas.enabled')) return;
       vscode.window.visibleTextEditors.forEach(editor => schedule(editor, 0));
     }),
     {
@@ -199,7 +199,7 @@ function registerPascalGenericBracketColoring(context, vscode) {
 }
 
 function registerPascalLanguageConfiguration(context, vscode) {
-  for (const language of ['pascal', 'objectpascal', 'pascal-union-platform']) {
+  for (const language of ['pascal', 'objectpascal', 'pascal-atlas-platform']) {
     context.subscriptions.push(
       vscode.languages.setLanguageConfiguration(language, languageConfiguration(vscode))
     );

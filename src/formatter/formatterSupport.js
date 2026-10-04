@@ -31,7 +31,7 @@ const {
   parseStyleProfile
 } = require("./styleRules");
 
-const EXTENSION_ID = "BoringLi.pascal-union";
+const EXTENSION_ID = "BoringLi.pascal-atlas";
 const LEGACY_FORMATTER_EXTENSION_IDS = new Set([
   "local.pascal-on-type-formatter"
 ]);
@@ -50,19 +50,19 @@ const SELECTOR = [
 ];
 const KEYWORD_HIGHLIGHT_SELECTOR = [
   ...SELECTOR,
-  { language: "pascal-union-platform", scheme: "file" }
+  { language: "pascal-atlas-platform", scheme: "file" }
 ];
 async function saveStyleProfile(output) {
-  const configuration = vscode.workspace.getConfiguration("pascalUnion.formatter");
+  const configuration = vscode.workspace.getConfiguration("pascalAtlas.formatter");
   const usingDefault = configuration.get("style.useDefault", true);
   const profile = createStyleProfile(
     (key, defaultValue) => configuration.get(key, defaultValue),
     usingDefault
   );
   const uri = await vscode.window.showSaveDialog({
-    title: "Save Pascal Union Formatting Profile",
-    defaultUri: vscode.Uri.file(path.join(os.homedir(), "PascalUnionFormatterStyle.json")),
-    filters: { "Pascal Union Formatting Profile": ["json"] },
+    title: "Save Pascal Atlas Formatting Profile",
+    defaultUri: vscode.Uri.file(path.join(os.homedir(), "PascalAtlasFormatterStyle.json")),
+    filters: { "Pascal Atlas Formatting Profile": ["json"] },
     saveLabel: "Save Profile"
   });
   if (!uri) return;
@@ -76,16 +76,16 @@ async function saveStyleProfile(output) {
 
 async function loadStyleProfile(output) {
   const uris = await vscode.window.showOpenDialog({
-    title: "Load Pascal Union Formatting Profile",
+    title: "Load Pascal Atlas Formatting Profile",
     canSelectFiles: true,
     canSelectFolders: false,
     canSelectMany: false,
-    filters: { "Pascal Union Formatting Profile": ["json"] },
+    filters: { "Pascal Atlas Formatting Profile": ["json"] },
     openLabel: "Load Profile"
   });
   if (!uris?.length) return;
   const values = parseStyleProfile(await fs.promises.readFile(uris[0].fsPath, "utf8"));
-  const configuration = vscode.workspace.getConfiguration("pascalUnion.formatter");
+  const configuration = vscode.workspace.getConfiguration("pascalAtlas.formatter");
   const target = vscode.workspace.workspaceFolders?.length
     ? vscode.ConfigurationTarget.Workspace
     : vscode.ConfigurationTarget.Global;
@@ -102,11 +102,11 @@ function isPascal(document) {
 }
 
 function formatterConfiguration(document) {
-  return vscode.workspace.getConfiguration("pascalUnion.formatter", document?.uri);
+  return vscode.workspace.getConfiguration("pascalAtlas.formatter", document?.uri);
 }
 
 function formatterEnabled(document) {
-  return vscode.workspace.getConfiguration("pascalUnion", document?.uri).get("enabled", true)
+  return vscode.workspace.getConfiguration("pascalAtlas", document?.uri).get("enabled", true)
     && formatterConfiguration(document).get("enabled", true);
 }
 
@@ -178,13 +178,13 @@ function runFormatter(executable, args, workingDirectory, cancellationToken) {
 async function formatDocument(context, document, cancellationToken, output) {
   const executable = findFormatterExecutable(document);
   if (!executable || !fs.existsSync(executable)) {
-    const message = "Embarcadero Formatter.exe was not found. Configure pascalUnion.formatter.executablePath.";
+    const message = "Embarcadero Formatter.exe was not found. Configure pascalAtlas.formatter.executablePath.";
     output.error(message);
     void vscode.window.showErrorMessage(message, "Open Settings").then((choice) => {
       if (choice === "Open Settings") {
         void vscode.commands.executeCommand(
           "workbench.action.openSettings",
-          "pascalUnion.formatter.executablePath"
+          "pascalAtlas.formatter.executablePath"
         );
       }
     });
@@ -407,7 +407,7 @@ function registerKeywordHighlighting(context) {
   context.subscriptions.push(
     vscode.languages.registerDocumentHighlightProvider(KEYWORD_HIGHLIGHT_SELECTOR, {
       provideDocumentHighlights(document, position) {
-        if (!vscode.workspace.getConfiguration("pascalUnion", document.uri).get("enabled", true)) {
+        if (!vscode.workspace.getConfiguration("pascalAtlas", document.uri).get("enabled", true)) {
           return undefined;
         }
         const matches = findDelphiKeywordMatchGroup(document.getText(), position);
@@ -465,10 +465,10 @@ function registerKeywordHighlighting(context) {
       return;
     }
 
-    const unionEnabled = vscode.workspace.getConfiguration("pascalUnion", editor.document.uri)
+    const paEnabled = vscode.workspace.getConfiguration("pascalAtlas", editor.document.uri)
       .get("enabled", true);
     const finalLine = Math.max(0, editor.document.lineCount - 1);
-    editor.setDecorations(uniformFontDecoration, unionEnabled ? [new vscode.Range(
+    editor.setDecorations(uniformFontDecoration, paEnabled ? [new vscode.Range(
       0,
       0,
       finalLine,
@@ -519,23 +519,23 @@ function registerKeywordHighlighting(context) {
     );
     blockLevelDecorations.forEach((decoration, index) =>
       editor.setDecorations(decoration, toRanges(highlights.blockLevelKeywords[index] || [])));
-    const unionConfiguration = vscode.workspace.getConfiguration("pascalUnion", editor.document.uri);
-    const unionOwnsSymbols = unionConfiguration.get("enabled", true)
-      && unionConfiguration.get("coloring.enabled", true);
-    // Union owns symbol categories while it is enabled. Keeping the old
+    const paConfiguration = vscode.workspace.getConfiguration("pascalAtlas", editor.document.uri);
+    const paOwnsSymbols = paConfiguration.get("enabled", true)
+      && paConfiguration.get("coloring.enabled", true);
+    // Pascal Atlas owns symbol categories while it is enabled. Keeping the old
     // Formatter type/callable/field layer active as well causes the same token
     // to be repainted by two independent debounce cycles.
     editor.setDecorations(
       typeLikeDecoration,
-      unionOwnsSymbols ? [] : toRanges(highlights.typeLikeIdentifiers)
+      paOwnsSymbols ? [] : toRanges(highlights.typeLikeIdentifiers)
     );
     editor.setDecorations(
       callableDecoration,
-      unionOwnsSymbols ? [] : toRanges(highlights.callableIdentifiers)
+      paOwnsSymbols ? [] : toRanges(highlights.callableIdentifiers)
     );
     editor.setDecorations(
       fieldDecoration,
-      unionOwnsSymbols ? [] : toRanges(highlights.fieldIdentifiers)
+      paOwnsSymbols ? [] : toRanges(highlights.fieldIdentifiers)
     );
     // Vallenta semantic tokens can remain attached to identifiers after code is
     // commented out. Apply this last so real comments always render uniformly.
@@ -559,11 +559,11 @@ function registerKeywordHighlighting(context) {
     vscode.window.onDidChangeVisibleTextEditors(refreshVisibleEditors),
     vscode.workspace.onDidChangeTextDocument((event) => scheduleRefresh(event.document)),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration("pascalUnion.formatter.highlighting.blockLevelColors")
-        || event.affectsConfiguration("pascalUnion.formatter.highlighting.enabled")
-        || event.affectsConfiguration("pascalUnion.formatter.enabled")
-        || event.affectsConfiguration("pascalUnion.coloring.enabled")
-        || event.affectsConfiguration("pascalUnion.enabled")) {
+      if (event.affectsConfiguration("pascalAtlas.formatter.highlighting.blockLevelColors")
+        || event.affectsConfiguration("pascalAtlas.formatter.highlighting.enabled")
+        || event.affectsConfiguration("pascalAtlas.formatter.enabled")
+        || event.affectsConfiguration("pascalAtlas.coloring.enabled")
+        || event.affectsConfiguration("pascalAtlas.enabled")) {
         refreshVisibleEditors();
       }
     }),
@@ -574,7 +574,7 @@ function registerKeywordHighlighting(context) {
 }
 
 function registerFormatter(context) {
-  const output = vscode.window.createOutputChannel("Pascal Union Formatter", { log: true });
+  const output = vscode.window.createOutputChannel("Pascal Atlas Formatter", { log: true });
   const pendingContinuationLines = new Map();
   const applyingContinuationEdits = new Set();
   const pendingCaretRestorations = new Map();
@@ -613,10 +613,10 @@ function registerFormatter(context) {
   registerKeywordHighlighting(context);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("pascalUnion.formatter.formatDocument", () => {
+    vscode.commands.registerCommand("pascalAtlas.formatter.formatDocument", () => {
       return vscode.commands.executeCommand("editor.action.formatDocument");
     }),
-    vscode.commands.registerCommand("pascalUnion.formatter.style.save", async () => {
+    vscode.commands.registerCommand("pascalAtlas.formatter.style.save", async () => {
       try {
         await saveStyleProfile(output);
       } catch (error) {
@@ -624,7 +624,7 @@ function registerFormatter(context) {
         void vscode.window.showErrorMessage(`Failed to save formatting profile: ${error.message ?? error}`);
       }
     }),
-    vscode.commands.registerCommand("pascalUnion.formatter.style.load", async () => {
+    vscode.commands.registerCommand("pascalAtlas.formatter.style.load", async () => {
       try {
         await loadStyleProfile(output);
       } catch (error) {
@@ -765,7 +765,7 @@ function registerFormatter(context) {
 
 async function migrateLegacyFormatterSettings() {
   const legacy = vscode.workspace.getConfiguration("delphiPersonalFormatter");
-  const current = vscode.workspace.getConfiguration("pascalUnion.formatter");
+  const current = vscode.workspace.getConfiguration("pascalAtlas.formatter");
   const mappings = [
     ["executablePath", "executablePath"],
     ["preserveInlineVariables", "preserveInlineVariables"],

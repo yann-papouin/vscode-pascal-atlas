@@ -1,7 +1,7 @@
 'use strict';
 
 const FIRST_RUN_PROFILE_VERSION = 2;
-const FIRST_RUN_PROFILE_STATE_KEY = 'pascalUnion.firstRunProfileVersion';
+const FIRST_RUN_PROFILE_STATE_KEY = 'pascalAtlas.firstRunProfileVersion';
 
 // This is the baseline color scheme captured from the working Delphi setup.
 // Resetting colors must never change coloring enablement or scheduling delays.
@@ -162,7 +162,7 @@ async function initializeFirstRunSettings(context, output, vscodeApi) {
   const appliedVersion = context.globalState.get(FIRST_RUN_PROFILE_STATE_KEY, 0);
   if (appliedVersion >= FIRST_RUN_PROFILE_VERSION) return { initialized: false, updated: [] };
 
-  const configuration = vscode.workspace.getConfiguration('pascalUnion');
+  const configuration = vscode.workspace.getConfiguration('pascalAtlas');
   const updated = [];
   for (const [key, expected] of Object.entries(FIRST_RUN_SETTINGS)) {
     // An explicit user/workspace choice always wins, even on first activation.
@@ -183,14 +183,14 @@ async function initializeFirstRunSettings(context, output, vscodeApi) {
 
 async function resetSymbolColors(output, vscodeApi) {
   const vscode = vscodeApi || require('vscode');
-  const configuration = vscode.workspace.getConfiguration('pascalUnion');
+  const configuration = vscode.workspace.getConfiguration('pascalAtlas');
   const target = vscode.workspace.workspaceFolders?.length
     ? vscode.ConfigurationTarget.Workspace
     : vscode.ConfigurationTarget.Global;
   for (const [key, value] of Object.entries(DEFAULT_SYMBOL_COLORS)) {
     await configuration.update(key, value, target);
   }
-  output?.appendLine('Reset the Pascal Union symbol color profile; non-color settings were unchanged.');
+  output?.appendLine('Reset the Pascal Atlas symbol color profile; non-color settings were unchanged.');
   void vscode.window.showInformationMessage('Default symbol colors restored. Other settings, including coloring and delay options, were not changed.');
 }
 

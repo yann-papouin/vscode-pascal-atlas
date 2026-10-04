@@ -23,17 +23,17 @@ const REDUNDANT_EXTENSIONS = [
   {
     id: 'local.pascal-on-type-formatter',
     name: 'Delphi Personal Formatter',
-    reason: 'Its complete implementation is already included in Pascal Union.'
+    reason: 'Its complete implementation is already included in Pascal Atlas.'
   },
   {
     id: 'alefragnani.pascal-formatter',
     name: 'Pascal Formatter',
-    reason: 'Pascal Union uses RAD Studio Formatter.exe directly and does not call this extension.'
+    reason: 'Pascal Atlas uses RAD Studio Formatter.exe directly and does not call this extension.'
   },
   {
     id: 'alefragnani.pascal',
     name: 'Pascal',
-    reason: 'Vallenta already provides language, syntax, and navigation support, while Pascal Union provides common snippets. Enabling both may create duplicate providers.'
+    reason: 'Vallenta already provides language, syntax, and navigation support, while Pascal Atlas provides common snippets. Enabling both may create duplicate providers.'
   }
 ];
 
@@ -47,7 +47,7 @@ async function installRequiredExtension(extension) {
 }
 
 async function checkDependencies(output, options = {}) {
-  const configuration = vscode.workspace.getConfiguration('pascalUnion.dependencies');
+  const configuration = vscode.workspace.getConfiguration('pascalAtlas.dependencies');
   const autoInstall = options.autoInstall ?? configuration.get('autoInstall', true);
   const notify = options.notify === true;
   const missing = REQUIRED_EXTENSIONS.filter(extension => !extensionInstalled(extension.id));
@@ -88,7 +88,7 @@ async function checkDependencies(output, options = {}) {
 
   if (failed.length > 0) {
     void vscode.window.showErrorMessage(
-      `Pascal Union could not install required extensions: ${failed.map(item => item.extension.name).join(', ')}.`
+      `Pascal Atlas could not install required extensions: ${failed.map(item => item.extension.name).join(', ')}.`
     );
   } else if (notify) {
     const requiredStatus = missing.length === 0
@@ -110,13 +110,13 @@ async function checkDependencies(output, options = {}) {
 
 function registerDependencySupport(context, output) {
   context.subscriptions.push(vscode.commands.registerCommand(
-    'pascalUnion.dependencies.check',
+    'pascalAtlas.dependencies.check',
     () => checkDependencies(output, { notify: true })
   ));
   void checkDependencies(output).catch(error => {
     output.appendLine(`Dependency check failed: ${error.stack || error.message}`);
   });
-  const hideEditorContextMenus = vscode.workspace.getConfiguration('pascalUnion.navigation')
+  const hideEditorContextMenus = vscode.workspace.getConfiguration('pascalAtlas.navigation')
     .get('hideVallentaEditorContextMenus', true);
   const vallenta = vscode.extensions.getExtension('VallentaStudio.vallenta-studio');
   void patchVallentaManifest(vallenta?.extensionPath, {

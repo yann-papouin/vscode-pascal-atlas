@@ -1,11 +1,11 @@
 {
-	"name": "pascal-union",
-	"displayName": "Pascal Union",
-	"description": "%pascalUnion.description%",
+	"name": "pascal-atlas",
+	"displayName": "Pascal Atlas",
+	"description": "%pascalAtlas.description%",
 	"version": "0.8.116",
 	"publisher": "BoringLi",
 	"author": "BORING",
-	"icon": "media/pascal-union-icon.png",
+	"icon": "media/pascal-atlas-icon.png",
 	"license": "MIT",
 	"engines": {
 		"vscode": "^1.85.0"
@@ -35,8 +35,8 @@
 	"contributes": {
 		"debuggers": [
 			{
-				"type": "pascal-union-run",
-				"label": "Pascal Union Run",
+				"type": "pascal-atlas-run",
+				"label": "Pascal Atlas Run",
 				"languages": [
 					"pascal",
 					"objectpascal"
@@ -45,7 +45,7 @@
 		],
 		"languages": [
 			{
-				"id": "pascal-union-dproj",
+				"id": "pascal-atlas-dproj",
 				"aliases": [
 					"Delphi Project",
 					"DPROJ"
@@ -53,7 +53,7 @@
 				"configuration": "./resources/delphi-project.language-configuration.json"
 			},
 			{
-				"id": "pascal-union-platform",
+				"id": "pascal-atlas-platform",
 				"aliases": [
 					"Delphi Platform Source"
 				]
@@ -61,21 +61,21 @@
 		],
 		"grammars": [
 			{
-				"language": "pascal-union-dproj",
-				"scopeName": "text.xml.pascal-union-dproj",
+				"language": "pascal-atlas-dproj",
+				"scopeName": "text.xml.pascal-atlas-dproj",
 				"path": "./resources/delphi-project.tmLanguage.json"
 			},
 			{
-				"language": "pascal-union-platform",
-				"scopeName": "source.pascal-union-platform",
+				"language": "pascal-atlas-platform",
+				"scopeName": "source.pascal-atlas-platform",
 				"path": "./resources/pascal-platform.tmLanguage.json"
 			},
 			{
-				"scopeName": "source.pascal-union.numeric",
+				"scopeName": "source.pascal-atlas.numeric",
 				"path": "./resources/pascal-numeric.injection.tmLanguage.json",
 				"injectTo": [
 					"source.pascal",
-					"source.pascal-union-platform"
+					"source.pascal-atlas-platform"
 				]
 			}
 		],
@@ -99,128 +99,128 @@
 		],
 		"commands": [
 			{
-				"command": "pascalUnion.projectNavigator.refresh",
-				"title": "Pascal Union: Refresh Delphi Project Tree",
+				"command": "pascalAtlas.projectNavigator.refresh",
+				"title": "Pascal Atlas: Refresh Delphi Project Tree",
 				"icon": "$(refresh)"
 			},
 			{
-				"command": "pascalUnion.projectNavigator.actions",
-				"title": "Pascal Union: Project Group Actions",
+				"command": "pascalAtlas.projectNavigator.actions",
+				"title": "Pascal Atlas: Project Group Actions",
 				"icon": "$(tools)"
 			},
 			{
-				"command": "pascalUnion.build.compilePackage",
+				"command": "pascalAtlas.build.compilePackage",
 				"title": "Compile",
 				"icon": "$(play)"
 			},
 			{
-				"command": "pascalUnion.build.buildPackage",
+				"command": "pascalAtlas.build.buildPackage",
 				"title": "Build",
 				"icon": "$(tools)"
 			},
 			{
-				"command": "pascalUnion.build.cleanPackage",
+				"command": "pascalAtlas.build.cleanPackage",
 				"title": "Clean",
 				"icon": "$(trash)"
 			},
 			{
-				"command": "pascalUnion.build.compileGroup",
+				"command": "pascalAtlas.build.compileGroup",
 				"title": "Compile All",
 				"icon": "$(run-all)"
 			},
 			{
-				"command": "pascalUnion.build.buildGroup",
+				"command": "pascalAtlas.build.buildGroup",
 				"title": "Build All",
 				"icon": "$(tools)"
 			},
 			{
-				"command": "pascalUnion.build.cleanGroup",
+				"command": "pascalAtlas.build.cleanGroup",
 				"title": "Clean All",
 				"icon": "$(trash)"
 			},
 			{
-				"command": "pascalUnion.run.group",
+				"command": "pascalAtlas.run.group",
 				"title": "Run",
 				"icon": "$(run)",
-				"enablement": "!pascalUnion.executionBusy"
+				"enablement": "!pascalAtlas.executionBusy"
 			},
 			{
-				"command": "pascalUnion.run.stop",
+				"command": "pascalAtlas.run.stop",
 				"title": "Stop Run",
 				"icon": "$(debug-stop)",
-				"enablement": "pascalUnion.runInProgress"
+				"enablement": "pascalAtlas.runInProgress"
 			},
 			{
-				"command": "pascalUnion.build.selectConfiguration",
+				"command": "pascalAtlas.build.selectConfiguration",
 				"title": "Select Build Configuration"
 			},
 			{
-				"command": "pascalUnion.build.selectPlatform",
+				"command": "pascalAtlas.build.selectPlatform",
 				"title": "Select Build Platform"
 			},
 			{
-				"command": "pascalUnion.classNavigator.context.buildPackage",
+				"command": "pascalAtlas.classNavigator.context.buildPackage",
 				"title": "Build Package"
 			},
 			{
-				"command": "pascalUnion.classNavigator.context.compilePackage",
+				"command": "pascalAtlas.classNavigator.context.compilePackage",
 				"title": "Compile Package"
 			},
 			{
-				"command": "pascalUnion.classNavigator.context.cleanPackage",
+				"command": "pascalAtlas.classNavigator.context.cleanPackage",
 				"title": "Clean Package"
 			},
 			{
-				"command": "pascalUnion.classNavigator.context.buildGroup",
+				"command": "pascalAtlas.classNavigator.context.buildGroup",
 				"title": "Build All"
 			},
 			{
-				"command": "pascalUnion.classNavigator.context.compileGroup",
+				"command": "pascalAtlas.classNavigator.context.compileGroup",
 				"title": "Compile All"
 			},
 			{
-				"command": "pascalUnion.classNavigator.context.cleanGroup",
+				"command": "pascalAtlas.classNavigator.context.cleanGroup",
 				"title": "Clean All"
 			},
 			{
-				"command": "pascalUnion.classNavigator.context.runGroup",
+				"command": "pascalAtlas.classNavigator.context.runGroup",
 				"title": "Run Startup Project",
-				"enablement": "!pascalUnion.executionBusy"
+				"enablement": "!pascalAtlas.executionBusy"
 			},
 			{
-				"command": "pascalUnion.classNavigator.context.selectStartupProject",
+				"command": "pascalAtlas.classNavigator.context.selectStartupProject",
 				"title": "Select Startup Project"
 			},
 			{
-				"command": "pascalUnion.classNavigator.context.selectConfiguration",
+				"command": "pascalAtlas.classNavigator.context.selectConfiguration",
 				"title": "Select Build Configuration"
 			},
 			{
-				"command": "pascalUnion.classNavigator.context.selectPlatform",
+				"command": "pascalAtlas.classNavigator.context.selectPlatform",
 				"title": "Select Platform"
 			},
 			{
-				"command": "pascalUnion.build.selectOutputFilters",
-				"title": "Pascal Union: Select Build Output",
+				"command": "pascalAtlas.build.selectOutputFilters",
+				"title": "Pascal Atlas: Select Build Output",
 				"icon": "$(filter)"
 			},
 			{
-				"command": "pascalUnion.build.toggleErrors",
+				"command": "pascalAtlas.build.toggleErrors",
 				"title": "Show Errors",
 				"icon": "$(error)"
 			},
 			{
-				"command": "pascalUnion.build.toggleWarnings",
+				"command": "pascalAtlas.build.toggleWarnings",
 				"title": "Show Warnings",
 				"icon": "$(warning)"
 			},
 			{
-				"command": "pascalUnion.build.toggleOther",
+				"command": "pascalAtlas.build.toggleOther",
 				"title": "Show Other Messages",
 				"icon": "$(info)"
 			},
 			{
-				"command": "pascalUnion.build.toggleErrorsChecked",
+				"command": "pascalAtlas.build.toggleErrorsChecked",
 				"title": "✓ Show Errors",
 				"icon": {
 					"light": "media/build-filter-error-checked-light.svg",
@@ -228,7 +228,7 @@
 				}
 			},
 			{
-				"command": "pascalUnion.build.toggleWarningsChecked",
+				"command": "pascalAtlas.build.toggleWarningsChecked",
 				"title": "✓ Show Warnings",
 				"icon": {
 					"light": "media/build-filter-warning-checked-light.svg",
@@ -236,7 +236,7 @@
 				}
 			},
 			{
-				"command": "pascalUnion.build.toggleOtherChecked",
+				"command": "pascalAtlas.build.toggleOtherChecked",
 				"title": "✓ Show Other Messages",
 				"icon": {
 					"light": "media/build-filter-info-checked-light.svg",
@@ -244,227 +244,227 @@
 				}
 			},
 			{
-				"command": "pascalUnion.dependencies.check",
-				"title": "Pascal Union: Check and Install Required Extensions"
+				"command": "pascalAtlas.dependencies.check",
+				"title": "Pascal Atlas: Check and Install Required Extensions"
 			},
 			{
-				"command": "pascalUnion.openSettings",
-				"title": "Pascal Union: Open Settings Center",
+				"command": "pascalAtlas.openSettings",
+				"title": "Pascal Atlas: Open Settings Center",
 				"icon": "$(settings-gear)"
 			},
 			{
-				"command": "pascalUnion.openNativeSettings",
-				"title": "Pascal Union: Open VS Code Settings"
+				"command": "pascalAtlas.openNativeSettings",
+				"title": "Pascal Atlas: Open VS Code Settings"
 			},
 			{
-				"command": "pascalUnion.controlCenter.refresh",
-				"title": "Pascal Union: Refresh Control Center",
+				"command": "pascalAtlas.controlCenter.refresh",
+				"title": "Pascal Atlas: Refresh Control Center",
 				"icon": "$(refresh)"
 			},
 			{
-				"command": "pascalUnion.classNavigator.refresh",
-				"title": "Pascal Union: Refresh Delphi Class Navigator",
+				"command": "pascalAtlas.classNavigator.refresh",
+				"title": "Pascal Atlas: Refresh Delphi Class Navigator",
 				"icon": "$(refresh)"
 			},
 			{
-				"command": "pascalUnion.classNavigator.selectSort",
-				"title": "Pascal Union: Select Delphi Navigator Sorting",
+				"command": "pascalAtlas.classNavigator.selectSort",
+				"title": "Pascal Atlas: Select Delphi Navigator Sorting",
 				"icon": "$(sort-precedence)"
 			},
 			{
-				"command": "pascalUnion.classNavigator.find",
-				"title": "Pascal Union: Find Delphi Navigator Items",
+				"command": "pascalAtlas.classNavigator.find",
+				"title": "Pascal Atlas: Find Delphi Navigator Items",
 				"icon": "$(search)"
 			},
 			{
-				"command": "pascalUnion.classNavigator.generateAiSteps",
+				"command": "pascalAtlas.classNavigator.generateAiSteps",
 				"title": "Generate AI Steps",
 				"icon": "$(sparkle)"
 			},
 			{
-				"command": "pascalUnion.classNavigator.generateDetailedAiSteps",
+				"command": "pascalAtlas.classNavigator.generateDetailedAiSteps",
 				"title": "Generate Detailed AI Steps",
 				"icon": "$(list-tree)"
 			},
 			{
-				"command": "pascalUnion.classNavigator.stopAiGeneration",
-				"title": "Pascal Union: Stop AI Step Generation",
+				"command": "pascalAtlas.classNavigator.stopAiGeneration",
+				"title": "Pascal Atlas: Stop AI Step Generation",
 				"icon": "$(debug-stop)"
 			},
 			{
-				"command": "pascalUnion.classNavigator.show",
-				"title": "Pascal Union: Open Delphi Class Navigator"
+				"command": "pascalAtlas.classNavigator.show",
+				"title": "Pascal Atlas: Open Delphi Class Navigator"
 			},
 			{
-				"command": "pascalUnion.navigator.showProjects",
-				"title": "Pascal Union: Switch to Delphi Project View",
+				"command": "pascalAtlas.navigator.showProjects",
+				"title": "Pascal Atlas: Switch to Delphi Project View",
 				"icon": "$(project)"
 			},
 			{
-				"command": "pascalUnion.navigator.showClasses",
-				"title": "Pascal Union: Switch to Class Navigator",
+				"command": "pascalAtlas.navigator.showClasses",
+				"title": "Pascal Atlas: Switch to Class Navigator",
 				"icon": "$(symbol-class)"
 			},
 			{
-				"command": "pascalUnion.navigator.toggleMode",
-				"title": "Pascal Union: Toggle Class Navigator / Delphi Project View",
+				"command": "pascalAtlas.navigator.toggleMode",
+				"title": "Pascal Atlas: Toggle Class Navigator / Delphi Project View",
 				"icon": "$(arrow-swap)"
 			},
 			{
-				"command": "pascalUnion.coloring.colors.reset",
-				"title": "Pascal Union: Reset Symbol Colors to Default"
+				"command": "pascalAtlas.coloring.colors.reset",
+				"title": "Pascal Atlas: Reset Symbol Colors to Default"
 			},
 			{
-				"command": "pascalUnion.formatter.formatDocument",
-				"title": "Pascal Union: Format Current Pascal File"
+				"command": "pascalAtlas.formatter.formatDocument",
+				"title": "Pascal Atlas: Format Current Pascal File"
 			},
 			{
-				"command": "pascalUnion.formatter.style.save",
-				"title": "Pascal Union: Save Custom Formatting Profile"
+				"command": "pascalAtlas.formatter.style.save",
+				"title": "Pascal Atlas: Save Custom Formatting Profile"
 			},
 			{
-				"command": "pascalUnion.formatter.style.load",
-				"title": "Pascal Union: Load Custom Formatting Profile"
+				"command": "pascalAtlas.formatter.style.load",
+				"title": "Pascal Atlas: Load Custom Formatting Profile"
 			},
 			{
-				"command": "pascalUnion.sync",
-				"title": "Pascal Union: Sync All Loaded Projects"
+				"command": "pascalAtlas.sync",
+				"title": "Pascal Atlas: Sync All Loaded Projects"
 			},
 			{
-				"command": "pascalUnion.projects.detect",
-				"title": "Pascal Union: Detect and Load Workspace Project Group"
+				"command": "pascalAtlas.projects.detect",
+				"title": "Pascal Atlas: Detect and Load Workspace Project Group"
 			},
 			{
-				"command": "pascalUnion.restore",
-				"title": "Pascal Union: Remove Managed Path"
+				"command": "pascalAtlas.restore",
+				"title": "Pascal Atlas: Remove Managed Path"
 			},
 			{
-				"command": "pascalUnion.showPaths",
-				"title": "Pascal Union: Show Managed Paths"
+				"command": "pascalAtlas.showPaths",
+				"title": "Pascal Atlas: Show Managed Paths"
 			},
 			{
-				"command": "pascalUnion.goToDefinition",
-				"title": "Pascal Union: Go to Best Declaration or Implementation"
+				"command": "pascalAtlas.goToDefinition",
+				"title": "Pascal Atlas: Go to Best Declaration or Implementation"
 			},
 			{
-				"command": "pascalUnion.peekAllDefinitions",
-				"title": "Pascal Union: Select All Declarations and Implementations"
+				"command": "pascalAtlas.peekAllDefinitions",
+				"title": "Pascal Atlas: Select All Declarations and Implementations"
 			},
 			{
-				"command": "pascalUnion.insertGuid",
-				"title": "Pascal Union: Insert GUID",
+				"command": "pascalAtlas.insertGuid",
+				"title": "Pascal Atlas: Insert GUID",
 				"shortTitle": "Insert GUID"
 			},
 			{
-				"command": "pascalUnion.addUnit",
-				"title": "Pascal Union: Add Unit to uses",
+				"command": "pascalAtlas.addUnit",
+				"title": "Pascal Atlas: Add Unit to uses",
 				"shortTitle": "Add Unit to uses"
 			},
 			{
-				"command": "pascalUnion.diagnostics.runNow",
-				"title": "Pascal Union: Run Background Diagnostics Now"
+				"command": "pascalAtlas.diagnostics.runNow",
+				"title": "Pascal Atlas: Run Background Diagnostics Now"
 			},
 			{
-				"command": "pascalUnion.diagnostics.clear",
-				"title": "Pascal Union: Clear Background Diagnostics"
+				"command": "pascalAtlas.diagnostics.clear",
+				"title": "Pascal Atlas: Clear Background Diagnostics"
 			},
 			{
-				"command": "pascalUnion.diagnostics.clearCache",
-				"title": "Pascal Union: Clear Compiler Cache"
+				"command": "pascalAtlas.diagnostics.clearCache",
+				"title": "Pascal Atlas: Clear Compiler Cache"
 			},
 			{
-				"command": "pascalUnion.diagnostics.showStatus",
-				"title": "Pascal Union: Show Diagnostic Status"
+				"command": "pascalAtlas.diagnostics.showStatus",
+				"title": "Pascal Atlas: Show Diagnostic Status"
 			},
 			{
-				"command": "pascalUnion.completion.typeSpace",
-				"title": "Pascal Union: Type Space or Expand Control Statement"
+				"command": "pascalAtlas.completion.typeSpace",
+				"title": "Pascal Atlas: Type Space or Expand Control Statement"
 			},
 			{
-				"command": "pascalUnion.run.selectStartupProject",
+				"command": "pascalAtlas.run.selectStartupProject",
 				"title": "Select Startup Project"
 			}
 		],
 		"keybindings": [
 			{
-				"command": "pascalUnion.classNavigator.find",
+				"command": "pascalAtlas.classNavigator.find",
 				"key": "ctrl+alt+n",
-				"when": "!inQuickOpen && ((editorLangId =~ /^(pascal|objectpascal)$/ && resourceScheme == file) || focusedView == pascalUnion.classNavigator || pascalUnion.classNavigator.webviewFocused) && config.pascalUnion.enabled && config.pascalUnion.classNavigator.enabled"
+				"when": "!inQuickOpen && ((editorLangId =~ /^(pascal|objectpascal)$/ && resourceScheme == file) || focusedView == pascalAtlas.classNavigator || pascalAtlas.classNavigator.webviewFocused) && config.pascalAtlas.enabled && config.pascalAtlas.classNavigator.enabled"
 			},
 			{
-				"command": "pascalUnion.completion.typeSpace",
+				"command": "pascalAtlas.completion.typeSpace",
 				"key": "space",
-				"when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(pascal|objectpascal)$/ && config.pascalUnion.enabled && config.pascalUnion.completion.enabled"
+				"when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(pascal|objectpascal)$/ && config.pascalAtlas.enabled && config.pascalAtlas.completion.enabled"
 			},
 			{
-				"command": "pascalUnion.formatter.formatDocument",
+				"command": "pascalAtlas.formatter.formatDocument",
 				"key": "shift+alt+f",
-				"when": "editorTextFocus && editorLangId =~ /^(pascal|objectpascal)$/ && config.pascalUnion.formatter.shortcut == shiftAltF"
+				"when": "editorTextFocus && editorLangId =~ /^(pascal|objectpascal)$/ && config.pascalAtlas.formatter.shortcut == shiftAltF"
 			},
 			{
-				"command": "pascalUnion.formatter.formatDocument",
+				"command": "pascalAtlas.formatter.formatDocument",
 				"key": "ctrl+alt+f",
-				"when": "editorTextFocus && editorLangId =~ /^(pascal|objectpascal)$/ && config.pascalUnion.formatter.shortcut == ctrlAltF"
+				"when": "editorTextFocus && editorLangId =~ /^(pascal|objectpascal)$/ && config.pascalAtlas.formatter.shortcut == ctrlAltF"
 			},
 			{
-				"command": "pascalUnion.formatter.formatDocument",
+				"command": "pascalAtlas.formatter.formatDocument",
 				"key": "ctrl+k ctrl+f",
-				"when": "editorTextFocus && editorLangId =~ /^(pascal|objectpascal)$/ && config.pascalUnion.formatter.shortcut == ctrlKCtrlF"
+				"when": "editorTextFocus && editorLangId =~ /^(pascal|objectpascal)$/ && config.pascalAtlas.formatter.shortcut == ctrlKCtrlF"
 			},
 			{
-				"command": "pascalUnion.goToDefinition",
+				"command": "pascalAtlas.goToDefinition",
 				"key": "f12",
 				"when": "editorTextFocus && editorLangId == pascal && resourceScheme == file"
 			},
 			{
-				"command": "pascalUnion.peekAllDefinitions",
+				"command": "pascalAtlas.peekAllDefinitions",
 				"key": "alt+f12",
-				"when": "editorTextFocus && editorLangId == pascal && resourceScheme == file && config.pascalUnion.navigation.candidatePickerShortcut == altF12"
+				"when": "editorTextFocus && editorLangId == pascal && resourceScheme == file && config.pascalAtlas.navigation.candidatePickerShortcut == altF12"
 			},
 			{
-				"command": "pascalUnion.peekAllDefinitions",
+				"command": "pascalAtlas.peekAllDefinitions",
 				"key": "ctrl+alt+f12",
-				"when": "editorTextFocus && editorLangId == pascal && resourceScheme == file && config.pascalUnion.navigation.candidatePickerShortcut == ctrlAltF12"
+				"when": "editorTextFocus && editorLangId == pascal && resourceScheme == file && config.pascalAtlas.navigation.candidatePickerShortcut == ctrlAltF12"
 			},
 			{
-				"command": "pascalUnion.insertGuid",
+				"command": "pascalAtlas.insertGuid",
 				"key": "ctrl+shift+g",
-				"when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(pascal|objectpascal)$/ && resourceScheme == file && config.pascalUnion.enabled"
+				"when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(pascal|objectpascal)$/ && resourceScheme == file && config.pascalAtlas.enabled"
 			},
 			{
-				"command": "pascalUnion.run.group",
+				"command": "pascalAtlas.run.group",
 				"key": "ctrl+f5",
-				"when": "pascalUnion.hasProjectGroups && !inDebugMode && !pascalUnion.executionBusy"
+				"when": "pascalAtlas.hasProjectGroups && !inDebugMode && !pascalAtlas.executionBusy"
 			},
 			{
-				"command": "pascalUnion.run.stop",
+				"command": "pascalAtlas.run.stop",
 				"key": "shift+f5",
-				"when": "pascalUnion.runInProgress"
+				"when": "pascalAtlas.runInProgress"
 			}
 		],
 		"viewsContainers": {
 			"activitybar": [
 				{
-					"id": "pascalUnion",
-					"title": "Pascal Union",
-					"icon": "media/pascal-union.svg"
+					"id": "pascalAtlas",
+					"title": "Pascal Atlas",
+					"icon": "media/pascal-atlas.svg"
 				}
 			]
 		},
 		"views": {
-			"pascalUnion": [
+			"pascalAtlas": [
 				{
-					"id": "pascalUnion.controlCenter",
+					"id": "pascalAtlas.controlCenter",
 					"name": "Features and Settings",
 					"type": "webview"
 				}
 			],
 			"explorer": [
 				{
-					"id": "pascalUnion.classNavigator",
+					"id": "pascalAtlas.classNavigator",
 					"name": "Delphi Navigator",
 					"type": "webview",
-					"when": "config.pascalUnion.enabled && (config.pascalUnion.classNavigator.enabled || config.pascalUnion.projectNavigator.enabled)",
+					"when": "config.pascalAtlas.enabled && (config.pascalAtlas.classNavigator.enabled || config.pascalAtlas.projectNavigator.enabled)",
 					"visibility": "visible"
 				}
 			]
@@ -472,369 +472,369 @@
 		"menus": {
 			"terminal/context": [
 				{
-					"command": "pascalUnion.build.toggleErrors",
-					"when": "config.pascalUnion.build.enabled && !config.pascalUnion.build.output.showErrors",
-					"group": "1_pascalUnion@1"
+					"command": "pascalAtlas.build.toggleErrors",
+					"when": "config.pascalAtlas.build.enabled && !config.pascalAtlas.build.output.showErrors",
+					"group": "1_pascalAtlas@1"
 				},
 				{
-					"command": "pascalUnion.build.toggleErrorsChecked",
-					"when": "config.pascalUnion.build.enabled && config.pascalUnion.build.output.showErrors",
-					"group": "1_pascalUnion@1"
+					"command": "pascalAtlas.build.toggleErrorsChecked",
+					"when": "config.pascalAtlas.build.enabled && config.pascalAtlas.build.output.showErrors",
+					"group": "1_pascalAtlas@1"
 				},
 				{
-					"command": "pascalUnion.build.toggleWarnings",
-					"when": "config.pascalUnion.build.enabled && !config.pascalUnion.build.output.showWarnings",
-					"group": "1_pascalUnion@2"
+					"command": "pascalAtlas.build.toggleWarnings",
+					"when": "config.pascalAtlas.build.enabled && !config.pascalAtlas.build.output.showWarnings",
+					"group": "1_pascalAtlas@2"
 				},
 				{
-					"command": "pascalUnion.build.toggleWarningsChecked",
-					"when": "config.pascalUnion.build.enabled && config.pascalUnion.build.output.showWarnings",
-					"group": "1_pascalUnion@2"
+					"command": "pascalAtlas.build.toggleWarningsChecked",
+					"when": "config.pascalAtlas.build.enabled && config.pascalAtlas.build.output.showWarnings",
+					"group": "1_pascalAtlas@2"
 				},
 				{
-					"command": "pascalUnion.build.toggleOther",
-					"when": "config.pascalUnion.build.enabled && !config.pascalUnion.build.output.showOther",
-					"group": "1_pascalUnion@3"
+					"command": "pascalAtlas.build.toggleOther",
+					"when": "config.pascalAtlas.build.enabled && !config.pascalAtlas.build.output.showOther",
+					"group": "1_pascalAtlas@3"
 				},
 				{
-					"command": "pascalUnion.build.toggleOtherChecked",
-					"when": "config.pascalUnion.build.enabled && config.pascalUnion.build.output.showOther",
-					"group": "1_pascalUnion@3"
+					"command": "pascalAtlas.build.toggleOtherChecked",
+					"when": "config.pascalAtlas.build.enabled && config.pascalAtlas.build.output.showOther",
+					"group": "1_pascalAtlas@3"
 				}
 			],
 			"terminal/title/context": [
 				{
-					"command": "pascalUnion.build.toggleErrors",
-					"when": "config.pascalUnion.build.enabled && !config.pascalUnion.build.output.showErrors",
-					"group": "1_pascalUnion@1"
+					"command": "pascalAtlas.build.toggleErrors",
+					"when": "config.pascalAtlas.build.enabled && !config.pascalAtlas.build.output.showErrors",
+					"group": "1_pascalAtlas@1"
 				},
 				{
-					"command": "pascalUnion.build.toggleErrorsChecked",
-					"when": "config.pascalUnion.build.enabled && config.pascalUnion.build.output.showErrors",
-					"group": "1_pascalUnion@1"
+					"command": "pascalAtlas.build.toggleErrorsChecked",
+					"when": "config.pascalAtlas.build.enabled && config.pascalAtlas.build.output.showErrors",
+					"group": "1_pascalAtlas@1"
 				},
 				{
-					"command": "pascalUnion.build.toggleWarnings",
-					"when": "config.pascalUnion.build.enabled && !config.pascalUnion.build.output.showWarnings",
-					"group": "1_pascalUnion@2"
+					"command": "pascalAtlas.build.toggleWarnings",
+					"when": "config.pascalAtlas.build.enabled && !config.pascalAtlas.build.output.showWarnings",
+					"group": "1_pascalAtlas@2"
 				},
 				{
-					"command": "pascalUnion.build.toggleWarningsChecked",
-					"when": "config.pascalUnion.build.enabled && config.pascalUnion.build.output.showWarnings",
-					"group": "1_pascalUnion@2"
+					"command": "pascalAtlas.build.toggleWarningsChecked",
+					"when": "config.pascalAtlas.build.enabled && config.pascalAtlas.build.output.showWarnings",
+					"group": "1_pascalAtlas@2"
 				},
 				{
-					"command": "pascalUnion.build.toggleOther",
-					"when": "config.pascalUnion.build.enabled && !config.pascalUnion.build.output.showOther",
-					"group": "1_pascalUnion@3"
+					"command": "pascalAtlas.build.toggleOther",
+					"when": "config.pascalAtlas.build.enabled && !config.pascalAtlas.build.output.showOther",
+					"group": "1_pascalAtlas@3"
 				},
 				{
-					"command": "pascalUnion.build.toggleOtherChecked",
-					"when": "config.pascalUnion.build.enabled && config.pascalUnion.build.output.showOther",
-					"group": "1_pascalUnion@3"
+					"command": "pascalAtlas.build.toggleOtherChecked",
+					"when": "config.pascalAtlas.build.enabled && config.pascalAtlas.build.output.showOther",
+					"group": "1_pascalAtlas@3"
 				}
 			],
 			"commandPalette": [
 				{
-					"command": "pascalUnion.build.toggleErrorsChecked",
+					"command": "pascalAtlas.build.toggleErrorsChecked",
 					"when": "false"
 				},
 				{
-					"command": "pascalUnion.build.toggleWarningsChecked",
+					"command": "pascalAtlas.build.toggleWarningsChecked",
 					"when": "false"
 				},
 				{
-					"command": "pascalUnion.build.toggleOtherChecked",
+					"command": "pascalAtlas.build.toggleOtherChecked",
 					"when": "false"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.buildPackage",
+					"command": "pascalAtlas.classNavigator.context.buildPackage",
 					"when": "false"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.compilePackage",
+					"command": "pascalAtlas.classNavigator.context.compilePackage",
 					"when": "false"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.cleanPackage",
+					"command": "pascalAtlas.classNavigator.context.cleanPackage",
 					"when": "false"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.buildGroup",
+					"command": "pascalAtlas.classNavigator.context.buildGroup",
 					"when": "false"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.compileGroup",
+					"command": "pascalAtlas.classNavigator.context.compileGroup",
 					"when": "false"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.cleanGroup",
+					"command": "pascalAtlas.classNavigator.context.cleanGroup",
 					"when": "false"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.runGroup",
+					"command": "pascalAtlas.classNavigator.context.runGroup",
 					"when": "false"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.selectStartupProject",
+					"command": "pascalAtlas.classNavigator.context.selectStartupProject",
 					"when": "false"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.selectConfiguration",
+					"command": "pascalAtlas.classNavigator.context.selectConfiguration",
 					"when": "false"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.selectPlatform",
+					"command": "pascalAtlas.classNavigator.context.selectPlatform",
 					"when": "false"
 				}
 			],
 			"view/item/context": [
 				{
-					"command": "pascalUnion.build.buildPackage",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && viewItem == pascalUnion.projectNavigator.package && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@1"
+					"command": "pascalAtlas.build.buildPackage",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && viewItem == pascalAtlas.projectNavigator.package && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@1"
 				},
 				{
-					"command": "pascalUnion.build.compilePackage",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && viewItem == pascalUnion.projectNavigator.package && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@2"
+					"command": "pascalAtlas.build.compilePackage",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && viewItem == pascalAtlas.projectNavigator.package && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@2"
 				},
 				{
-					"command": "pascalUnion.build.cleanPackage",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && viewItem == pascalUnion.projectNavigator.package && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@3"
+					"command": "pascalAtlas.build.cleanPackage",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && viewItem == pascalAtlas.projectNavigator.package && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@3"
 				},
 				{
-					"command": "pascalUnion.build.buildGroup",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && viewItem =~ /pascalUnion.projectNavigator.(project|looseProject)/ && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@1"
+					"command": "pascalAtlas.build.buildGroup",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && viewItem =~ /pascalAtlas.projectNavigator.(project|looseProject)/ && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@1"
 				},
 				{
-					"command": "pascalUnion.build.compileGroup",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && viewItem =~ /pascalUnion.projectNavigator.(project|looseProject)/ && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@2"
+					"command": "pascalAtlas.build.compileGroup",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && viewItem =~ /pascalAtlas.projectNavigator.(project|looseProject)/ && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@2"
 				},
 				{
-					"command": "pascalUnion.build.cleanGroup",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && viewItem =~ /pascalUnion.projectNavigator.(project|looseProject)/ && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@3"
+					"command": "pascalAtlas.build.cleanGroup",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && viewItem =~ /pascalAtlas.projectNavigator.(project|looseProject)/ && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@3"
 				},
 				{
-					"command": "pascalUnion.run.group",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && viewItem == pascalUnion.projectNavigator.project && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@4"
+					"command": "pascalAtlas.run.group",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && viewItem == pascalAtlas.projectNavigator.project && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@4"
 				},
 				{
-					"command": "pascalUnion.build.selectConfiguration",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && viewItem =~ /pascalUnion.projectNavigator.(project|looseProject)/ && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@7"
+					"command": "pascalAtlas.build.selectConfiguration",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && viewItem =~ /pascalAtlas.projectNavigator.(project|looseProject)/ && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@7"
 				},
 				{
-					"command": "pascalUnion.build.selectPlatform",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && viewItem =~ /pascalUnion.projectNavigator.(project|looseProject)/ && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@8"
+					"command": "pascalAtlas.build.selectPlatform",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && viewItem =~ /pascalAtlas.projectNavigator.(project|looseProject)/ && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@8"
 				},
 				{
-					"command": "pascalUnion.classNavigator.generateAiSteps",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == class && viewItem =~ /pascalUnion.classNavigator.(routine|type)/ && config.pascalUnion.classNavigator.aiSteps.enabled && !pascalUnion.classNavigator.aiGenerating",
+					"command": "pascalAtlas.classNavigator.generateAiSteps",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == class && viewItem =~ /pascalAtlas.classNavigator.(routine|type)/ && config.pascalAtlas.classNavigator.aiSteps.enabled && !pascalAtlas.classNavigator.aiGenerating",
 					"group": "1_aiSteps@1"
 				},
 				{
-					"command": "pascalUnion.classNavigator.generateDetailedAiSteps",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == class && viewItem =~ /pascalUnion.classNavigator.(routine|type)/ && config.pascalUnion.classNavigator.aiSteps.enabled && !pascalUnion.classNavigator.aiGenerating",
+					"command": "pascalAtlas.classNavigator.generateDetailedAiSteps",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == class && viewItem =~ /pascalAtlas.classNavigator.(routine|type)/ && config.pascalAtlas.classNavigator.aiSteps.enabled && !pascalAtlas.classNavigator.aiGenerating",
 					"group": "1_aiSteps@2"
 				}
 			],
 			"webview/context": [
 				{
-					"command": "pascalUnion.classNavigator.generateAiSteps",
-					"when": "webviewId == 'pascalUnion.classNavigator' && webviewSection == 'classSymbol' && config.pascalUnion.classNavigator.aiSteps.enabled && !pascalUnion.classNavigator.aiGenerating",
+					"command": "pascalAtlas.classNavigator.generateAiSteps",
+					"when": "webviewId == 'pascalAtlas.classNavigator' && webviewSection == 'classSymbol' && config.pascalAtlas.classNavigator.aiSteps.enabled && !pascalAtlas.classNavigator.aiGenerating",
 					"group": "1_aiSteps@1"
 				},
 				{
-					"command": "pascalUnion.classNavigator.generateDetailedAiSteps",
-					"when": "webviewId == 'pascalUnion.classNavigator' && webviewSection == 'classSymbol' && config.pascalUnion.classNavigator.aiSteps.enabled && !pascalUnion.classNavigator.aiGenerating",
+					"command": "pascalAtlas.classNavigator.generateDetailedAiSteps",
+					"when": "webviewId == 'pascalAtlas.classNavigator' && webviewSection == 'classSymbol' && config.pascalAtlas.classNavigator.aiSteps.enabled && !pascalAtlas.classNavigator.aiGenerating",
 					"group": "1_aiSteps@2"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.buildPackage",
-					"when": "webviewId == 'pascalUnion.classNavigator' && webviewSection == 'projectPackage' && config.pascalUnion.projectNavigator.contextMenus.enabled",
+					"command": "pascalAtlas.classNavigator.context.buildPackage",
+					"when": "webviewId == 'pascalAtlas.classNavigator' && webviewSection == 'projectPackage' && config.pascalAtlas.projectNavigator.contextMenus.enabled",
 					"group": "1_build@1"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.compilePackage",
-					"when": "webviewId == 'pascalUnion.classNavigator' && webviewSection == 'projectPackage' && config.pascalUnion.projectNavigator.contextMenus.enabled",
+					"command": "pascalAtlas.classNavigator.context.compilePackage",
+					"when": "webviewId == 'pascalAtlas.classNavigator' && webviewSection == 'projectPackage' && config.pascalAtlas.projectNavigator.contextMenus.enabled",
 					"group": "1_build@2"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.cleanPackage",
-					"when": "webviewId == 'pascalUnion.classNavigator' && webviewSection == 'projectPackage' && config.pascalUnion.projectNavigator.contextMenus.enabled",
+					"command": "pascalAtlas.classNavigator.context.cleanPackage",
+					"when": "webviewId == 'pascalAtlas.classNavigator' && webviewSection == 'projectPackage' && config.pascalAtlas.projectNavigator.contextMenus.enabled",
 					"group": "1_build@3"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.buildGroup",
-					"when": "webviewId == 'pascalUnion.classNavigator' && webviewSection =~ /^(projectGroup|looseProjectGroup)$/ && config.pascalUnion.projectNavigator.contextMenus.enabled",
+					"command": "pascalAtlas.classNavigator.context.buildGroup",
+					"when": "webviewId == 'pascalAtlas.classNavigator' && webviewSection =~ /^(projectGroup|looseProjectGroup)$/ && config.pascalAtlas.projectNavigator.contextMenus.enabled",
 					"group": "1_build@1"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.compileGroup",
-					"when": "webviewId == 'pascalUnion.classNavigator' && webviewSection =~ /^(projectGroup|looseProjectGroup)$/ && config.pascalUnion.projectNavigator.contextMenus.enabled",
+					"command": "pascalAtlas.classNavigator.context.compileGroup",
+					"when": "webviewId == 'pascalAtlas.classNavigator' && webviewSection =~ /^(projectGroup|looseProjectGroup)$/ && config.pascalAtlas.projectNavigator.contextMenus.enabled",
 					"group": "1_build@2"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.cleanGroup",
-					"when": "webviewId == 'pascalUnion.classNavigator' && webviewSection =~ /^(projectGroup|looseProjectGroup)$/ && config.pascalUnion.projectNavigator.contextMenus.enabled",
+					"command": "pascalAtlas.classNavigator.context.cleanGroup",
+					"when": "webviewId == 'pascalAtlas.classNavigator' && webviewSection =~ /^(projectGroup|looseProjectGroup)$/ && config.pascalAtlas.projectNavigator.contextMenus.enabled",
 					"group": "1_build@3"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.runGroup",
-					"when": "webviewId == 'pascalUnion.classNavigator' && webviewSection == 'projectGroup' && config.pascalUnion.projectNavigator.contextMenus.enabled",
+					"command": "pascalAtlas.classNavigator.context.runGroup",
+					"when": "webviewId == 'pascalAtlas.classNavigator' && webviewSection == 'projectGroup' && config.pascalAtlas.projectNavigator.contextMenus.enabled",
 					"group": "2_run@1"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.selectStartupProject",
-					"when": "webviewId == 'pascalUnion.classNavigator' && webviewSection == 'projectGroup' && config.pascalUnion.projectNavigator.contextMenus.enabled",
+					"command": "pascalAtlas.classNavigator.context.selectStartupProject",
+					"when": "webviewId == 'pascalAtlas.classNavigator' && webviewSection == 'projectGroup' && config.pascalAtlas.projectNavigator.contextMenus.enabled",
 					"group": "2_run@3"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.selectConfiguration",
-					"when": "webviewId == 'pascalUnion.classNavigator' && webviewSection =~ /^(projectGroup|looseProjectGroup)$/ && config.pascalUnion.projectNavigator.contextMenus.enabled",
+					"command": "pascalAtlas.classNavigator.context.selectConfiguration",
+					"when": "webviewId == 'pascalAtlas.classNavigator' && webviewSection =~ /^(projectGroup|looseProjectGroup)$/ && config.pascalAtlas.projectNavigator.contextMenus.enabled",
 					"group": "3_options@1"
 				},
 				{
-					"command": "pascalUnion.classNavigator.context.selectPlatform",
-					"when": "webviewId == 'pascalUnion.classNavigator' && webviewSection =~ /^(projectGroup|looseProjectGroup)$/ && config.pascalUnion.projectNavigator.contextMenus.enabled",
+					"command": "pascalAtlas.classNavigator.context.selectPlatform",
+					"when": "webviewId == 'pascalAtlas.classNavigator' && webviewSection =~ /^(projectGroup|looseProjectGroup)$/ && config.pascalAtlas.projectNavigator.contextMenus.enabled",
 					"group": "3_options@2"
 				}
 			],
 			"view/title": [
 				{
-					"command": "pascalUnion.build.toggleErrors",
-					"when": "view == terminal && pascalUnion.buildTerminalActive && config.pascalUnion.build.enabled && !config.pascalUnion.build.output.showErrors",
+					"command": "pascalAtlas.build.toggleErrors",
+					"when": "view == terminal && pascalAtlas.buildTerminalActive && config.pascalAtlas.build.enabled && !config.pascalAtlas.build.output.showErrors",
 					"group": "navigation@96"
 				},
 				{
-					"command": "pascalUnion.build.toggleErrorsChecked",
-					"when": "view == terminal && pascalUnion.buildTerminalActive && config.pascalUnion.build.enabled && config.pascalUnion.build.output.showErrors",
+					"command": "pascalAtlas.build.toggleErrorsChecked",
+					"when": "view == terminal && pascalAtlas.buildTerminalActive && config.pascalAtlas.build.enabled && config.pascalAtlas.build.output.showErrors",
 					"group": "navigation@96"
 				},
 				{
-					"command": "pascalUnion.build.toggleWarnings",
-					"when": "view == terminal && pascalUnion.buildTerminalActive && config.pascalUnion.build.enabled && !config.pascalUnion.build.output.showWarnings",
+					"command": "pascalAtlas.build.toggleWarnings",
+					"when": "view == terminal && pascalAtlas.buildTerminalActive && config.pascalAtlas.build.enabled && !config.pascalAtlas.build.output.showWarnings",
 					"group": "navigation@97"
 				},
 				{
-					"command": "pascalUnion.build.toggleWarningsChecked",
-					"when": "view == terminal && pascalUnion.buildTerminalActive && config.pascalUnion.build.enabled && config.pascalUnion.build.output.showWarnings",
+					"command": "pascalAtlas.build.toggleWarningsChecked",
+					"when": "view == terminal && pascalAtlas.buildTerminalActive && config.pascalAtlas.build.enabled && config.pascalAtlas.build.output.showWarnings",
 					"group": "navigation@97"
 				},
 				{
-					"command": "pascalUnion.build.toggleOther",
-					"when": "view == terminal && pascalUnion.buildTerminalActive && config.pascalUnion.build.enabled && !config.pascalUnion.build.output.showOther",
+					"command": "pascalAtlas.build.toggleOther",
+					"when": "view == terminal && pascalAtlas.buildTerminalActive && config.pascalAtlas.build.enabled && !config.pascalAtlas.build.output.showOther",
 					"group": "navigation@98"
 				},
 				{
-					"command": "pascalUnion.build.toggleOtherChecked",
-					"when": "view == terminal && pascalUnion.buildTerminalActive && config.pascalUnion.build.enabled && config.pascalUnion.build.output.showOther",
+					"command": "pascalAtlas.build.toggleOtherChecked",
+					"when": "view == terminal && pascalAtlas.buildTerminalActive && config.pascalAtlas.build.enabled && config.pascalAtlas.build.output.showOther",
 					"group": "navigation@98"
 				},
 				{
-					"command": "pascalUnion.build.selectOutputFilters",
-					"when": "view == terminal && pascalUnion.buildTerminalActive && config.pascalUnion.build.enabled",
+					"command": "pascalAtlas.build.selectOutputFilters",
+					"when": "view == terminal && pascalAtlas.buildTerminalActive && config.pascalAtlas.build.enabled",
 					"group": "navigation@99"
 				},
 				{
-					"command": "pascalUnion.navigator.toggleMode",
-					"when": "view == pascalUnion.classNavigator && config.pascalUnion.classNavigator.enabled && config.pascalUnion.projectNavigator.enabled",
+					"command": "pascalAtlas.navigator.toggleMode",
+					"when": "view == pascalAtlas.classNavigator && config.pascalAtlas.classNavigator.enabled && config.pascalAtlas.projectNavigator.enabled",
 					"group": "navigation@99"
 				},
 				{
-					"command": "pascalUnion.projectNavigator.refresh",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project",
+					"command": "pascalAtlas.projectNavigator.refresh",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project",
 					"group": "navigation@3"
 				},
 				{
-					"command": "pascalUnion.projectNavigator.actions",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && config.pascalUnion.projectNavigator.contextMenus.enabled",
+					"command": "pascalAtlas.projectNavigator.actions",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && config.pascalAtlas.projectNavigator.contextMenus.enabled",
 					"group": "1_projectActions@1"
 				},
 				{
-					"command": "pascalUnion.openSettings",
-					"when": "view == pascalUnion.controlCenter",
+					"command": "pascalAtlas.openSettings",
+					"when": "view == pascalAtlas.controlCenter",
 					"group": "navigation@1"
 				},
 				{
-					"command": "pascalUnion.controlCenter.refresh",
-					"when": "view == pascalUnion.controlCenter",
+					"command": "pascalAtlas.controlCenter.refresh",
+					"when": "view == pascalAtlas.controlCenter",
 					"group": "navigation@2"
 				},
 				{
-					"command": "pascalUnion.classNavigator.stopAiGeneration",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == class && pascalUnion.classNavigator.aiGenerating",
+					"command": "pascalAtlas.classNavigator.stopAiGeneration",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == class && pascalAtlas.classNavigator.aiGenerating",
 					"group": "navigation@2"
 				},
 				{
-					"command": "pascalUnion.classNavigator.selectSort",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == class",
+					"command": "pascalAtlas.classNavigator.selectSort",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == class",
 					"group": "navigation@4"
 				},
 				{
-					"command": "pascalUnion.classNavigator.find",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == class",
+					"command": "pascalAtlas.classNavigator.find",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == class",
 					"group": "navigation@3"
 				},
 				{
-					"command": "pascalUnion.openSettings",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == class",
+					"command": "pascalAtlas.openSettings",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == class",
 					"group": "1_classActions@1"
 				},
 				{
-					"command": "pascalUnion.build.buildGroup",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@1"
+					"command": "pascalAtlas.build.buildGroup",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@1"
 				},
 				{
-					"command": "pascalUnion.build.compileGroup",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@2"
+					"command": "pascalAtlas.build.compileGroup",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@2"
 				},
 				{
-					"command": "pascalUnion.build.cleanGroup",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@3"
+					"command": "pascalAtlas.build.cleanGroup",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@3"
 				},
 				{
-					"command": "pascalUnion.run.group",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@4"
+					"command": "pascalAtlas.run.group",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@4"
 				},
 				{
-					"command": "pascalUnion.build.selectConfiguration",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@7"
+					"command": "pascalAtlas.build.selectConfiguration",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@7"
 				},
 				{
-					"command": "pascalUnion.build.selectPlatform",
-					"when": "view == pascalUnion.classNavigator && pascalUnion.navigator.mode == project && config.pascalUnion.projectNavigator.contextMenus.enabled",
-					"group": "1_pascalUnion@8"
+					"command": "pascalAtlas.build.selectPlatform",
+					"when": "view == pascalAtlas.classNavigator && pascalAtlas.navigator.mode == project && config.pascalAtlas.projectNavigator.contextMenus.enabled",
+					"group": "1_pascalAtlas@8"
 				}
 			],
 			"editor/context": [
 				{
-					"command": "pascalUnion.addUnit",
-					"when": "editorLangId == pascal && resourceScheme == file && config.pascalUnion.enabled",
-					"group": "0_pascalUnion@1"
+					"command": "pascalAtlas.addUnit",
+					"when": "editorLangId == pascal && resourceScheme == file && config.pascalAtlas.enabled",
+					"group": "0_pascalAtlas@1"
 				},
 				{
-					"command": "pascalUnion.insertGuid",
-					"when": "editorLangId =~ /^(pascal|objectpascal)$/ && resourceScheme == file && !editorReadonly && config.pascalUnion.enabled",
-					"group": "0_pascalUnion@2"
+					"command": "pascalAtlas.insertGuid",
+					"when": "editorLangId =~ /^(pascal|objectpascal)$/ && resourceScheme == file && !editorReadonly && config.pascalAtlas.enabled",
+					"group": "0_pascalAtlas@2"
 				}
 			]
 		},
 		"taskDefinitions": [
 			{
-				"type": "pascal-union",
+				"type": "pascal-atlas",
 				"required": [
 					"target"
 				],
@@ -856,8 +856,8 @@
 		],
 		"problemMatchers": [
 			{
-				"name": "pascalUnionDelphi",
-				"owner": "pascal-union-build",
+				"name": "pascalAtlasDelphi",
+				"owner": "pascal-atlas-build",
 				"fileLocation": [
 					"autoDetect",
 					"${workspaceFolder}"
@@ -873,8 +873,8 @@
 				}
 			},
 			{
-				"name": "pascalUnionDelphiClassic",
-				"owner": "pascal-union-build",
+				"name": "pascalAtlasDelphiClassic",
+				"owner": "pascal-atlas-build",
 				"fileLocation": [
 					"autoDetect",
 					"${workspaceFolder}"
@@ -891,9 +891,9 @@
 			}
 		],
 		"configuration": {
-			"title": "Pascal Union (Pascal/Delphi Tools)",
+			"title": "Pascal Atlas (Pascal/Delphi Tools)",
 			"properties": {
-				"pascalUnion.ui.language": {
+				"pascalAtlas.ui.language": {
 					"type": "string",
 					"enum": [
 						"en"
@@ -903,24 +903,24 @@
 					],
 					"default": "en",
 					"scope": "window",
-					"description": "Language used by the Pascal Union settings center."
+					"description": "Language used by the Pascal Atlas settings center."
 				},
-				"pascalUnion.enabled": {
+				"pascalAtlas.enabled": {
 					"type": "boolean",
 					"default": true,
-					"description": "Enables all Pascal Union features. Disabling it leaves Vallenta Studio functionality available."
+					"description": "Enables all Pascal Atlas features. Disabling it leaves Vallenta Studio functionality available."
 				},
-				"pascalUnion.dependencies.autoInstall": {
+				"pascalAtlas.dependencies.autoInstall": {
 					"type": "boolean",
 					"default": true,
 					"description": "Checks for Vallenta Studio and its debugging prerequisites at startup, and installs missing extensions from the Marketplace."
 				},
-				"pascalUnion.encoding.enabled": {
+				"pascalAtlas.encoding.enabled": {
 					"type": "boolean",
 					"default": true,
-					"description": "Enables Pascal Union's file encoding policy: new Delphi files default to GB2312, other new files to UTF-8, and ambiguous .pas files fall back to GB2312."
+					"description": "Enables Pascal Atlas's file encoding policy: new Delphi files default to GB2312, other new files to UTF-8, and ambiguous .pas files fall back to GB2312."
 				},
-				"pascalUnion.encoding.delphiDefault": {
+				"pascalAtlas.encoding.delphiDefault": {
 					"type": "string",
 					"default": "gb2312",
 					"enum": [
@@ -937,7 +937,7 @@
 					],
 					"description": "Encoding for new .pas/.dpr/.dpk/.dproj files and as a fallback when an existing file's encoding cannot be detected."
 				},
-				"pascalUnion.encoding.otherDefault": {
+				"pascalAtlas.encoding.otherDefault": {
 					"type": "string",
 					"default": "utf8",
 					"enum": [
@@ -954,67 +954,67 @@
 					],
 					"description": "Encoding for new Markdown, UML, and other text files, and as a fallback when an existing file's encoding cannot be detected."
 				},
-				"pascalUnion.encoding.detectExisting": {
+				"pascalAtlas.encoding.detectExisting": {
 					"type": "boolean",
 					"default": true,
 					"description": "Detects an existing file's encoding when opened. For .pas files, preserves UTF-8/GB2312 only when clearly detected or indicated by a reliable BOM; otherwise opens as GB2312."
 				},
-				"pascalUnion.encoding.respectDprojDeclaration": {
+				"pascalAtlas.encoding.respectDprojDeclaration": {
 					"type": "boolean",
 					"default": true,
 					"description": "Prefers the XML encoding declaration in DPROJ files so projects declared as UTF-8 are not saved as GB2312."
 				},
-				"pascalUnion.classNavigator.enabled": {
+				"pascalAtlas.classNavigator.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows the Delphi Class Navigator for the active Pascal file in the built-in Explorer."
 				},
-				"pascalUnion.classNavigator.showUses": {
+				"pascalAtlas.classNavigator.showUses": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows a uses node at the top level of the Delphi Class Navigator without listing every imported Unit."
 				},
-				"pascalUnion.classNavigator.showGlobalRoutines": {
+				"pascalAtlas.classNavigator.showGlobalRoutines": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows global functions, procedures, constructors, and destructors under the Global node."
 				},
-				"pascalUnion.classNavigator.showInterfaces": {
+				"pascalAtlas.classNavigator.showInterfaces": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows interfaces and their methods in the Delphi Class Navigator."
 				},
-				"pascalUnion.classNavigator.showRecordsAndObjects": {
+				"pascalAtlas.classNavigator.showRecordsAndObjects": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows records, objects, and their methods in the Delphi Class Navigator."
 				},
-				"pascalUnion.classNavigator.showProperties": {
+				"pascalAtlas.classNavigator.showProperties": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows an expandable properties group as the first item under types that declare properties. Click a property to go to its declaration."
 				},
-				"pascalUnion.classNavigator.showProjectPackageEntry": {
+				"pascalAtlas.classNavigator.showProjectPackageEntry": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows a top-level Package Includes entry for DPK/DPROJ files. It navigates to the requires, DCCReference, or DCC_UsePackage section without listing each package."
 				},
-				"pascalUnion.classNavigator.showProjectFileEntry": {
+				"pascalAtlas.classNavigator.showProjectFileEntry": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows a top-level File Includes entry for DPK/DPROJ files. It navigates to the contains or DCCReference section without listing each file."
 				},
-				"pascalUnion.classNavigator.showUnitInitialization": {
+				"pascalAtlas.classNavigator.showUnitInitialization": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows a Unit's initialization section as the second-to-last top-level item and allows navigation to it."
 				},
-				"pascalUnion.classNavigator.showUnitFinalization": {
+				"pascalAtlas.classNavigator.showUnitFinalization": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows a Unit's finalization section as the last top-level item and allows navigation to it."
 				},
-				"pascalUnion.classNavigator.memberOrder": {
+				"pascalAtlas.classNavigator.memberOrder": {
 					"type": "string",
 					"default": "visibility",
 					"enum": [
@@ -1029,7 +1029,7 @@
 					],
 					"description": "Member ordering in the Delphi Class Navigator."
 				},
-				"pascalUnion.classNavigator.typeOrder": {
+				"pascalAtlas.classNavigator.typeOrder": {
 					"type": "string",
 					"default": "declaration",
 					"enum": [
@@ -1042,43 +1042,43 @@
 					],
 					"description": "Top-level type ordering in the Delphi Class Navigator."
 				},
-				"pascalUnion.classNavigator.followCursor": {
+				"pascalAtlas.classNavigator.followCursor": {
 					"type": "boolean",
 					"default": true,
 					"description": "Follows the current class or routine when opening a file, clicking code, or scrolling. Selection background and icon colors use the VS Code TreeView defaults for the active theme. Keeps the previous selection when there is no match."
 				},
-				"pascalUnion.classNavigator.highlightRange.enabled": {
+				"pascalAtlas.classNavigator.highlightRange.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Marks the source range beside the line numbers when clicking a real navigator item or when the cursor/viewport follows a uses clause, type, routine, property, initialization, or finalization block. Virtual nodes such as Global are not marked."
 				},
-				"pascalUnion.classNavigator.pauseWhenCollapsed": {
+				"pascalAtlas.classNavigator.pauseWhenCollapsed": {
 					"type": "boolean",
 					"default": true,
 					"description": "Pauses cursor and scroll monitoring and tree updates while the Delphi Class Navigator is collapsed or hidden. Follow logic will not expand it automatically; synchronization resumes when the user opens it."
 				},
-				"pascalUnion.classNavigator.scrollFollowDelayMs": {
+				"pascalAtlas.classNavigator.scrollFollowDelayMs": {
 					"type": "number",
 					"default": 0,
 					"minimum": 0,
 					"maximum": 500,
 					"description": "Delay in milliseconds before updating the active navigator item after editor scrolling. The default 0 processes it in the next event-loop turn."
 				},
-				"pascalUnion.classNavigator.scrollFollowOffsetLines": {
+				"pascalAtlas.classNavigator.scrollFollowOffsetLines": {
 					"type": "number",
 					"default": 1,
 					"minimum": -20,
 					"maximum": 20,
 					"description": "Number of lines below the visible-area center used to determine the active navigator item while scrolling. The default 1 avoids selecting the previous block when a boundary is exactly centered."
 				},
-				"pascalUnion.classNavigator.navigationClickHoldMs": {
+				"pascalAtlas.classNavigator.navigationClickHoldMs": {
 					"type": "number",
 					"default": 120,
 					"minimum": 0,
 					"maximum": 2000,
 					"description": "Protection period in milliseconds after a navigator click, during which scrolling caused by the jump is ignored. The next user scroll immediately updates the active item based on the viewport center."
 				},
-				"pascalUnion.classNavigator.navigationReveal.mode": {
+				"pascalAtlas.classNavigator.navigationReveal.mode": {
 					"type": "string",
 					"default": "smart",
 					"enum": [
@@ -1095,41 +1095,41 @@
 					],
 					"description": "Controls how a source block is positioned in the editor after clicking a Delphi Class Navigator item."
 				},
-				"pascalUnion.classNavigator.navigationReveal.largeBlockStartPercent": {
+				"pascalAtlas.classNavigator.navigationReveal.largeBlockStartPercent": {
 					"type": "number",
 					"default": 25,
 					"minimum": 0,
 					"maximum": 50,
 					"description": "In smart mode, sets the large source block's start position as a percentage of the editor height when it cannot fit entirely. The default 25 places it one quarter of the way down."
 				},
-				"pascalUnion.classNavigator.keepFocusOnNavigationClick": {
+				"pascalAtlas.classNavigator.keepFocusOnNavigationClick": {
 					"type": "boolean",
 					"default": true,
 					"description": "Keeps focus and the native blue tree selection after clicking the Delphi Class Navigator, while navigating only in the editor. When disabled, navigation focuses the editor and the tree selection becomes gray."
 				},
-				"pascalUnion.classNavigator.defaultOpenBelowExplorer": {
+				"pascalAtlas.classNavigator.defaultOpenBelowExplorer": {
 					"type": "boolean",
 					"default": true,
 					"description": "On the first Pascal file opened in each workspace, expands the Delphi Class Navigator and places it below the Explorer file tree. User layout changes are respected afterward."
 				},
-				"pascalUnion.classNavigator.backgroundParsing.enabled": {
+				"pascalAtlas.classNavigator.backgroundParsing.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Parses large-file navigation in a separate worker to avoid blocking the extension host, project loading, coloring, and other sidebar views."
 				},
-				"pascalUnion.classNavigator.backgroundParsing.thresholdKb": {
+				"pascalAtlas.classNavigator.backgroundParsing.thresholdKb": {
 					"type": "number",
 					"default": 256,
 					"minimum": 64,
 					"maximum": 4096,
 					"description": "Pascal files larger than this size, in KB, use a worker to generate the class navigator."
 				},
-				"pascalUnion.classNavigator.aiSteps.enabled": {
+				"pascalAtlas.classNavigator.aiSteps.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Generates recursively expandable, clickable English routine steps from the context menus of routine and class nodes in the Delphi Class Navigator."
 				},
-				"pascalUnion.classNavigator.aiSteps.provider": {
+				"pascalAtlas.classNavigator.aiSteps.provider": {
 					"type": "string",
 					"default": "oaicopilot",
 					"enum": [
@@ -1140,12 +1140,12 @@
 					],
 					"description": "VS Code Language Model Provider used for AI routine steps."
 				},
-				"pascalUnion.classNavigator.aiSteps.modelId": {
+				"pascalAtlas.classNavigator.aiSteps.modelId": {
 					"type": "string",
 					"default": "",
-					"description": "Specifies the OAI Compatible model ID. The Union settings page lists configured models from OAI Compatible Copilot and allows a custom ID. When empty, uses the first model returned by the provider."
+					"description": "Specifies the OAI Compatible model ID. The Pascal Atlas settings page lists configured models from OAI Compatible Copilot and allows a custom ID. When empty, uses the first model returned by the provider."
 				},
-				"pascalUnion.classNavigator.aiSteps.reasoningEffort": {
+				"pascalAtlas.classNavigator.aiSteps.reasoningEffort": {
 					"type": "string",
 					"default": "low",
 					"enum": [
@@ -1168,7 +1168,7 @@
 					],
 					"description": "Reasoning effort for AI step requests. Applies only when the current model and provider support reasoning effort."
 				},
-				"pascalUnion.classNavigator.aiSteps.granularity": {
+				"pascalAtlas.classNavigator.aiSteps.granularity": {
 					"type": "string",
 					"default": "coarse",
 					"enum": [
@@ -1181,194 +1181,194 @@
 					],
 					"description": "Granularity of functional blocks in AI routine steps."
 				},
-				"pascalUnion.classNavigator.aiSteps.maxSteps": {
+				"pascalAtlas.classNavigator.aiSteps.maxSteps": {
 					"type": "number",
 					"default": 5,
 					"minimum": 1,
 					"maximum": 12,
 					"description": "Maximum number of functional blocks generated per routine. The actual number may be reduced based on routine length."
 				},
-				"pascalUnion.classNavigator.aiSteps.normalTargetLines": {
+				"pascalAtlas.classNavigator.aiSteps.normalTargetLines": {
 					"type": "number",
 					"default": 20,
 					"minimum": 8,
 					"maximum": 50,
 					"description": "Target number of code lines covered by each smallest functional block during normal generation."
 				},
-				"pascalUnion.classNavigator.aiSteps.detailedTargetLines": {
+				"pascalAtlas.classNavigator.aiSteps.detailedTargetLines": {
 					"type": "number",
 					"default": 10,
 					"minimum": 6,
 					"maximum": 30,
 					"description": "Target number of code lines covered by each smallest leaf step during detailed generation. The default is about 10 lines."
 				},
-				"pascalUnion.classNavigator.aiSteps.substeps.enabled": {
+				"pascalAtlas.classNavigator.aiSteps.substeps.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Allows complex top-level functional blocks to have expandable, navigable English substeps. Simple blocks remain flat."
 				},
-				"pascalUnion.classNavigator.aiSteps.substeps.maxPerStep": {
+				"pascalAtlas.classNavigator.aiSteps.substeps.maxPerStep": {
 					"type": "number",
 					"default": 5,
 					"minimum": 2,
 					"maximum": 8,
 					"description": "Maximum number of substeps retained for each complex functional block."
 				},
-				"pascalUnion.classNavigator.aiSteps.substeps.minParentLines": {
+				"pascalAtlas.classNavigator.aiSteps.substeps.minParentLines": {
 					"type": "number",
 					"default": 30,
 					"minimum": 12,
 					"maximum": 100,
 					"description": "Minimum number of lines a functional block must cover before generating recursive substeps, avoiding excessive detail for short logic."
 				},
-				"pascalUnion.classNavigator.aiSteps.substeps.maxDepth": {
+				"pascalAtlas.classNavigator.aiSteps.substeps.maxDepth": {
 					"type": "number",
 					"default": 3,
 					"minimum": 2,
 					"maximum": 5,
 					"description": "Maximum depth for recursive AI steps. Detailed generation uses a minimum depth budget of 4."
 				},
-				"pascalUnion.classNavigator.aiSteps.maxSourceCharacters": {
+				"pascalAtlas.classNavigator.aiSteps.maxSourceCharacters": {
 					"type": "number",
 					"default": 24000,
 					"minimum": 2000,
 					"maximum": 100000,
 					"description": "Maximum number of routine source characters sent in one AI request. For longer routines, the beginning and end are retained and the omitted section is marked."
 				},
-				"pascalUnion.classNavigator.aiSteps.requestTimeoutSeconds": {
+				"pascalAtlas.classNavigator.aiSteps.requestTimeoutSeconds": {
 					"type": "number",
 					"default": 180,
 					"minimum": 15,
 					"maximum": 600,
 					"description": "Maximum wait time in seconds for one AI request. Stops waiting on timeout so high-reasoning models cannot occupy a generation task indefinitely."
 				},
-				"pascalUnion.classNavigator.aiSteps.cacheEnabled": {
+				"pascalAtlas.classNavigator.aiSteps.cacheEnabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Caches AI steps by routine source. When a routine is unchanged, steps are restored immediately after switching files or reloading the window."
 				},
-				"pascalUnion.classNavigator.aiSteps.highlightRange": {
+				"pascalAtlas.classNavigator.aiSteps.highlightRange": {
 					"type": "boolean",
 					"default": true,
 					"description": "Marks a functional block in the gutter beside the line numbers when its AI step is clicked. The mark clears when the cursor or viewport leaves; source text is not highlighted."
 				},
-				"pascalUnion.paths.enabled": {
+				"pascalAtlas.paths.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Automatically merges source paths from all projects loaded by Vallenta, regardless of the active project."
 				},
-				"pascalUnion.projectGroups.autoDetect": {
+				"pascalAtlas.projectGroups.autoDetect": {
 					"type": "boolean",
 					"default": true,
 					"description": "Recursively discovers groupproj files when opening a workspace, safely merges them into .vallenta/projects.json, then refreshes the Vallenta project list."
 				},
-				"pascalUnion.projectGroups.activateFirstProject": {
+				"pascalAtlas.projectGroups.activateFirstProject": {
 					"type": "boolean",
 					"default": true,
 					"description": "When a new workspace has no valid active project, repairs absolute paths invalidated by copying or moving and selects a valid subproject. A still-valid existing selection is preserved."
 				},
-				"pascalUnion.restartActiveLsp": {
+				"pascalAtlas.restartActiveLsp": {
 					"type": "boolean",
 					"default": true,
 					"description": "Restarts the active Vallenta LSP when the managed DCC_UnitSearchPath changes."
 				},
-				"pascalUnion.includeNestedSourceDirectories": {
+				"pascalAtlas.includeNestedSourceDirectories": {
 					"type": "boolean",
 					"default": true,
 					"description": "Includes all nested directories containing Pascal source under each loaded project."
 				},
-				"pascalUnion.coloring.enabled": {
+				"pascalAtlas.coloring.enabled": {
 					"type": "boolean",
 					"default": true,
-					"description": "Enables Pascal Union coloring for Pascal types, variables, fields, constants, routines, and Units."
+					"description": "Enables Pascal Atlas coloring for Pascal types, variables, fields, constants, routines, and Units."
 				},
-				"pascalUnion.coloring.typingDelayMs": {
+				"pascalAtlas.coloring.typingDelayMs": {
 					"type": "integer",
 					"default": 750,
 					"minimum": 0,
 					"maximum": 3000,
 					"description": "Milliseconds to wait after typing stops before recoloring the active Pascal file."
 				},
-				"pascalUnion.coloring.inactiveEditorDelayMs": {
+				"pascalAtlas.coloring.inactiveEditorDelayMs": {
 					"type": "integer",
 					"default": 350,
 					"minimum": 0,
 					"maximum": 5000,
 					"description": "Milliseconds to wait before recoloring a visible but inactive Pascal editor."
 				},
-				"pascalUnion.coloring.persistedCache.enabled": {
+				"pascalAtlas.coloring.persistedCache.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Persists completed coloring ranges for recent Pascal files. After reloading the window or reopening a folder, unchanged files restore immediately and are checked for updates in the background."
 				},
-				"pascalUnion.coloring.colors.useDefault": {
+				"pascalAtlas.coloring.colors.useDefault": {
 					"type": "boolean",
 					"default": true,
-					"description": "Uses semantic colors from the current VS Code theme and editor.semanticTokenColorCustomizations. Disable this to use the Pascal Union colors below."
+					"description": "Uses semantic colors from the current VS Code theme and editor.semanticTokenColorCustomizations. Disable this to use the Pascal Atlas colors below."
 				},
-				"pascalUnion.coloring.colors.unit": {
+				"pascalAtlas.coloring.colors.unit": {
 					"type": "string",
 					"format": "color",
 					"default": "#4EC9B0",
 					"description": "[Symbol coloring] Color for Unit names in uses clauses."
 				},
-				"pascalUnion.coloring.colors.type": {
+				"pascalAtlas.coloring.colors.type": {
 					"type": "string",
 					"format": "color",
 					"default": "#4EC9B0",
 					"description": "[Symbol coloring] Color for classes, records, interfaces, and other type names."
 				},
-				"pascalUnion.coloring.colors.variable": {
+				"pascalAtlas.coloring.colors.variable": {
 					"type": "string",
 					"format": "color",
 					"default": "#9CDCFE",
 					"description": "[Symbol coloring] Color for local variables, global variables, and fields."
 				},
-				"pascalUnion.coloring.colors.constant": {
+				"pascalAtlas.coloring.colors.constant": {
 					"type": "string",
 					"format": "color",
 					"default": "#4FC1FF",
 					"description": "[Symbol coloring] Color for constant names."
 				},
-				"pascalUnion.coloring.colors.enumMember": {
+				"pascalAtlas.coloring.colors.enumMember": {
 					"type": "string",
 					"format": "color",
 					"default": "#4FC1FF",
 					"description": "[Symbol coloring] Color for enum members."
 				},
-				"pascalUnion.coloring.colors.property": {
+				"pascalAtlas.coloring.colors.property": {
 					"type": "string",
 					"format": "color",
 					"default": "#9CDCFE",
 					"description": "[Symbol coloring] Color for property names."
 				},
-				"pascalUnion.coloring.colors.method": {
+				"pascalAtlas.coloring.colors.method": {
 					"type": "string",
 					"format": "color",
 					"default": "#DCDCAA",
 					"description": "[Symbol coloring] Color for functions, procedures, constructors, and destructors."
 				},
-				"pascalUnion.navigation.enabled": {
+				"pascalAtlas.navigation.enabled": {
 					"type": "boolean",
 					"default": true,
-					"description": "Enables Pascal Union definition navigation, member resolution, and compiled-package fallback."
+					"description": "Enables Pascal Atlas definition navigation, member resolution, and compiled-package fallback."
 				},
-				"pascalUnion.navigation.preferImplementation": {
+				"pascalAtlas.navigation.preferImplementation": {
 					"type": "boolean",
 					"default": true,
 					"description": "With this enabled, Ctrl+Click/F12 go from a routine declaration to its implementation, and from an implementation back to its declaration. Alt+F12 shows all candidates."
 				},
-				"pascalUnion.navigation.singleTargetByDefault": {
+				"pascalAtlas.navigation.singleTargetByDefault": {
 					"type": "boolean",
 					"default": true,
 					"description": "Normal Ctrl+Click and F12 return only the best target, avoiding an automatic picker for multiple declarations or implementations."
 				},
-				"pascalUnion.navigation.selectTargetOnJump": {
+				"pascalAtlas.navigation.selectTargetOnJump": {
 					"type": "boolean",
 					"default": false,
 					"description": "Selects the target identifier after navigation. Disabled by default; navigation places the cursor without briefly inverting the target text."
 				},
-				"pascalUnion.navigation.candidatePickerShortcut": {
+				"pascalAtlas.navigation.candidatePickerShortcut": {
 					"type": "string",
 					"default": "altF12",
 					"enum": [
@@ -1383,111 +1383,111 @@
 					],
 					"description": "Pascal editor shortcut that explicitly opens all declaration and implementation candidates."
 				},
-				"pascalUnion.navigation.virtualInterfaces": {
+				"pascalAtlas.navigation.virtualInterfaces": {
 					"type": "boolean",
 					"default": true,
 					"description": "Opens a generated, comment-style read-only interface when a symbol is available only in a compiled package."
 				},
-				"pascalUnion.navigation.isolatePlatformSources": {
+				"pascalAtlas.navigation.isolatePlatformSources": {
 					"type": "boolean",
 					"default": true,
 					"description": "Opens large RAD Studio RTL/VCL sources as isolated syntax-colored documents instead of sending them to Vallenta LSP for full analysis. This prevents files such as Winapi.Windows from stalling the language service after navigation."
 				},
-				"pascalUnion.navigation.prewarmCurrentFile": {
+				"pascalAtlas.navigation.prewarmCurrentFile": {
 					"type": "boolean",
 					"default": true,
 					"description": "After opening or switching Pascal files, pre-parses their uses, compiled-package objects, and members in parallel."
 				},
-				"pascalUnion.navigation.interactiveWaitMs": {
+				"pascalAtlas.navigation.interactiveWaitMs": {
 					"type": "integer",
 					"default": 100,
 					"minimum": 0,
 					"maximum": 1000,
 					"description": "Maximum time in milliseconds that a cold-cache query may block the UI during Ctrl+hover or navigation. After timeout, the query continues and populates the cache in the background."
 				},
-				"pascalUnion.completion.enabled": {
+				"pascalAtlas.completion.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Provides member completion after a dot for source symbols and objects recovered from compiled packages."
 				},
-				"pascalUnion.completion.unqualified.enabled": {
+				"pascalAtlas.completion.unqualified.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Completes visible global objects, types, and routines from the current file and its uses clauses when entering an identifier prefix, such as AppSys."
 				},
-				"pascalUnion.completion.interactiveWaitMs": {
+				"pascalAtlas.completion.interactiveWaitMs": {
 					"type": "integer",
 					"default": 60,
 					"minimum": 0,
 					"maximum": 500,
 					"description": "Maximum milliseconds to wait for the active file's compiled-package index while entering a global symbol prefix. Typing will not be blocked after timeout."
 				},
-				"pascalUnion.signatureHelp.enabled": {
+				"pascalAtlas.signatureHelp.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows the signature, overloads, and current parameter in routine and method call argument lists."
 				},
-				"pascalUnion.signatureHelp.triggerOnComma": {
+				"pascalAtlas.signatureHelp.triggerOnComma": {
 					"type": "boolean",
 					"default": true,
 					"description": "Refreshes signature help and highlights the next routine parameter when a comma is typed."
 				},
-				"pascalUnion.hover.enabled": {
+				"pascalAtlas.hover.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows the signature and source of symbols recovered from compiled packages on hover."
 				},
-				"pascalUnion.symbols.compiled.enabled": {
+				"pascalAtlas.symbols.compiled.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Indexes BPL/DCP files to recover symbols for Units, types, global objects, and routines that have no Pascal source."
 				},
-				"pascalUnion.symbols.compiled.parsedCache.enabled": {
+				"pascalAtlas.symbols.compiled.parsedCache.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Persists parsed BPL/DCP package indexes as Maps. After reloading the window, skips reparsing tdump text when package paths, sizes, and modification times are unchanged."
 				},
-				"pascalUnion.symbols.sourceCache.enabled": {
+				"pascalAtlas.symbols.sourceCache.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Persists workspace and RAD/VCL source symbol indexes. On reopening or reloading the window, validates file paths, sizes, and modification times, then restores unchanged indexes without reparsing."
 				},
-				"pascalUnion.symbols.compiled.initialPackageLimit": {
+				"pascalAtlas.symbols.compiled.initialPackageLimit": {
 					"type": "integer",
 					"default": 8,
 					"minimum": 1,
 					"maximum": 32,
 					"description": "Maximum number of candidate compiled packages checked directly during the active file's initial coloring."
 				},
-				"pascalUnion.missingUnits.enabled": {
+				"pascalAtlas.missingUnits.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Offers an Add Unit to uses quick fix when the Delphi compiler or LSP confirms an unknown identifier. Does not generate missing-Unit warnings independently."
 				},
-				"pascalUnion.missingUnits.debounceMs": {
+				"pascalAtlas.missingUnits.debounceMs": {
 					"type": "integer",
 					"default": 350,
 					"minimum": 50,
 					"maximum": 5000,
 					"description": "Milliseconds to wait after editing before refreshing the Unit type index and auxiliary coloring."
 				},
-				"pascalUnion.missingUnits.compiledFallback": {
+				"pascalAtlas.missingUnits.compiledFallback": {
 					"type": "boolean",
 					"default": true,
 					"description": "Searches all compiled packages when Add Unit cannot find a candidate in source or DCP files."
 				},
-				"pascalUnion.formatter.enabled": {
+				"pascalAtlas.formatter.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Enables document and on-type formatting with the built-in Delphi Personal Formatter."
 				},
-				"pascalUnion.formatter.executablePath": {
+				"pascalAtlas.formatter.executablePath": {
 					"type": "string",
 					"default": "",
 					"scope": "machine",
 					"description": "Optional full path to Formatter.exe. Leave empty to detect an installed RAD Studio automatically."
 				},
-				"pascalUnion.formatter.shortcut": {
+				"pascalAtlas.formatter.shortcut": {
 					"type": "string",
 					"default": "shiftAltF",
 					"enum": [
@@ -1502,24 +1502,24 @@
 						"Ctrl+K Ctrl+F",
 						"No keybinding"
 					],
-					"description": "Shortcut for formatting the whole document with Pascal Union, available only in Pascal/Object Pascal editors."
+					"description": "Shortcut for formatting the whole document with Pascal Atlas, available only in Pascal/Object Pascal editors."
 				},
-				"pascalUnion.formatter.preserveInlineVariables": {
+				"pascalAtlas.formatter.preserveInlineVariables": {
 					"type": "boolean",
 					"default": true,
 					"description": "Preserves inline variable declarations such as var Value := CreateValue()."
 				},
-				"pascalUnion.formatter.alignWrappedParameters": {
+				"pascalAtlas.formatter.alignWrappedParameters": {
 					"type": "boolean",
 					"default": true,
 					"description": "Aligns wrapped declaration and call parameters according to Delphi Personal Formatter rules."
 				},
-				"pascalUnion.formatter.onType.enabled": {
+				"pascalAtlas.formatter.onType.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Formats the current line and continuation indentation when typing a semicolon, closing parenthesis, or Enter."
 				},
-				"pascalUnion.formatter.onType.semicolon.scope": {
+				"pascalAtlas.formatter.onType.semicolon.scope": {
 					"type": "string",
 					"default": "currentLine",
 					"enum": [
@@ -1534,9 +1534,9 @@
 						"Format current and previous lines",
 						"Disabled for semicolons"
 					],
-					"description": "Lines affected by Pascal Union on-type formatting when a semicolon is typed."
+					"description": "Lines affected by Pascal Atlas on-type formatting when a semicolon is typed."
 				},
-				"pascalUnion.formatter.onType.closingParenthesis.scope": {
+				"pascalAtlas.formatter.onType.closingParenthesis.scope": {
 					"type": "string",
 					"default": "currentLine",
 					"enum": [
@@ -1551,9 +1551,9 @@
 						"Format current and previous lines",
 						"Disabled for closing parentheses"
 					],
-					"description": "Lines affected by Pascal Union on-type formatting when a closing parenthesis is typed."
+					"description": "Lines affected by Pascal Atlas on-type formatting when a closing parenthesis is typed."
 				},
-				"pascalUnion.formatter.onType.enter.scope": {
+				"pascalAtlas.formatter.onType.enter.scope": {
 					"type": "string",
 					"default": "currentAndPrevious",
 					"enum": [
@@ -1568,19 +1568,19 @@
 						"Format new and previous lines",
 						"Disabled for Enter"
 					],
-					"description": "Whether Pascal Union on-type formatting applies to the new line, the previous line, or both when Enter is pressed."
+					"description": "Whether Pascal Atlas on-type formatting applies to the new line, the previous line, or both when Enter is pressed."
 				},
-				"pascalUnion.formatter.onType.logging": {
+				"pascalAtlas.formatter.onType.logging": {
 					"type": "boolean",
 					"default": false,
-					"description": "Logs each on-type formatting trigger in the Pascal Union Formatter output channel."
+					"description": "Logs each on-type formatting trigger in the Pascal Atlas Formatter output channel."
 				},
-				"pascalUnion.formatter.highlighting.enabled": {
+				"pascalAtlas.formatter.highlighting.enabled": {
 					"type": "boolean",
 					"default": true,
-					"description": "Enables Delphi structural and nesting-level coloring from the former Personal Formatter. Pascal Union handles types, routines, and fields; Formatter coloring is used as a fallback only when Pascal Union coloring is disabled."
+					"description": "Enables Delphi structural and nesting-level coloring from the former Personal Formatter. Pascal Atlas handles types, routines, and fields; Formatter coloring is used as a fallback only when Pascal Atlas coloring is disabled."
 				},
-				"pascalUnion.formatter.highlighting.blockLevelColors": {
+				"pascalAtlas.formatter.highlighting.blockLevelColors": {
 					"type": "array",
 					"default": [
 						"#E06C75",
@@ -1595,42 +1595,42 @@
 					},
 					"description": "Color cycle for Delphi structural keywords by indentation level. Colors are used in the listed order. Supports 1–12 #RRGGBB values; the default third color uses the Dark+ control-keyword purple."
 				},
-				"pascalUnion.explorer.hideFormFiles": {
+				"pascalAtlas.explorer.hideFormFiles": {
 					"type": "boolean",
 					"default": true,
 					"scope": "application",
 					"description": "Hides Delphi DFM and FMX form resource files in Explorer."
 				},
-				"pascalUnion.explorer.hideSkinConfigFiles": {
+				"pascalAtlas.explorer.hideSkinConfigFiles": {
 					"type": "boolean",
 					"default": true,
 					"scope": "application",
 					"description": "Hides SKINCFG skin configuration files in Explorer."
 				},
-				"pascalUnion.explorer.hideBuildArtifacts": {
+				"pascalAtlas.explorer.hideBuildArtifacts": {
 					"type": "boolean",
 					"default": true,
 					"scope": "application",
 					"description": "Hides Delphi build artifacts such as DCU, BPL, DCP, EXE, MAP, and OBJ files in Explorer."
 				},
-				"pascalUnion.explorer.hideProjectMetadata": {
+				"pascalAtlas.explorer.hideProjectMetadata": {
 					"type": "boolean",
 					"default": true,
 					"scope": "application",
 					"description": "Hides project cache files such as identcache, local, and stat in Explorer. GROUPPROJ files remain visible."
 				},
-				"pascalUnion.explorer.hideBuildDirectories": {
+				"pascalAtlas.explorer.hideBuildDirectories": {
 					"type": "boolean",
 					"default": true,
 					"scope": "application",
 					"description": "Hides build directories such as Win32, Win64, Debug, Release, bin, lib, and tmp in Explorer."
 				},
-				"pascalUnion.projectNavigator.enabled": {
+				"pascalAtlas.projectNavigator.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Allows switching to Project/Package mode with the top-right button in the Explorer's Delphi Navigator. The native file tree is not modified."
 				},
-				"pascalUnion.projectNavigator.defaultExpansion": {
+				"pascalAtlas.projectNavigator.defaultExpansion": {
 					"type": "string",
 					"default": "firstLevel",
 					"enum": [
@@ -1643,37 +1643,37 @@
 					],
 					"description": "Default expansion level of the project tree when switching to Delphi Project mode."
 				},
-				"pascalUnion.projectNavigator.showGroupproj": {
+				"pascalAtlas.projectNavigator.showGroupproj": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows GROUPPROJ files under Project nodes."
 				},
-				"pascalUnion.projectNavigator.showDpr": {
+				"pascalAtlas.projectNavigator.showDpr": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows DPR files under Project nodes."
 				},
-				"pascalUnion.projectNavigator.showDpk": {
+				"pascalAtlas.projectNavigator.showDpk": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows DPK files under Package nodes."
 				},
-				"pascalUnion.projectNavigator.showDproj": {
+				"pascalAtlas.projectNavigator.showDproj": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows DPROJ files under Package nodes."
 				},
-				"pascalUnion.projectNavigator.contextMenus.enabled": {
+				"pascalAtlas.projectNavigator.contextMenus.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows build, clean, and run commands in the Project/Package context menus."
 				},
-				"pascalUnion.build.enabled": {
+				"pascalAtlas.build.enabled": {
 					"type": "boolean",
 					"default": true,
-					"description": "Enables headless Delphi production builds with Pascal Union. Does not start bds.exe."
+					"description": "Enables headless Delphi production builds with Pascal Atlas. Does not start bds.exe."
 				},
-				"pascalUnion.build.configuration": {
+				"pascalAtlas.build.configuration": {
 					"type": "string",
 					"default": "auto",
 					"enum": [
@@ -1688,7 +1688,7 @@
 					],
 					"description": "Default Delphi configuration for production builds."
 				},
-				"pascalUnion.build.platform": {
+				"pascalAtlas.build.platform": {
 					"type": "string",
 					"default": "auto",
 					"enum": [
@@ -1703,17 +1703,17 @@
 					],
 					"description": "Default Delphi platform for production builds."
 				},
-				"pascalUnion.build.saveBeforeBuild": {
+				"pascalAtlas.build.saveBeforeBuild": {
 					"type": "boolean",
 					"default": true,
 					"description": "Saves modified files in the target package or Project Group before a production build."
 				},
-				"pascalUnion.build.showStatusBar": {
+				"pascalAtlas.build.showStatusBar": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows Build All, Run, platform, and configuration in the VS Code status bar. Click the platform or configuration to change it."
 				},
-				"pascalUnion.run.buildBeforeRun": {
+				"pascalAtlas.run.buildBeforeRun": {
 					"type": "string",
 					"default": "ifOutdated",
 					"enum": [
@@ -1728,131 +1728,131 @@
 					],
 					"description": "Build strategy before starting a Project Group with Run (without debugging)."
 				},
-				"pascalUnion.build.stopGroupOnFailure": {
+				"pascalAtlas.build.stopGroupOnFailure": {
 					"type": "boolean",
 					"default": true,
 					"description": "Stops subsequent builds when a project in the Project Group fails. MSBuild uses this behavior by default."
 				},
-				"pascalUnion.build.terminalSummary": {
+				"pascalAtlas.build.terminalSummary": {
 					"type": "boolean",
 					"default": true,
 					"description": "Prints BUILD SUCCEEDED or BUILD FAILED, target, exit code, and duration at the end of the build terminal."
 				},
-				"pascalUnion.build.output.showErrors": {
+				"pascalAtlas.build.output.showErrors": {
 					"type": "boolean",
 					"default": true,
-					"description": "Shows errors in the Pascal Union build terminal. Disabling this only hides terminal lines; errors remain in Problems."
+					"description": "Shows errors in the Pascal Atlas build terminal. Disabling this only hides terminal lines; errors remain in Problems."
 				},
-				"pascalUnion.build.output.showWarnings": {
+				"pascalAtlas.build.output.showWarnings": {
 					"type": "boolean",
 					"default": true,
-					"description": "Shows warnings in the Pascal Union build terminal. Disabling this only hides terminal lines; warnings remain in Problems."
+					"description": "Shows warnings in the Pascal Atlas build terminal. Disabling this only hides terminal lines; warnings remain in Problems."
 				},
-				"pascalUnion.build.output.showOther": {
+				"pascalAtlas.build.output.showOther": {
 					"type": "boolean",
 					"default": true,
-					"description": "Shows general output, targets, and final summaries in the Pascal Union build terminal, excluding errors and warnings. Enable all three output options to show everything."
+					"description": "Shows general output, targets, and final summaries in the Pascal Atlas build terminal, excluding errors and warnings. Enable all three output options to show everything."
 				},
-				"pascalUnion.build.completionNotification": {
+				"pascalAtlas.build.completionNotification": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows a success or failure notification with the target and duration when a build finishes."
 				},
-				"pascalUnion.build.timeoutSeconds": {
+				"pascalAtlas.build.timeoutSeconds": {
 					"type": "integer",
 					"default": 1800,
 					"minimum": 30,
 					"maximum": 7200,
 					"description": "Maximum number of seconds allowed for one production build."
 				},
-				"pascalUnion.build.msbuildPath": {
+				"pascalAtlas.build.msbuildPath": {
 					"type": "string",
 					"default": "",
 					"scope": "machine-overridable",
 					"description": "Optional path to MSBuild.exe. Leave empty to detect it from Vallenta settings or the Delphi rsvars environment."
 				},
-				"pascalUnion.formatter.style.useDefault": {
+				"pascalAtlas.formatter.style.useDefault": {
 					"type": "boolean",
 					"default": true,
 					"description": "Applies the bundled default syntax profile, which matches the formatter's original style. Disable it to use the editable custom profile below."
 				},
-				"pascalUnion.formatter.style.indentation.tabSize": {
+				"pascalAtlas.formatter.style.indentation.tabSize": {
 					"type": "integer",
 					"default": 2,
 					"minimum": 1,
 					"maximum": 16,
 					"description": "[Formatting · Indentation] Tab width used for document formatting."
 				},
-				"pascalUnion.formatter.style.indentation.indentSize": {
+				"pascalAtlas.formatter.style.indentation.indentSize": {
 					"type": "integer",
 					"default": 2,
 					"minimum": 1,
 					"maximum": 16,
 					"description": "[Formatting · Indentation] Indentation width for each code block level."
 				},
-				"pascalUnion.formatter.style.indentation.useTabs": {
+				"pascalAtlas.formatter.style.indentation.useTabs": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Indentation] Uses tabs instead of spaces when formatting a document."
 				},
-				"pascalUnion.formatter.style.indentation.continuationIndent": {
+				"pascalAtlas.formatter.style.indentation.continuationIndent": {
 					"type": "integer",
 					"default": 2,
 					"minimum": 0,
 					"maximum": 16,
 					"description": "[Formatting · Indentation] Extra indentation for wrapped expressions and parameters."
 				},
-				"pascalUnion.formatter.style.indentation.compilerDirectives": {
+				"pascalAtlas.formatter.style.indentation.compilerDirectives": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Indentation] Indents compiler directives such as conditional compilation."
 				},
-				"pascalUnion.formatter.style.indentation.blockContents": {
+				"pascalAtlas.formatter.style.indentation.blockContents": {
 					"type": "boolean",
 					"default": true,
 					"description": "[Formatting · Indentation] Indents the contents of blocks such as begin/end."
 				},
-				"pascalUnion.formatter.style.indentation.brackets": {
+				"pascalAtlas.formatter.style.indentation.brackets": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Indentation] Indents multiline brackets."
 				},
-				"pascalUnion.formatter.style.indentation.beginEnd": {
+				"pascalAtlas.formatter.style.indentation.beginEnd": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Indentation] Adds extra indentation to begin and end keywords."
 				},
-				"pascalUnion.formatter.style.indentation.methodBody": {
+				"pascalAtlas.formatter.style.indentation.methodBody": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Indentation] Indents routine implementation bodies."
 				},
-				"pascalUnion.formatter.style.indentation.nestedMethods": {
+				"pascalAtlas.formatter.style.indentation.nestedMethods": {
 					"type": "boolean",
 					"default": true,
 					"description": "[Formatting · Indentation] Indents nested routine implementations."
 				},
-				"pascalUnion.formatter.style.indentation.afterSections": {
+				"pascalAtlas.formatter.style.indentation.afterSections": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Indentation] Indents content in interface and implementation sections."
 				},
-				"pascalUnion.formatter.style.indentation.classBody": {
+				"pascalAtlas.formatter.style.indentation.classBody": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Indentation] Indents members in class definitions."
 				},
-				"pascalUnion.formatter.style.indentation.caseContents": {
+				"pascalAtlas.formatter.style.indentation.caseContents": {
 					"type": "boolean",
 					"default": true,
 					"description": "[Formatting · Indentation] Indents case statement contents."
 				},
-				"pascalUnion.formatter.style.indentation.caseLabels": {
+				"pascalAtlas.formatter.style.indentation.caseLabels": {
 					"type": "boolean",
 					"default": true,
 					"description": "[Formatting · Indentation] Indents case branch labels."
 				},
-				"pascalUnion.formatter.style.spacing.assignment": {
+				"pascalAtlas.formatter.style.spacing.assignment": {
 					"type": "string",
 					"default": "BeforeAndAfter",
 					"enum": [
@@ -1869,7 +1869,7 @@
 					],
 					"description": "[Formatting · Spacing] Spaces around assignment operators."
 				},
-				"pascalUnion.formatter.style.spacing.mathOperators": {
+				"pascalAtlas.formatter.style.spacing.mathOperators": {
 					"type": "string",
 					"default": "BeforeAndAfter",
 					"enum": [
@@ -1886,7 +1886,7 @@
 					],
 					"description": "[Formatting · Spacing] Spaces around mathematical operators."
 				},
-				"pascalUnion.formatter.style.spacing.colon": {
+				"pascalAtlas.formatter.style.spacing.colon": {
 					"type": "string",
 					"default": "AfterOnly",
 					"enum": [
@@ -1903,7 +1903,7 @@
 					],
 					"description": "[Formatting · Spacing] Spaces around colons, such as in type declarations."
 				},
-				"pascalUnion.formatter.style.spacing.comma": {
+				"pascalAtlas.formatter.style.spacing.comma": {
 					"type": "string",
 					"default": "AfterOnly",
 					"enum": [
@@ -1920,7 +1920,7 @@
 					],
 					"description": "[Formatting · Spacing] Spaces around commas."
 				},
-				"pascalUnion.formatter.style.spacing.semicolon": {
+				"pascalAtlas.formatter.style.spacing.semicolon": {
 					"type": "string",
 					"default": "AfterOnly",
 					"enum": [
@@ -1937,17 +1937,17 @@
 					],
 					"description": "[Formatting · Spacing] Spaces around semicolons."
 				},
-				"pascalUnion.formatter.style.spacing.parentheses": {
+				"pascalAtlas.formatter.style.spacing.parentheses": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Spacing] Keeps spaces inside parentheses."
 				},
-				"pascalUnion.formatter.style.spacing.squareBrackets": {
+				"pascalAtlas.formatter.style.spacing.squareBrackets": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Spacing] Keeps spaces inside square brackets."
 				},
-				"pascalUnion.formatter.style.lineBreaks.varAndConstItems": {
+				"pascalAtlas.formatter.style.lineBreaks.varAndConstItems": {
 					"type": "string",
 					"default": "AsIs",
 					"enum": [
@@ -1962,7 +1962,7 @@
 					],
 					"description": "[Formatting · Line breaks] Whether each item in var and const sections is placed on a separate line."
 				},
-				"pascalUnion.formatter.style.lineBreaks.usesItems": {
+				"pascalAtlas.formatter.style.lineBreaks.usesItems": {
 					"type": "string",
 					"default": "AsIs",
 					"enum": [
@@ -1977,7 +1977,7 @@
 					],
 					"description": "[Formatting · Line breaks] Whether each Unit in a uses clause is placed on a separate line."
 				},
-				"pascalUnion.formatter.style.lineBreaks.beforeControlBegin": {
+				"pascalAtlas.formatter.style.lineBreaks.beforeControlBegin": {
 					"type": "string",
 					"default": "Yes",
 					"enum": [
@@ -1992,7 +1992,7 @@
 					],
 					"description": "[Formatting · Line breaks] Whether to break before begin in control statements."
 				},
-				"pascalUnion.formatter.style.lineBreaks.afterMethodBegin": {
+				"pascalAtlas.formatter.style.lineBreaks.afterMethodBegin": {
 					"type": "string",
 					"default": "Yes",
 					"enum": [
@@ -2007,7 +2007,7 @@
 					],
 					"description": "[Formatting · Line breaks] Whether to break after begin in routines."
 				},
-				"pascalUnion.formatter.style.lineBreaks.afterControlBegin": {
+				"pascalAtlas.formatter.style.lineBreaks.afterControlBegin": {
 					"type": "string",
 					"default": "Yes",
 					"enum": [
@@ -2022,7 +2022,7 @@
 					],
 					"description": "[Formatting · Line breaks] Whether to break after begin in control blocks."
 				},
-				"pascalUnion.formatter.style.lineBreaks.afterOtherBegin": {
+				"pascalAtlas.formatter.style.lineBreaks.afterOtherBegin": {
 					"type": "string",
 					"default": "Yes",
 					"enum": [
@@ -2037,36 +2037,36 @@
 					],
 					"description": "[Formatting · Line breaks] Whether to break after other begin keywords."
 				},
-				"pascalUnion.formatter.style.lineBreaks.afterSemicolon": {
+				"pascalAtlas.formatter.style.lineBreaks.afterSemicolon": {
 					"type": "boolean",
 					"default": true,
 					"description": "[Formatting · Line breaks] Adds a line break after statement semicolons during document formatting."
 				},
-				"pascalUnion.formatter.style.lineBreaks.elseIfTogether": {
+				"pascalAtlas.formatter.style.lineBreaks.elseIfTogether": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Line breaks] Places else and its following if on separate lines."
 				},
-				"pascalUnion.formatter.style.lineBreaks.keepUserBreaks": {
+				"pascalAtlas.formatter.style.lineBreaks.keepUserBreaks": {
 					"type": "boolean",
 					"default": true,
 					"description": "[Formatting · Line breaks] Preserves existing user line breaks where possible."
 				},
-				"pascalUnion.formatter.style.lineBreaks.maxEmptyLines": {
+				"pascalAtlas.formatter.style.lineBreaks.maxEmptyLines": {
 					"type": "integer",
 					"default": 1,
 					"minimum": 0,
 					"maximum": 10,
 					"description": "[Formatting · Line breaks] Maximum number of consecutive blank lines to preserve."
 				},
-				"pascalUnion.formatter.style.lineBreaks.rightMargin": {
+				"pascalAtlas.formatter.style.lineBreaks.rightMargin": {
 					"type": "integer",
 					"default": 120,
 					"minimum": 40,
 					"maximum": 300,
 					"description": "[Formatting · Line breaks] Right margin column used when Formatter wraps lines."
 				},
-				"pascalUnion.formatter.style.capitalization.keywords": {
+				"pascalAtlas.formatter.style.capitalization.keywords": {
 					"type": "string",
 					"default": "lowercase",
 					"enum": [
@@ -2083,7 +2083,7 @@
 					],
 					"description": "[Formatting · Capitalization] Capitalization of Pascal keywords."
 				},
-				"pascalUnion.formatter.style.capitalization.compilerDirectives": {
+				"pascalAtlas.formatter.style.capitalization.compilerDirectives": {
 					"type": "string",
 					"default": "AsIs",
 					"enum": [
@@ -2100,7 +2100,7 @@
 					],
 					"description": "[Formatting · Capitalization] Capitalization of compiler directives."
 				},
-				"pascalUnion.formatter.style.capitalization.numbers": {
+				"pascalAtlas.formatter.style.capitalization.numbers": {
 					"type": "string",
 					"default": "AsIs",
 					"enum": [
@@ -2117,7 +2117,7 @@
 					],
 					"description": "[Formatting · Capitalization] Capitalization of letters in hexadecimal numbers."
 				},
-				"pascalUnion.formatter.style.capitalization.otherWords": {
+				"pascalAtlas.formatter.style.capitalization.otherWords": {
 					"type": "string",
 					"default": "AsIs",
 					"enum": [
@@ -2134,107 +2134,107 @@
 					],
 					"description": "[Formatting · Capitalization] Capitalization of other identifiers."
 				},
-				"pascalUnion.formatter.style.alignment.assignments": {
+				"pascalAtlas.formatter.style.alignment.assignments": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Alignment] Vertically aligns consecutive assignment statements."
 				},
-				"pascalUnion.formatter.style.alignment.typeNames": {
+				"pascalAtlas.formatter.style.alignment.typeNames": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Alignment] Vertically aligns type names in variable declarations."
 				},
-				"pascalUnion.formatter.style.alignment.constants": {
+				"pascalAtlas.formatter.style.alignment.constants": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Alignment] Vertically aligns constant declarations."
 				},
-				"pascalUnion.formatter.style.alignment.initializations": {
+				"pascalAtlas.formatter.style.alignment.initializations": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Alignment] Vertically aligns initialization expressions."
 				},
-				"pascalUnion.formatter.style.alignment.typeDefinitions": {
+				"pascalAtlas.formatter.style.alignment.typeDefinitions": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Alignment] Vertically aligns type definitions."
 				},
-				"pascalUnion.formatter.style.alignment.parameterTypes": {
+				"pascalAtlas.formatter.style.alignment.parameterTypes": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Alignment] Vertically aligns routine parameter types."
 				},
-				"pascalUnion.formatter.style.alignment.endOfLineComments": {
+				"pascalAtlas.formatter.style.alignment.endOfLineComments": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Alignment] Vertically aligns end-of-line comments."
 				},
-				"pascalUnion.formatter.style.alignment.properties": {
+				"pascalAtlas.formatter.style.alignment.properties": {
 					"type": "boolean",
 					"default": false,
 					"description": "[Formatting · Alignment] Vertically aligns property declarations."
 				},
-				"pascalUnion.diagnostics.enabled": {
+				"pascalAtlas.diagnostics.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Enables independent Pascal syntax checks and background Delphi compiler diagnostics."
 				},
-				"pascalUnion.diagnostics.syntax.enabled": {
+				"pascalAtlas.diagnostics.syntax.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Checks unsaved Pascal text in a worker thread."
 				},
-				"pascalUnion.diagnostics.syntax.debounceMs": {
+				"pascalAtlas.diagnostics.syntax.debounceMs": {
 					"type": "number",
 					"default": 300,
 					"minimum": 50,
 					"maximum": 5000,
 					"description": "Milliseconds to wait after typing stops before running syntax checks."
 				},
-				"pascalUnion.diagnostics.compiler.enabled": {
+				"pascalAtlas.diagnostics.compiler.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Runs Delphi compiler checks against isolated shadow source files without changing project outputs."
 				},
-				"pascalUnion.diagnostics.compiler.idleDelayMs": {
+				"pascalAtlas.diagnostics.compiler.idleDelayMs": {
 					"type": "number",
 					"default": 1500,
 					"minimum": 250,
 					"maximum": 60000,
 					"description": "Milliseconds to wait after typing stops before running background compiler checks."
 				},
-				"pascalUnion.diagnostics.compiler.startupDelayMs": {
+				"pascalAtlas.diagnostics.compiler.startupDelayMs": {
 					"type": "number",
 					"default": 20000,
 					"minimum": 0,
 					"maximum": 120000,
 					"description": "Delay before the first background compile after the window starts, allowing active-file coloring, navigation, and symbol indexing to finish first."
 				},
-				"pascalUnion.diagnostics.compiler.maxParallelProjects": {
+				"pascalAtlas.diagnostics.compiler.maxParallelProjects": {
 					"type": "integer",
 					"default": 2,
 					"minimum": 1,
 					"maximum": 4,
 					"description": "Maximum number of Delphi projects checked in parallel. Checks for the same project are always serialized."
 				},
-				"pascalUnion.diagnostics.compiler.timeoutSeconds": {
+				"pascalAtlas.diagnostics.compiler.timeoutSeconds": {
 					"type": "integer",
 					"default": 120,
 					"minimum": 10,
 					"maximum": 1800,
 					"description": "Timeout in seconds for a single background compile task."
 				},
-				"pascalUnion.diagnostics.compiler.includeWarnings": {
+				"pascalAtlas.diagnostics.compiler.includeWarnings": {
 					"type": "boolean",
 					"default": true,
 					"description": "Shows Delphi compiler warnings as well as errors. Hints remain hidden."
 				},
-				"pascalUnion.diagnostics.ignoreUtf8ConversionWarning": {
+				"pascalAtlas.diagnostics.ignoreUtf8ConversionWarning": {
 					"type": "boolean",
 					"default": true,
 					"description": "Hides Vallenta's compatibility warning recommending conversion of ANSI Pascal files to UTF-8 with BOM. Disable this setting to restore the warning; other encoding errors are unaffected."
 				},
-				"pascalUnion.diagnostics.compiler.configuration": {
+				"pascalAtlas.diagnostics.compiler.configuration": {
 					"type": "string",
 					"default": "auto",
 					"enum": [
@@ -2249,7 +2249,7 @@
 					],
 					"description": "Delphi build configuration used for background checks."
 				},
-				"pascalUnion.diagnostics.compiler.platform": {
+				"pascalAtlas.diagnostics.compiler.platform": {
 					"type": "string",
 					"default": "auto",
 					"enum": [
@@ -2264,12 +2264,12 @@
 					],
 					"description": "Delphi target platform used for background checks."
 				},
-				"pascalUnion.navigation.hideVallentaEditorContextMenus": {
+				"pascalAtlas.navigation.hideVallentaEditorContextMenus": {
 					"type": "boolean",
 					"default": true,
 					"description": "Removes Pascal editor context-menu entries contributed by the installed Vallenta Studio manifest. Reload the window after the first change or after Vallenta updates."
 				},
-				"pascalUnion.completion.interfaceGuid.enabled": {
+				"pascalAtlas.completion.interfaceGuid.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Pressing Enter after the interface line in a Delphi interface declaration inserts a new GUID attribute and moves to the next line."
@@ -2278,7 +2278,7 @@
 		},
 		"configurationDefaults": {
 			"[pascal]": {
-				"editor.defaultFormatter": "BoringLi.pascal-union",
+				"editor.defaultFormatter": "BoringLi.pascal-atlas",
 				"editor.bracketPairColorization.independentColorPoolPerBracketType": true,
 				"editor.gotoLocation.multipleDefinitions": "goto",
 				"editor.definitionLinkOpensInPeek": false,
@@ -2302,7 +2302,7 @@
 				]
 			},
 			"[objectpascal]": {
-				"editor.defaultFormatter": "BoringLi.pascal-union",
+				"editor.defaultFormatter": "BoringLi.pascal-atlas",
 				"editor.bracketPairColorization.independentColorPoolPerBracketType": true,
 				"editor.gotoLocation.multipleDefinitions": "goto",
 				"editor.definitionLinkOpensInPeek": false,

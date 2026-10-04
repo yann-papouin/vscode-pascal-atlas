@@ -24,14 +24,14 @@ function stableObject(value) {
 }
 
 async function syncExplorerExcludes(output) {
-  const union = vscode.workspace.getConfiguration('pascalUnion');
+  const pa = vscode.workspace.getConfiguration('pascalAtlas');
   const files = vscode.workspace.getConfiguration('files');
   const inspected = files.inspect('exclude') || {};
   const current = { ...(inspected.globalValue || {}) };
   const next = { ...current };
 
   // Migrate the previous all-in-one rule so each category can be controlled
-  // independently from Pascal Union settings.
+  // independently from Pascal Atlas settings.
   const hasLegacyLayout = Object.prototype.hasOwnProperty.call(next, LEGACY_PATTERN);
   delete next[LEGACY_PATTERN];
   if (hasLegacyLayout) {
@@ -42,7 +42,7 @@ async function syncExplorerExcludes(output) {
   delete next[LEGACY_BUILD_ARTIFACT_PATTERN];
   for (const pattern of Object.values(GROUPS)) delete next[pattern];
   for (const [setting, pattern] of Object.entries(GROUPS)) {
-    if (union.get(setting, true)) next[pattern] = true;
+    if (pa.get(setting, true)) next[pattern] = true;
   }
   if (stableObject(current) === stableObject(next)) return;
   await files.update('exclude', next, vscode.ConfigurationTarget.Global);
@@ -51,7 +51,7 @@ async function syncExplorerExcludes(output) {
 
 function registerExplorerSupport(context, output) {
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-    if (!event.affectsConfiguration('pascalUnion.explorer')) return;
+    if (!event.affectsConfiguration('pascalAtlas.explorer')) return;
     void syncExplorerExcludes(output).catch(error => {
       output.appendLine(`Explorer exclusion synchronization failed: ${error.message}`);
     });

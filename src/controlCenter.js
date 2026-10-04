@@ -11,7 +11,7 @@ const { languageCode, localizedPages, sectionsWithPages } = require('./controlCe
 const SECTIONS = [
   {
     title: 'Interface language',
-    description: 'Controls the language used by Pascal Union settings pages.',
+    description: 'Controls the language used by Pascal Atlas settings pages.',
     settings: [
       {
         key: 'ui.language', label: 'Settings language', type: 'select', target: 'global', defaultValue: 'en',
@@ -21,9 +21,9 @@ const SECTIONS = [
   },
   {
     title: 'Master switch',
-    description: 'Controls all Pascal Union companion features. Vallenta remains available when this is disabled.',
+    description: 'Controls all Pascal Atlas companion features. Vallenta remains available when this is disabled.',
     settings: [
-      { key: 'enabled', label: 'Enable Pascal Union', type: 'boolean' }
+      { key: 'enabled', label: 'Enable Pascal Atlas', type: 'boolean' }
     ]
   },
   {
@@ -33,7 +33,7 @@ const SECTIONS = [
       { key: 'dependencies.autoInstall', label: 'Automatically install missing required extensions', type: 'boolean' }
     ],
     actions: [
-      { command: 'pascalUnion.dependencies.check', label: 'Check extension environment', icon: '✓' }
+      { command: 'pascalAtlas.dependencies.check', label: 'Check extension environment', icon: '✓' }
     ]
   },
   {
@@ -59,7 +59,7 @@ const SECTIONS = [
     title: 'Symbol coloring',
     description: 'Analyzes the active file first and merges symbols from every loaded project, source tree, and package.',
     settings: [
-      { key: 'coloring.enabled', label: 'Pascal Union symbol coloring', type: 'boolean' },
+      { key: 'coloring.enabled', label: 'Pascal Atlas symbol coloring', type: 'boolean' },
       { key: 'coloring.typingDelayMs', label: 'Active-file typing delay', type: 'number', unit: 'ms', min: 0, max: 3000, step: 10 },
       { key: 'coloring.inactiveEditorDelayMs', label: 'Inactive-editor delay', type: 'number', unit: 'ms', min: 0, max: 5000, step: 50 },
       { key: 'coloring.persistedCache.enabled', label: 'Preserve recent file coloring across windows', type: 'boolean' },
@@ -73,14 +73,14 @@ const SECTIONS = [
       { key: 'coloring.colors.method', label: 'Functions and procedures', type: 'color', colorRule: true, defaultValue: '#DCDCAA' }
     ],
     actions: [
-      { command: 'pascalUnion.coloring.colors.reset', label: 'Reset default colors', icon: '↺' }
+      { command: 'pascalAtlas.coloring.colors.reset', label: 'Reset default colors', icon: '↺' }
     ]
   },
   {
     title: 'Navigation and interfaces',
     description: 'Source routines prefer implementations; symbols without source can open generated interfaces recovered from packages.',
     settings: [
-      { key: 'navigation.enabled', label: 'Enhanced Pascal Union navigation', type: 'boolean' },
+      { key: 'navigation.enabled', label: 'Enhanced Pascal Atlas navigation', type: 'boolean' },
       { key: 'navigation.preferImplementation', label: 'Prefer routine implementations', type: 'boolean' },
       { key: 'navigation.singleTargetByDefault', label: 'Use only the best target for normal navigation', type: 'boolean' },
       { key: 'navigation.selectTargetOnJump', label: 'Select the target identifier after navigation (may flash)', type: 'boolean' },
@@ -138,8 +138,8 @@ const SECTIONS = [
       { key: 'classNavigator.backgroundParsing.thresholdKb', label: 'Background parsing threshold', type: 'number', unit: 'KB', min: 64, max: 4096, step: 64 }
     ],
     actions: [
-      { command: 'pascalUnion.navigator.showClasses', label: 'Switch to class navigation', icon: '◈' },
-      { command: 'pascalUnion.classNavigator.refresh', label: 'Refresh active-file navigation', icon: '↻' }
+      { command: 'pascalAtlas.navigator.showClasses', label: 'Switch to class navigation', icon: '◈' },
+      { command: 'pascalAtlas.classNavigator.refresh', label: 'Refresh active-file navigation', icon: '↻' }
     ]
   },
   {
@@ -185,7 +185,7 @@ const SECTIONS = [
       { key: 'classNavigator.aiSteps.highlightRange', label: 'Mark functional blocks in the gutter', type: 'boolean' },
     ],
     actions: [
-      { command: 'pascalUnion.classNavigator.stopAiGeneration', label: 'Stop AI step generation', icon: '■' }
+      { command: 'pascalAtlas.classNavigator.stopAiGeneration', label: 'Stop AI step generation', icon: '■' }
     ]
   },
   {
@@ -207,7 +207,7 @@ const SECTIONS = [
     title: 'Code formatting',
     description: 'Integrated Delphi Personal Formatter features for document, save, on-type, and structural formatting.',
     settings: [
-      { key: 'formatter.enabled', label: 'Enable Pascal Union Formatter', type: 'boolean' },
+      { key: 'formatter.enabled', label: 'Enable Pascal Atlas Formatter', type: 'boolean' },
       { key: 'formatter.executablePath', label: 'Formatter.exe path', type: 'text', target: 'global', placeholder: 'Auto-detect RAD Studio when empty' },
       { key: 'formatter.preserveInlineVariables', label: 'Preserve inline variable declarations', type: 'boolean' },
       { key: 'formatter.alignWrappedParameters', label: 'Align wrapped parameters', type: 'boolean' },
@@ -243,7 +243,7 @@ const SECTIONS = [
       }
     ],
     actions: [
-      { command: 'pascalUnion.formatter.formatDocument', label: 'Format active file', icon: '⌁' }
+      { command: 'pascalAtlas.formatter.formatDocument', label: 'Format active file', icon: '⌁' }
     ]
   },
   {
@@ -269,8 +269,8 @@ const SECTIONS = [
       }))
     ],
     actions: [
-      { command: 'pascalUnion.formatter.style.save', label: 'Save custom style', icon: '⇩' },
-      { command: 'pascalUnion.formatter.style.load', label: 'Load custom style', icon: '⇧' }
+      { command: 'pascalAtlas.formatter.style.save', label: 'Save custom style', icon: '⇩' },
+      { command: 'pascalAtlas.formatter.style.load', label: 'Load custom style', icon: '⇧' }
     ]
   },
   {
@@ -318,8 +318,8 @@ const SECTIONS = [
       { key: 'projectNavigator.contextMenus.enabled', label: 'Show Project/Package build and run context menus', type: 'boolean' }
     ],
     actions: [
-      { command: 'pascalUnion.navigator.toggleMode', label: 'Switch class navigation / project', icon: '⇄' },
-      { command: 'pascalUnion.projectNavigator.refresh', label: 'Refresh Delphi project tree', icon: '↻' }
+      { command: 'pascalAtlas.navigator.toggleMode', label: 'Switch class navigation / project', icon: '⇄' },
+      { command: 'pascalAtlas.projectNavigator.refresh', label: 'Refresh Delphi project tree', icon: '↻' }
     ]
   },
   {
@@ -333,9 +333,9 @@ const SECTIONS = [
       { key: 'restartActiveLsp', label: 'Restart the active Vallenta LSP after path changes', type: 'boolean' }
     ],
     actions: [
-      { command: 'pascalUnion.projects.detect', label: 'Discover Project Group now', icon: '⌕' },
-      { command: 'pascalUnion.sync', label: 'Synchronize now', icon: '↻' },
-      { command: 'pascalUnion.showPaths', label: 'Show paths', icon: '≡' }
+      { command: 'pascalAtlas.projects.detect', label: 'Discover Project Group now', icon: '⌕' },
+      { command: 'pascalAtlas.sync', label: 'Synchronize now', icon: '↻' },
+      { command: 'pascalAtlas.showPaths', label: 'Show paths', icon: '≡' }
     ]
   },
   {
@@ -365,9 +365,9 @@ const SECTIONS = [
       { key: 'diagnostics.compiler.platform', label: 'Target platform', type: 'select', options: ['auto', 'Win32', 'Win64'] }
     ],
     actions: [
-      { command: 'pascalUnion.diagnostics.runNow', label: 'Run diagnostics now', icon: '▶' },
-      { command: 'pascalUnion.diagnostics.showStatus', label: 'Show status', icon: 'ⓘ' },
-      { command: 'pascalUnion.diagnostics.clearCache', label: 'Clear cache', icon: '⌫' }
+      { command: 'pascalAtlas.diagnostics.runNow', label: 'Run diagnostics now', icon: '▶' },
+      { command: 'pascalAtlas.diagnostics.showStatus', label: 'Show status', icon: 'ⓘ' },
+      { command: 'pascalAtlas.diagnostics.clearCache', label: 'Clear cache', icon: '⌫' }
     ]
   }
 ];
@@ -380,7 +380,7 @@ function escapeHtml(value) {
   })[character]);
 }
 
-class PascalUnionControlCenterProvider {
+class PascalAtlasControlCenterProvider {
   constructor(context, output) {
     this.context = context;
     this.output = output;
@@ -389,21 +389,21 @@ class PascalUnionControlCenterProvider {
 
   register() {
     this.context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider('pascalUnion.controlCenter', this, {
+      vscode.window.registerWebviewViewProvider('pascalAtlas.controlCenter', this, {
         webviewOptions: { retainContextWhenHidden: true }
       }),
-      vscode.commands.registerCommand('pascalUnion.openSettings', () => this.openMainSettings()),
-      vscode.commands.registerCommand('pascalUnion.openNativeSettings', () => {
-        return vscode.commands.executeCommand('workbench.action.openSettings', '@ext:BoringLi.pascal-union');
+      vscode.commands.registerCommand('pascalAtlas.openSettings', () => this.openMainSettings()),
+      vscode.commands.registerCommand('pascalAtlas.openNativeSettings', () => {
+        return vscode.commands.executeCommand('workbench.action.openSettings', '@ext:BoringLi.pascal-atlas');
       }),
-      vscode.commands.registerCommand('pascalUnion.controlCenter.refresh', () => this.refresh()),
-      vscode.commands.registerCommand('pascalUnion.coloring.colors.reset', async () => {
+      vscode.commands.registerCommand('pascalAtlas.controlCenter.refresh', () => this.refresh()),
+      vscode.commands.registerCommand('pascalAtlas.coloring.colors.reset', async () => {
         await resetSymbolColors(this.output);
         this.postState();
       }),
       vscode.workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('pascalUnion.ui.language')) this.refresh();
-        else if (event.affectsConfiguration('pascalUnion')) this.postState();
+        if (event.affectsConfiguration('pascalAtlas.ui.language')) this.refresh();
+        else if (event.affectsConfiguration('pascalAtlas')) this.postState();
       })
     );
   }
@@ -419,7 +419,7 @@ class PascalUnionControlCenterProvider {
   }
 
   configuration() {
-    return vscode.workspace.getConfiguration('pascalUnion');
+    return vscode.workspace.getConfiguration('pascalAtlas');
   }
 
   language() {
@@ -444,7 +444,7 @@ class PascalUnionControlCenterProvider {
     const folders = vscode.workspace.workspaceFolders || [];
     const projects = folders.flatMap(folder => discoverLoadedProjects(folder.uri.fsPath));
     const managedPaths = folders.flatMap(folder => this.context.workspaceState.get(
-      `pascalUnion.managedPaths:${folder.uri.fsPath}`,
+      `pascalAtlas.managedPaths:${folder.uri.fsPath}`,
       []
     ));
     return {
@@ -484,7 +484,7 @@ class PascalUnionControlCenterProvider {
         ? vscode.ConfigurationTarget.Workspace
         : vscode.ConfigurationTarget.Global;
       await this.configuration().update(setting.key, value, target);
-      this.output.appendLine(`Control Center updated pascalUnion.${setting.key} = ${JSON.stringify(value)}.`);
+      this.output.appendLine(`Control Center updated pascalAtlas.${setting.key} = ${JSON.stringify(value)}.`);
       // Language changes rebuild the complete localized webview through the
       // configuration listener. Avoid a second render/flicker here.
       if (setting.key !== 'ui.language') this.postState();
@@ -496,10 +496,10 @@ class PascalUnionControlCenterProvider {
       return;
     }
     if (message.type === 'openSettings') {
-      await vscode.commands.executeCommand('pascalUnion.openSettings');
+      await vscode.commands.executeCommand('pascalAtlas.openSettings');
     }
     if (message.type === 'openNativeSettings') {
-      await vscode.commands.executeCommand('pascalUnion.openNativeSettings');
+      await vscode.commands.executeCommand('pascalAtlas.openNativeSettings');
     }
   }
 
@@ -509,8 +509,8 @@ class PascalUnionControlCenterProvider {
       return;
     }
     const panel = vscode.window.createWebviewPanel(
-      'pascalUnion.settings',
-      'Pascal Union Settings',
+      'pascalAtlas.settings',
+      'Pascal Atlas Settings',
       vscode.ViewColumn.One,
       { enableScripts: true, retainContextWhenHidden: true }
     );
@@ -523,7 +523,7 @@ class PascalUnionControlCenterProvider {
   refresh() {
     if (this.view) this.view.webview.html = this.html(this.view.webview, false);
     if (this.panel) {
-      this.panel.title = 'Pascal Union Settings';
+      this.panel.title = 'Pascal Atlas Settings';
       this.panel.webview.html = this.html(this.panel.webview, true);
     }
   }
@@ -602,7 +602,7 @@ class PascalUnionControlCenterProvider {
 </head>
 <body>
   <header class="hero">
-    <h1>Pascal Union</h1>
+    <h1>Pascal Atlas</h1>
     <div class="subtitle">${'Delphi workspace development control center'}</div>
     <div class="summary">
       <div class="metric"><strong id="projectCount">0</strong><span>${'Projects'}</span></div>
@@ -704,4 +704,4 @@ class PascalUnionControlCenterProvider {
   }
 }
 
-module.exports = { SECTIONS, PascalUnionControlCenterProvider };
+module.exports = { SECTIONS, PascalAtlasControlCenterProvider };

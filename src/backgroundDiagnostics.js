@@ -23,8 +23,8 @@ const {
 
 const PASCAL_LANGUAGES = new Set(['pascal', 'objectpascal']);
 const MAX_DIAGNOSTICS = 200;
-const MANAGED_PATHS_KEY = 'pascalUnion.managedPaths';
-const GLOBAL_MANAGED_PATHS_KEY = 'pascalUnion.globalManagedPaths';
+const MANAGED_PATHS_KEY = 'pascalAtlas.managedPaths';
+const GLOBAL_MANAGED_PATHS_KEY = 'pascalAtlas.globalManagedPaths';
 
 function isPascalDocument(document) {
   return PASCAL_LANGUAGES.has(document.languageId) && document.uri.scheme === 'file';
@@ -233,8 +233,8 @@ class BackgroundDiagnostics {
   constructor(context, output) {
     this.context = context;
     this.output = output;
-    this.syntaxCollection = vscode.languages.createDiagnosticCollection('pascalUnion.syntax');
-    this.compilerCollection = vscode.languages.createDiagnosticCollection('pascalUnion.compiler');
+    this.syntaxCollection = vscode.languages.createDiagnosticCollection('pascalAtlas.syntax');
+    this.compilerCollection = vscode.languages.createDiagnosticCollection('pascalAtlas.compiler');
     this.syntaxClient = new SyntaxWorkerClient(context.asAbsolutePath(path.join('src', 'syntaxWorker.js')), output);
     this.syntaxTimers = new Map();
     this.compilerTimers = new Map();
@@ -248,11 +248,11 @@ class BackgroundDiagnostics {
     this.environmentPromise = undefined;
     this.unavailableNotified = false;
     this.compilerSuspensions = 0;
-    this.status = vscode.languages.createLanguageStatusItem('pascalUnion.diagnostics', [
+    this.status = vscode.languages.createLanguageStatusItem('pascalAtlas.diagnostics', [
       { language: 'pascal', scheme: 'file' },
       { language: 'objectpascal', scheme: 'file' }
     ]);
-    this.status.name = 'Pascal Union Diagnostics';
+    this.status.name = 'Pascal Atlas Diagnostics';
     this.status.text = '$(check) Delphi diagnostics ready';
     this.status.detail = 'Syntax worker and background compiler are ready.';
     this.rebuildPool();
@@ -262,7 +262,7 @@ class BackgroundDiagnostics {
   }
 
   configuration(uri) {
-    return vscode.workspace.getConfiguration('pascalUnion', uri);
+    return vscode.workspace.getConfiguration('pascalAtlas', uri);
   }
 
   enabled(document) {
@@ -338,7 +338,7 @@ class BackgroundDiagnostics {
       const diagnostics = response.diagnostics.map(item => {
         const range = new vscode.Range(document.positionAt(item.offset), document.positionAt(item.offset + item.length));
         const value = new vscode.Diagnostic(range, item.message, severityForVscode(item.severity));
-        value.source = 'Pascal Union Syntax';
+        value.source = 'Pascal Atlas Syntax';
         value.code = item.code;
         return value;
       });
@@ -524,7 +524,7 @@ class BackgroundDiagnostics {
     if (!tools || (!fs.existsSync(tools.msbuild) && !fs.existsSync(tools.dcc32))) {
       if (!this.unavailableNotified) {
         this.unavailableNotified = true;
-        void vscode.window.showWarningMessage('Pascal Union: Delphi compiler unavailable; syntax diagnostics remain active.');
+        void vscode.window.showWarningMessage('Pascal Atlas: Delphi compiler unavailable; syntax diagnostics remain active.');
       }
       this.status.text = '$(warning) Delphi compiler unavailable';
       return { unavailable: true };
@@ -682,7 +682,7 @@ class BackgroundDiagnostics {
       value.source = 'Delphi Compiler (background)';
       value.code = item.code;
       const existing = vscode.languages.getDiagnostics(uri).filter(diagnostic =>
-        diagnostic.source !== 'Delphi Compiler (background)' && diagnostic.source !== 'Pascal Union Syntax');
+        diagnostic.source !== 'Delphi Compiler (background)' && diagnostic.source !== 'Pascal Atlas Syntax');
       if (existing.some(diagnostic => overlaps(diagnostic, value)
         && (diagnostic.code === value.code || diagnostic.message.toLowerCase() === value.message.toLowerCase()))) continue;
       if (!grouped.has(uri.toString())) grouped.set(uri.toString(), { uri, diagnostics: [] });
@@ -825,20 +825,20 @@ class BackgroundDiagnostics {
         scheduleInteractive(editor.document);
       }),
       vscode.workspace.onDidChangeConfiguration(event => {
-        if (!event.affectsConfiguration('pascalUnion.diagnostics')
-          && !event.affectsConfiguration('pascalUnion.enabled')) return;
+        if (!event.affectsConfiguration('pascalAtlas.diagnostics')
+          && !event.affectsConfiguration('pascalAtlas.enabled')) return;
         this.rebuildPool();
         this.refreshProjects();
         this.clearDiagnostics();
         for (const document of vscode.workspace.textDocuments) schedule(document);
       }),
-      vscode.commands.registerCommand('pascalUnion.diagnostics.runNow', () => this.runNow()),
-      vscode.commands.registerCommand('pascalUnion.diagnostics.clear', () => this.clearDiagnostics()),
-      vscode.commands.registerCommand('pascalUnion.diagnostics.clearCache', async () => {
+      vscode.commands.registerCommand('pascalAtlas.diagnostics.runNow', () => this.runNow()),
+      vscode.commands.registerCommand('pascalAtlas.diagnostics.clear', () => this.clearDiagnostics()),
+      vscode.commands.registerCommand('pascalAtlas.diagnostics.clearCache', async () => {
         await this.clearCache();
-        void vscode.window.showInformationMessage('Pascal Union compiler cache cleared.');
+        void vscode.window.showInformationMessage('Pascal Atlas compiler cache cleared.');
       }),
-      vscode.commands.registerCommand('pascalUnion.diagnostics.showStatus', () => this.showStatus())
+      vscode.commands.registerCommand('pascalAtlas.diagnostics.showStatus', () => this.showStatus())
     );
     for (const folder of vscode.workspace.workspaceFolders || []) {
       for (const pattern of ['.vallenta/projects.json', '.vallenta/projects.local.json', '**/*.groupproj', '**/*.dproj']) {

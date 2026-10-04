@@ -1,55 +1,55 @@
 {
-  "Pascal Union: begin/end": {
+  "Pascal Atlas: begin/end": {
     "prefix": "begin",
     "body": ["begin", "\t$0", "end;"],
     "description": "Insert a begin/end block"
   },
-  "Pascal Union: if begin/end": {
+  "Pascal Atlas: if begin/end": {
     "prefix": "if",
     "body": ["if ${1:Condition} then", "begin", "\t$0", "end;"],
     "description": "Insert an if block with begin/end"
   },
-  "Pascal Union: if/else begin/end": {
+  "Pascal Atlas: if/else begin/end": {
     "prefix": "ifelse",
     "body": ["if ${1:Condition} then", "begin", "\t${2}", "end", "else", "begin", "\t$0", "end;"],
     "description": "Insert an if/else block with begin/end"
   },
-  "Pascal Union: for loop": {
+  "Pascal Atlas: for loop": {
     "prefix": "for",
     "body": ["for ${1:I} := ${2:0} to ${3:Count - 1} do", "begin", "\t$0", "end;"],
     "description": "Insert a for loop with begin/end"
   },
-  "Pascal Union: for-in loop": {
+  "Pascal Atlas: for-in loop": {
     "prefix": "forin",
     "body": ["for ${1:Item} in ${2:Items} do", "begin", "\t$0", "end;"],
     "description": "Insert a for-in loop with begin/end"
   },
-  "Pascal Union: while loop": {
+  "Pascal Atlas: while loop": {
     "prefix": "while",
     "body": ["while ${1:Condition} do", "begin", "\t$0", "end;"],
     "description": "Insert a while loop with begin/end"
   },
-  "Pascal Union: try/except": {
+  "Pascal Atlas: try/except": {
     "prefix": "tryexcept",
     "body": ["try", "\t${1}", "except", "\t$0", "end;"],
     "description": "Insert a try/except block"
   },
-  "Pascal Union: try/finally": {
+  "Pascal Atlas: try/finally": {
     "prefix": "tryfinally",
     "body": ["try", "\t${1}", "finally", "\t$0", "end;"],
     "description": "Insert a try/finally block"
   },
-  "Pascal Union: case/of": {
+  "Pascal Atlas: case/of": {
     "prefix": "case",
     "body": ["case ${1:Value} of", "\t${2}: $0;", "end;"],
     "description": "Insert a case/of block"
   },
-  "Pascal Union: procedure": {
+  "Pascal Atlas: procedure": {
     "prefix": "procedure",
     "body": ["procedure ${1:ProcedureName}(${2});", "begin", "\t$0", "end;"],
     "description": "Insert a procedure with begin/end implementation"
   },
-  "Pascal Union: function": {
+  "Pascal Atlas: function": {
     "prefix": "function",
     "body": ["function ${1:FunctionName}(${2}): ${3:Boolean};", "begin", "\t$0", "end;"],
     "description": "Insert a function with begin/end implementation"

@@ -31,8 +31,8 @@ test('platform source isolation preserves normal Pascal associations and removes
   const patterns = platformSourceAssociationPatterns('C:\\Embarcadero\\Studio\\22.0');
   const enabled = mergedAssociations({ '*.pas': 'pascal' }, patterns, true);
   assert.equal(enabled.associations['*.pas'], 'pascal');
-  assert.equal(enabled.associations[patterns[0]], 'pascal-union-platform');
-  assert.equal(enabled.associations[patterns[1]], 'pascal-union-platform');
+  assert.equal(enabled.associations[patterns[0]], 'pascal-atlas-platform');
+  assert.equal(enabled.associations[patterns[1]], 'pascal-atlas-platform');
 
   enabled.associations[patterns[1]] = 'plaintext';
   const disabled = mergedAssociations(enabled.associations, patterns, false);

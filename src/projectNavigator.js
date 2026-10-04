@@ -38,7 +38,7 @@ function packageNode(descriptor, parentId, options = {}) {
     label: descriptor.name,
     fsPath: descriptor.projectDir,
     projectPath: descriptor.projectPath,
-    contextValue: 'pascalUnion.projectNavigator.package',
+    contextValue: 'pascalAtlas.projectNavigator.package',
     children: uniqueFileNodes([
       options.showDpk === false ? undefined : descriptor.mainSource,
       options.showDproj === false ? undefined : descriptor.projectPath
@@ -78,7 +78,7 @@ function projectNavigationModel(model, options = {}) {
       fsPath: group.groupDir,
       groupPath: group.groupPath,
       projectPaths: group.projectPaths,
-      contextValue: 'pascalUnion.projectNavigator.project',
+      contextValue: 'pascalAtlas.projectNavigator.project',
       children: projectChildren(descriptors, group.groupPath, id, options)
     });
   }
@@ -107,7 +107,7 @@ function projectNavigationModel(model, options = {}) {
       label: path.basename(workspaceRoot),
       fsPath: workspaceRoot,
       projectPaths: descriptors.map(item => item.projectPath),
-      contextValue: 'pascalUnion.projectNavigator.looseProject',
+      contextValue: 'pascalAtlas.projectNavigator.looseProject',
       children: projectChildren(descriptors, undefined, id, options)
     });
   }
@@ -141,7 +141,7 @@ class ProjectNavigatorProvider {
   }
 
   refresh() {
-    const configuration = vscode.workspace.getConfiguration('pascalUnion');
+    const configuration = vscode.workspace.getConfiguration('pascalAtlas');
     this.roots = projectNavigationModel(this.model, {
       showGroupproj: configuration.get('projectNavigator.showGroupproj', true),
       showDpr: configuration.get('projectNavigator.showDpr', true),
@@ -171,7 +171,7 @@ class ProjectNavigatorProvider {
       };
       return item;
     }
-    const defaultExpansion = vscode.workspace.getConfiguration('pascalUnion')
+    const defaultExpansion = vscode.workspace.getConfiguration('pascalAtlas')
       .get('projectNavigator.defaultExpansion', 'firstLevel');
     const item = new vscode.TreeItem(
       element.label,
