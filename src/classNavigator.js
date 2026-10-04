@@ -2382,7 +2382,7 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       output?.appendLine('Opening Delphi class navigator for initial Explorer layout.');
       const firstNode = provider.model()?.roots?.[0];
       if (!firstNode) return;
-      await tree.reveal(firstNode, { select: false, focus: true, expand: false });
+      await tree.reveal(firstNode, { select: false, focus: false, expand: false });
       // VS Code 1.134 always initializes contributed Explorer views collapsed
       // and provides no manifest order for the built-in Explorer container.
       // On the user's normal Explorer/Outline/Timeline layout, two moves place
