@@ -32,6 +32,11 @@ syntax/compiler diagnostics, formatting, and optional AI routine steps.
 
 ## TypeScript and module boundaries
 
+- Add JSDoc docstrings to every function and method in `src/`, including internal
+  helpers. Explain purpose and non-obvious parameters, return values, side effects, or
+  failure conditions without repeating obvious TypeScript annotations.
+- Add inline comments for non-trivial logic. Explain intent, constraints, and why an
+  approach is needed rather than narrating obvious statements.
 - Write authored code and tests in TypeScript. Maintain `strict` and `noEmitOnError`; do
   not introduce `any`, `@ts-nocheck`, or checking suppressions to make a build pass.
 - Use named interfaces and discriminated unions for domain models and messages. Treat
@@ -100,6 +105,12 @@ the source of truth:
 | `npm run test:host`        | Run real VS Code providers/views in an isolated development host |
 | `npm run package`          | Build through `vscode:prepublish` and create a local VSIX        |
 
+- Use the configured `pre-commit` hooks for automatic formatting, following
+  `.pre-commit-config.yaml` and `.prettierrc.json`. Run
+  `pre-commit run --files <changed-files>` before finishing, review any automatic edits,
+  and rerun until the hooks pass. Use `pre-commit install` when setting up local commit
+  hooks. Keep runs scoped to changed files; use `--all-files` only for a requested
+  repository-wide formatting pass.
 - For a focused test, build first, then run `node --test out/test/<name>.test.js`. Use
   `test/helpers.ts` for repository source, emitted artifact, static resource, and
   browser bundle paths.
