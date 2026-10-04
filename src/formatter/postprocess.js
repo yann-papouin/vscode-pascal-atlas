@@ -21,6 +21,14 @@ const NON_TYPE_AFTER_COLON = new Set([
   "with"
 ]);
 
+/**
+ * Replaces comments and string contents with spaces while preserving code columns.
+ * Block comments and strings may continue across lines.
+ * @param {string[]} lines Pascal source split into lines.
+ * @returns {string[]} Code-only lines aligned with the source.
+ * @example
+ * maskPascalLines(["begin {x}"]); // ["begin    "]
+ */
 function maskPascalLines(lines) {
   let state = "code";
 
@@ -96,6 +104,18 @@ function maskPascalLines(lines) {
   });
 }
 
+/**
+ * Uppercases eligible identifiers in a mutable character array over a code span.
+ * Parameter names, range bounds, and Pascal syntax keywords are left alone.
+ * @param {string[]} characters Mutable characters corresponding to `codeLine`.
+ * @param {string} codeLine Comment- and string-masked source line.
+ * @param {number} start Inclusive start column.
+ * @param {number} end Exclusive end column.
+ * @example
+ * const chars = [..."value: point"];
+ * capitalizeIdentifierCharacters(chars, "value: point", 7, 12);
+ * chars.join(""); // "value: Point"
+ */
 function capitalizeIdentifierCharacters(characters, codeLine, start, end) {
   const identifier = /\b[A-Za-z_]\w*\b/g;
   identifier.lastIndex = start;
@@ -119,6 +139,15 @@ function capitalizeIdentifierCharacters(characters, codeLine, start, end) {
   }
 }
 
+/**
+ * Finds where a type expression ends at a top-level separator or directive.
+ * Nested generic, array, and parameter delimiters do not end the span.
+ * @param {string} codeLine Comment- and string-masked source line.
+ * @param {number} start Column where the type expression begins.
+ * @returns {{end:number, terminator:string}} End column and terminating token.
+ * @example
+ * findTypeSpanEnd("Point; Value", 0); // { end: 5, terminator: ";" }
+ */
 function findTypeSpanEnd(codeLine, start) {
   let angleDepth = 0;
   let parenthesisDepth = 0;
@@ -177,6 +206,17 @@ function findTypeSpanEnd(codeLine, start) {
   return { end: codeLine.length, terminator: "end" };
 }
 
+/**
+ * Decides whether a colon introduces a type declaration instead of a value.
+ * @param {string} codeLine Comment- and string-masked source line.
+ * @param {number} colonIndex Column of the colon.
+ * @param {{end:number, terminator:string}} span Type span following the colon.
+ * @param {{section?:string, typeBlockDepth:number}} context Current parser context.
+ * @returns {boolean} Whether identifiers in the following span are type names.
+ * @example
+ * isDeclarationColon("Value: Integer", 5, { end: 14, terminator: "end" },
+ *   { section: "var", typeBlockDepth: 0 }); // true
+ */
 function isDeclarationColon(codeLine, colonIndex, span, context) {
   const prefix = codeLine.slice(0, colonIndex);
   const segmentStart = Math.max(prefix.lastIndexOf(";"), prefix.lastIndexOf("("));
@@ -193,6 +233,16 @@ function isDeclarationColon(codeLine, colonIndex, span, context) {
   return span.terminator !== ":=" || declarationContext;
 }
 
+/**
+ * Capitalizes type identifiers in declarations, annotations, and type operators.
+ * @param {string} line Original source line, including comments and strings.
+ * @param {string} codeLine The same line with comments and strings masked.
+ * @param {{section?:string, typeBlockDepth:number}} context Current parser context.
+ * @returns {string} Source line with recognized type names capitalized.
+ * @example
+ * capitalizeTypeNamesOnLine("value: point", "value: point",
+ *   { section: "var", typeBlockDepth: 0 }); // "value: Point"
+ */
 function capitalizeTypeNamesOnLine(line, codeLine, context) {
   const characters = [...line];
   const inlineTypeDeclaration = /^\s*type\b/i.test(codeLine);
@@ -283,6 +333,13 @@ function capitalizeTypeNamesOnLine(line, codeLine, context) {
   return characters.join("");
 }
 
+/**
+ * Capitalizes declared type names and type references across Pascal source lines.
+ * @param {string[]} lines Pascal source lines.
+ * @returns {string[]} New lines with type identifiers capitalized.
+ * @example
+ * normalizeTypeNameCapitalization(["var", "  value: point;"]); // type becomes "Point"
+ */
 function normalizeTypeNameCapitalization(lines) {
   const codeLines = maskPascalLines(lines);
   const result = [...lines];
@@ -319,6 +376,14 @@ function normalizeTypeNameCapitalization(lines) {
   return result;
 }
 
+/**
+ * Capitalizes references to declared variables, including `Result` and `Self`.
+ * @param {string[]} lines Pascal source lines.
+ * @returns {string[]} New lines with recognized variable names capitalized.
+ * @example
+ * normalizeVariableNameCapitalization(["var", "  value: Integer;", "begin", "  value := 1;"]);
+ * // Both occurrences of `value` become `Value`.
+ */
 function normalizeVariableNameCapitalization(lines) {
   const codeLines = maskPascalLines(lines);
   const declaredVariables = new Set(["result", "self"]);
@@ -364,6 +429,13 @@ function normalizeVariableNameCapitalization(lines) {
   });
 }
 
+/**
+ * Removes unnecessary spaces around delimiters in recognized generic types.
+ * @param {string[]} lines Pascal source lines.
+ * @returns {string[]} New lines with generic type spacing normalized.
+ * @example
+ * normalizeGenericTypeSpacing(["TList < TPoint >"]); // ["TList<TPoint>"]
+ */
 function normalizeGenericTypeSpacing(lines) {
   const codeLines = maskPascalLines(lines);
   return lines.map((line, index) =>
@@ -371,6 +443,15 @@ function normalizeGenericTypeSpacing(lines) {
   );
 }
 
+/**
+ * Adds temporary comment markers to selected blank lines before Formatter.exe runs.
+ * @param {string} text Source text to format.
+ * @param {{lineNumber:number, marker:string}[]} protections Blank lines to preserve.
+ * @returns {string} Text with markers on the selected blank lines.
+ * @example
+ * protectBlankLinesForFormatting("begin\n\nend.", [{ lineNumber: 1, marker: "CARET" }]);
+ * // "begin\n{CARET}\nend."
+ */
 function protectBlankLinesForFormatting(text, protections) {
   if (protections.length === 0) {
     return text;
@@ -390,6 +471,16 @@ function protectBlankLinesForFormatting(text, protections) {
   return lines.join(newline);
 }
 
+/**
+ * Removes temporary blank-line markers and records their restored caret positions.
+ * @param {string} text Formatter output containing any temporary markers.
+ * @param {{marker:string, resolvedLineNumber?:number, resolvedCharacter?:number}[]} protections Marker records to restore.
+ * @returns {string} Formatter output with protected lines returned to blank lines.
+ * @example
+ * const protections = [{ marker: "CARET" }];
+ * restoreProtectedBlankLines("begin\n  {CARET}\nend.", protections); // "begin\n  \nend."
+ * protections[0].resolvedCharacter; // 2
+ */
 function restoreProtectedBlankLines(text, protections) {
   if (protections.length === 0) {
     return text;
@@ -421,10 +512,25 @@ function restoreProtectedBlankLines(text, protections) {
   return lines.join(newline);
 }
 
+/**
+ * Checks whether a line is a complete inline `var` declaration ending in `;`.
+ * @param {string} codeLine Source line to inspect.
+ * @returns {boolean} True for a single-line inline variable declaration.
+ * @example
+ * isInlineVariableDeclaration("var Value := CreateValue;"); // true
+ */
 function isInlineVariableDeclaration(codeLine) {
   return /^\s*var\s+[A-Za-z_]\w*/i.test(codeLine) && /;\s*$/.test(codeLine);
 }
 
+/**
+ * Finds the line ending a multiline inline `var` declaration.
+ * @param {string[]} codeLines Comment- and string-masked source lines.
+ * @param {number} declarationIndex Candidate line containing `var`.
+ * @returns {number} Semicolon line index, or -1 if this is not a complete declaration.
+ * @example
+ * findInlineVariableDeclarationEnd(["var", "  Value := 1;", "begin"], 0); // 1
+ */
 function findInlineVariableDeclarationEnd(codeLines, declarationIndex) {
   if (!/^\s*var\s+[A-Za-z_]\w*/i.test(codeLines[declarationIndex])) {
     return -1;
@@ -438,6 +544,15 @@ function findInlineVariableDeclarationEnd(codeLines, declarationIndex) {
   return -1;
 }
 
+/**
+ * Aligns statements following a multiline inline-variable declaration to its indent.
+ * @param {string[]} lines Pascal source lines.
+ * @param {{includeBlankLineIndexes?:number[]}} [options] Blank lines eligible for alignment.
+ * @returns {string[]} New lines with declaration continuations aligned.
+ * @example
+ * normalizeInlineVariableContinuations(["  var Value: Integer;", "      DoWork;", "end;"]);
+ * // The `DoWork;` line is reduced to the declaration's two-space indent.
+ */
 function normalizeInlineVariableContinuations(lines, options = {}) {
   const codeLines = maskPascalLines(lines);
   const result = [...lines];
@@ -467,6 +582,13 @@ function normalizeInlineVariableContinuations(lines, options = {}) {
   return result;
 }
 
+/**
+ * Joins a formatter-split `var` line back to its inline initializer declaration.
+ * @param {string[]} lines Formatter output lines.
+ * @returns {string[]} New lines with eligible `var` declarations joined.
+ * @example
+ * preserveInlineVariables(["var", "  Value := CreateValue;"]); // ["var Value := CreateValue;"]
+ */
 function preserveInlineVariables(lines) {
   const result = [];
 
@@ -485,6 +607,15 @@ function preserveInlineVariables(lines) {
   return result;
 }
 
+/**
+ * Aligns wrapped parameters in routine declarations and calls.
+ * @param {string[]} lines Pascal source lines.
+ * @param {{alignBlankLineIndexes?:number[], indentSize?:number}} [options] Alignment options.
+ * @returns {string[]} New lines with continuation parameters aligned.
+ * @example
+ * alignWrappedParameters(["procedure Run(A: Integer;", "B: Integer);"]);
+ * // The second parameter is indented to the continuation column.
+ */
 function alignWrappedParameters(lines, options = {}) {
   const codeLines = maskPascalLines(lines);
   const result = [...lines];
@@ -569,6 +700,15 @@ function alignWrappedParameters(lines, options = {}) {
   return result;
 }
 
+/**
+ * Aligns a blank continuation line or closing parenthesis after a wrapped argument.
+ * @param {string[]} lines Pascal source lines.
+ * @param {number} lineIndex Index of the blank line or closing-parenthesis line.
+ * @param {number} [indentSize=2] Indentation added for declarations and calls.
+ * @returns {string[]} New lines with the selected continuation line aligned.
+ * @example
+ * alignWrappedArgumentLine(["Call(Value,", ")"], 1); // ["Call(Value,", "  )"]
+ */
 function alignWrappedArgumentLine(lines, lineIndex, indentSize = 2) {
   const targetText = lines[lineIndex] ?? "";
   const trimmedTarget = targetText.trimStart();
@@ -641,6 +781,14 @@ function alignWrappedArgumentLine(lines, lineIndex, indentSize = 2) {
   return result;
 }
 
+/**
+ * Runs the extension's capitalization, generic-spacing, and alignment passes.
+ * @param {string} text Formatter output to postprocess.
+ * @param {{preserveInlineVariables?:boolean, alignWrappedParameters?:boolean}} [options] Optional passes to disable.
+ * @returns {string} Postprocessed source with its original newline style.
+ * @example
+ * postprocessPascal("var\n  value: point;"); // "var\n  Value: Point;"
+ */
 function postprocessPascal(text, options = {}) {
   const newline = text.includes("\r\n") ? "\r\n" : "\n";
   let lines = text.split(/\r\n|\n|\r/);
