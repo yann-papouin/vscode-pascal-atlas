@@ -460,6 +460,7 @@ class PascalAtlasControlCenterProvider {
       const setting = SECTIONS.flatMap(section => section.settings)
         .find(item => item.key === message.key);
       if (!setting) return;
+      if (setting.styleRule && this.configuration().get('formatter.style.useDefault', true)) return;
       let value = message.value;
       if (setting.type === 'number') {
         value = Math.max(setting.min, Math.min(setting.max, Number(value)));

@@ -81,6 +81,10 @@ function applyStyleRules(xml, getValue) {
   return result;
 }
 
+function resolveFormatterConfig(xml, useDefault, getValue) {
+  return useDefault ? xml : applyStyleRules(xml, getValue);
+}
+
 function validateStyleRuleValue(rule, value) {
   if (rule.type === 'boolean') return typeof value === 'boolean';
   if (rule.type === 'number') {
@@ -126,4 +130,10 @@ function parseStyleProfile(text) {
   return result;
 }
 
-module.exports = { STYLE_RULES, applyStyleRules, createStyleProfile, parseStyleProfile };
+module.exports = {
+  STYLE_RULES,
+  applyStyleRules,
+  createStyleProfile,
+  parseStyleProfile,
+  resolveFormatterConfig
+};

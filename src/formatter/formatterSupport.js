@@ -26,9 +26,9 @@ const {
 } = require("./highlighting");
 const {
   STYLE_RULES,
-  applyStyleRules,
   createStyleProfile,
-  parseStyleProfile
+  parseStyleProfile,
+  resolveFormatterConfig
 } = require("./styleRules");
 
 const EXTENSION_ID = "yannpapouin.pascal-atlas";
@@ -89,10 +89,10 @@ async function loadStyleProfile(output) {
   const target = vscode.workspace.workspaceFolders?.length
     ? vscode.ConfigurationTarget.Workspace
     : vscode.ConfigurationTarget.Global;
+  await configuration.update("style.useDefault", false, target);
   for (const rule of STYLE_RULES) {
     await configuration.update(rule.key, values.get(rule.key), target);
   }
-  await configuration.update("style.useDefault", false, target);
   output.info(`Loaded formatter style profile from ${uris[0].fsPath}.`);
   void vscode.window.showInformationMessage("Custom formatting profile loaded and enabled.");
 }
@@ -229,9 +229,11 @@ async function formatDocument(context, document, cancellationToken, output) {
 
     const configuration = formatterConfiguration(document);
     const baseConfig = await fs.promises.readFile(baseConfigPath, "utf8");
-    const formatterConfig = configuration.get("style.useDefault", true)
-      ? baseConfig
-      : applyStyleRules(baseConfig, (key, defaultValue) => configuration.get(key, defaultValue));
+    const formatterConfig = resolveFormatterConfig(
+      baseConfig,
+      configuration.get("style.useDefault", true),
+      (key, defaultValue) => configuration.get(key, defaultValue)
+    );
     await Promise.all([
       fs.promises.writeFile(
         inputPath,
