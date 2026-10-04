@@ -7,6 +7,15 @@ const { maskPascalNonCode } = require('./binarySymbols');
 const { parseSourceUnitSymbols } = require('./usesQuickFix');
 const { ClassNavigatorWebview } = require('./classNavigatorWebview');
 const {
+  createImplementationCommand,
+  findRoutineCounterpart,
+  indexRoutineDeclarations,
+  methodDeclarationDirectives,
+  routineCounterpartKey,
+  routineDeclarationRange,
+  routineHeaderEnd
+} = require('./implementationCore');
+const {
   AI_STEP_CACHE_STATE_KEY,
   AI_STEP_CHUNK_CACHE_STATE_KEY,
   buildAiStepRepairPrompt,
@@ -223,25 +232,12 @@ function routineKeywordAt(text, offset) {
     || 'procedure';
 }
 
-function routineHeaderEnd(code, start) {
-  let parentheses = 0;
-  let brackets = 0;
-  for (let index = start; index < code.length; index += 1) {
-    const current = code[index];
-    if (current === '(') parentheses += 1;
-    else if (current === ')') parentheses = Math.max(0, parentheses - 1);
-    else if (current === '[') brackets += 1;
-    else if (current === ']') brackets = Math.max(0, brackets - 1);
-    else if (current === ';' && parentheses === 0 && brackets === 0) return index + 1;
-  }
-  return -1;
-}
-
 function routineFlavorAt(code, offset, owner) {
   if (!owner) return 'global';
-  const lineStart = Math.max(0, code.lastIndexOf('\n', Math.max(0, offset - 1)) + 1);
-  const headerEnd = routineHeaderEnd(code, lineStart);
-  const prefix = code.slice(lineStart, offset);
+  const range = routineDeclarationRange(code, offset);
+  const headerStart = range?.start ?? Math.max(0, code.lastIndexOf('\n', Math.max(0, offset - 1)) + 1);
+  const headerEnd = range?.end ?? routineHeaderEnd(code, headerStart);
+  const prefix = code.slice(headerStart, offset);
   const afterHeader = headerEnd < 0 ? '' : code.slice(headerEnd, Math.min(code.length, headerEnd + 500));
   const nextDeclaration = /^\s*(?:class\s+)?(?:function|procedure|constructor|destructor|operator)\b/im.exec(afterHeader);
   const directives = nextDeclaration ? afterHeader.slice(0, nextDeclaration.index) : afterHeader;
@@ -494,7 +490,7 @@ function assignNavigatorNodeIds(nodes, filePath, parentId = `document:${filePath
   const occurrences = new Map();
   for (const node of nodes) {
     let signature = '';
-    if (node.routineSignatureKey) {
+    if (node.routineSignatureKey && node.owner) {
       signature = node.routineSignatureKey;
     } else if (node.kind === 'routine' && node.signature) {
       // Fallback signatures can include a one-line body. Only the header is
@@ -730,6 +726,25 @@ function addRoutineRanges(text, routineNodes) {
   }
 }
 
+/** Store full headings separately from the existing line ranges used for editor highlighting. */
+function addDeclarationHeaders(text, code, nodes) {
+  for (const node of nodes) {
+    if (!Number.isInteger(node.declarationOffset)) continue;
+    const range = routineDeclarationRange(code, node.declarationOffset);
+    if (!range) continue;
+    node.declarationStartOffset = range.start;
+    node.declarationHeaderEndOffset = range.end;
+    const kind = /^(?:class\s+)?(function|procedure|constructor|destructor|operator)\b/i
+      .exec(code.slice(range.start));
+    if (kind) {
+      node.routineKind = kind[1].toLowerCase();
+      node.specialRoutineKind = specialRoutineKind(node.name, node.routineKind);
+      if (node.owner) node.routineFlavor = routineFlavorAt(code, node.declarationOffset, node.owner);
+    }
+    if (range.end) node.signature = text.slice(range.start, range.end).replace(/\s+/g, ' ').trim();
+  }
+}
+
 function routineHeaders(code, startOffset) {
   const result = [];
   const pattern = /^\s*(?:class\s+)?(?:function|procedure|constructor|destructor|operator)\s+([A-Za-z_][A-Za-z0-9_]*(?:\s*<[^>\r\n]*>)?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\s*<[^>\r\n]*>)?)*)/gim;
@@ -737,6 +752,14 @@ function routineHeaders(code, startOffset) {
   for (let match; (match = pattern.exec(code));) {
     const parts = match[1].replace(/<[^>]*>/g, '').split('.').map(item => item.trim());
     const name = parts.at(-1);
+    let segmentStart = 0;
+    let angles = 0;
+    for (let index = 0; index < match[1].length; index += 1) {
+      if (match[1][index] === '<') angles += 1;
+      else if (match[1][index] === '>') angles -= 1;
+      else if (match[1][index] === '.' && angles === 0) segmentStart = index + 1;
+    }
+    const nameStart = segmentStart + (match[1].slice(segmentStart).match(/^\s*/)?.[0].length || 0);
     const declarationOffset = match.index + match[0].search(/\b(?:class\s+)?(?:function|procedure|constructor|destructor|operator)\b/i);
     result.push({
       // The multiline pattern deliberately accepts indentation and preceding
@@ -746,7 +769,7 @@ function routineHeaders(code, startOffset) {
       start: declarationOffset,
       name,
       owner: parts.length > 1 ? parts.slice(0, -1).join('.') : undefined,
-      nameOffset: match.index + match[0].lastIndexOf(name),
+      nameOffset: match.index + match[0].indexOf(match[1]) + nameStart,
       headerEnd: routineHeaderEnd(code, declarationOffset)
     });
   }
@@ -762,13 +785,17 @@ function routineBodyEnd(code, beginOffset) {
     else {
       depth -= 1;
       if (depth === 0) {
-        let end = tokens.lastIndex;
+        let terminator = tokens.lastIndex;
+        while (/\s/.test(code[terminator] || '')) terminator += 1;
+        if (code[terminator] !== ';') return { end: code.length, complete: false };
+        const terminatorEndOffset = terminator + 1;
+        let end = terminatorEndOffset;
         while (/[\s;]/.test(code[end] || '')) end += 1;
-        return end;
+        return { end, terminatorEndOffset, complete: true };
       }
     }
   }
-  return code.length;
+  return { end: code.length, complete: false };
 }
 
 function bodylessRoutineEnd(code, header, nextHeaderStart, nextBeginOffset) {
@@ -792,12 +819,12 @@ function bodylessRoutineEnd(code, header, nextHeaderStart, nextBeginOffset) {
 function parseRoutineTree(code, headers, headerIndex) {
   const header = headers[headerIndex];
   if (!header || header.headerEnd < 0) {
-    return { header, children: [], end: header?.headerEnd ?? code.length, next: headerIndex + 1 };
+    return { header, children: [], end: code.length, complete: false, next: headerIndex + 1 };
   }
   const children = [];
   let cursor = header.headerEnd;
   let childIndex = headerIndex + 1;
-  const beginPattern = /\bbegin\b/gi;
+  const beginPattern = /\b(?:begin|asm)\b/gi;
   beginPattern.lastIndex = cursor;
   let begin = beginPattern.exec(code);
 
@@ -808,7 +835,8 @@ function parseRoutineTree(code, headers, headerIndex) {
     begin?.index
   );
   if (bodylessEnd !== undefined) {
-    return { header, children, end: bodylessEnd, next: headerIndex + 1 };
+    return { header, children, end: bodylessEnd, terminatorEndOffset: bodylessEnd,
+      complete: code[bodylessEnd - 1] === ';', next: headerIndex + 1 };
   }
 
   // Routines declared between an outer signature and its executable `begin`
@@ -825,15 +853,16 @@ function parseRoutineTree(code, headers, headerIndex) {
 
   const declarationTail = code.slice(header.headerEnd, Math.min(begin?.index ?? code.length, header.headerEnd + 500));
   if (!begin || /\b(?:forward|abstract)\s*;|\bexternal\b/i.test(declarationTail)) {
-    return { header, children, end: Math.max(header.headerEnd, cursor), next: childIndex };
+    return { header, children, end: Math.max(header.headerEnd, cursor), complete: false, next: childIndex };
   }
-  const end = routineBodyEnd(code, begin.index);
+  const body = routineBodyEnd(code, begin.index);
+  const end = body.end;
   while (childIndex < headers.length && headers[childIndex].start < end) {
     const child = parseRoutineTree(code, headers, childIndex);
     children.push(child);
     childIndex = Math.max(child.next, childIndex + 1);
   }
-  return { header, children, end, next: childIndex };
+  return { header, children, ...body, next: childIndex };
 }
 
 function implementationRoutineForest(code) {
@@ -867,6 +896,8 @@ function nestLocalRoutines(code, routineNodes, globalRoot, forest = implementati
     if (!node) return;
     node.implementationOffset ??= routine.header.nameOffset;
     node.implementationEndOffset = routine.end;
+    node.implementationStartOffset = routine.header.start;
+    node.implementationTerminatorEndOffset = routine.terminatorEndOffset;
     if (parentNode && node !== parentNode) {
       node.routineFlavor = 'local';
       node.access = parentNode.access;
@@ -882,83 +913,6 @@ function nestLocalRoutines(code, routineNodes, globalRoot, forest = implementati
   if (globalRoot) globalRoot.children = globalRoot.children.filter(node => !nested.has(node));
 }
 
-/** Split a Pascal header at separators outside nested parameter and type expressions. */
-function splitRoutineHeaderText(text, separator) {
-  const parts = [];
-  let start = 0;
-  let parentheses = 0;
-  let brackets = 0;
-  let angles = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    const token = text[index];
-    if (token === '(') parentheses += 1;
-    else if (token === ')') parentheses -= 1;
-    else if (token === '[') brackets += 1;
-    else if (token === ']') brackets -= 1;
-    else if (token === '<') angles += 1;
-    else if (token === '>') angles -= 1;
-    else if (token === separator && parentheses === 0 && brackets === 0 && angles === 0) {
-      parts.push(text.slice(start, index));
-      start = index + 1;
-    }
-  }
-  parts.push(text.slice(start));
-  return parts;
-}
-
-/** Match overloads by parameter modes/types and result type, ignoring names and defaults. */
-function routineCounterpartKey(signature, name) {
-  const code = maskPascalNonCode(signature || '').trim().toLowerCase();
-  const prefix = /^(class\s+)?(function|procedure|constructor|destructor|operator)\s+/.exec(code);
-  if (!prefix) return undefined;
-  let cursor = prefix[0].length;
-  let angles = 0;
-  // Skip the qualified method name, including generic type/method arguments.
-  for (; cursor < code.length; cursor += 1) {
-    if (code[cursor] === '<') angles += 1;
-    else if (code[cursor] === '>') angles -= 1;
-    else if (angles === 0 && /[(:;]/.test(code[cursor])) break;
-  }
-  let parameters = '';
-  if (code[cursor] === '(') {
-    const start = ++cursor;
-    let depth = 1;
-    for (; cursor < code.length; cursor += 1) {
-      if (code[cursor] === '(') depth += 1;
-      else if (code[cursor] === ')' && --depth === 0) break;
-    }
-    parameters = code.slice(start, cursor);
-    cursor += 1;
-  }
-  const parameterTypes = [];
-  for (const parameter of splitRoutineHeaderText(parameters, ';')) {
-    if (!parameter.trim()) continue;
-    const withoutDefault = splitRoutineHeaderText(parameter, '=')[0].trim();
-    const mode = /^(constref|const|var|out)\b\s*/.exec(withoutDefault);
-    const declaration = withoutDefault.slice(mode?.[0].length || 0);
-    const [names, ...typeParts] = splitRoutineHeaderText(declaration, ':');
-    const type = typeParts.join(':').replace(/\s+/g, '');
-    for (const identifier of names.split(',')) {
-      if (identifier.trim()) parameterTypes.push([mode?.[1] || '', type]);
-    }
-  }
-  const resultType = code.slice(cursor).replace(/;[\s\S]*$/, '').replace(/^\s*:/, '').replace(/\s+/g, '');
-  return JSON.stringify([prefix[2], Boolean(prefix[1]), name.toLowerCase(), parameterTypes, resultType]);
-}
-
-/** Read declaration directives only; a later method's abstract directive must not leak back. */
-function methodDeclarationDirectives(code, node) {
-  const result = new Set();
-  const end = routineHeaderEnd(code, node.declarationOffset);
-  if (end < 0) return result;
-  let tail = code.slice(end);
-  const directives = /^\s*(abstract|external|virtual|dynamic|override|overload|reintroduce|static|final|inline|cdecl|stdcall|safecall|register|pascal|message|dispid|deprecated|platform|experimental)\b[^;]*;/i;
-  for (let match; (match = directives.exec(tail)); tail = tail.slice(match[0].length)) {
-    result.add(match[1].toLowerCase());
-  }
-  return result;
-}
-
 /** Reconcile class declarations and bodies without the source index's name-only fallback. */
 function reconcileClassRoutineCounterparts(text, code, types, rootTypes, routines, forest, unitName, hiddenOwners) {
   const byOwner = new Map(types.map(type => [type.qualifiedName.toLowerCase(), type]));
@@ -968,8 +922,6 @@ function reconcileClassRoutineCounterparts(text, code, types, rootTypes, routine
   for (const type of types) {
     if (type.typeKind !== 'class') continue;
     const methods = type.children.filter(node => node.kind === 'routine');
-    const bySignature = new Map();
-    const byName = new Map();
     for (const node of methods) {
       // Clear potentially incorrect name/ordinal matches supplied by the index.
       node.implementationOffset = undefined;
@@ -977,13 +929,8 @@ function reconcileClassRoutineCounterparts(text, code, types, rootTypes, routine
       const directives = methodDeclarationDirectives(code, node);
       node.missingCounterpart = directives.has('abstract') || directives.has('external') ? undefined : 'implementation';
       node.routineOverloaded = directives.has('overload');
-      if (!bySignature.has(node.routineSignatureKey)) bySignature.set(node.routineSignatureKey, []);
-      bySignature.get(node.routineSignatureKey).push(node);
-      const name = node.name.toLowerCase();
-      if (!byName.has(name)) byName.set(name, []);
-      byName.get(name).push(node);
     }
-    declarations.set(type, { bySignature, byName });
+    declarations.set(type, indexRoutineDeclarations(methods));
   }
   for (const node of routines) {
     if (!node.owner && ownedOffsets.has(node.implementationOffset)) node.implementationOffset = undefined;
@@ -1008,26 +955,14 @@ function reconcileClassRoutineCounterparts(text, code, types, rootTypes, routine
     const signature = text.slice(header.start, header.headerEnd < 0 ? lineEndOffset(text, header.start) : header.headerEnd)
       .replace(/\s+/g, ' ').trim();
     const key = routineCounterpartKey(signature, header.name);
-    const matches = declarations.get(type);
-    let node = key && matches?.bySignature.get(key)?.find(candidate => !Number.isInteger(candidate.implementationOffset));
-    if (!node && key && !signature.includes('(')) {
-      // Delphi permits abbreviated implementation headings for non-overloaded
-      // methods. Only a single declaration can supply their omitted types.
-      const candidates = matches?.byName.get(header.name.toLowerCase()) || [];
-      const candidate = candidates.length === 1 ? candidates[0] : undefined;
-      if (candidate && !candidate.routineOverloaded && candidate.routineSignatureKey
-        && !Number.isInteger(candidate.implementationOffset)) {
-        const [kind, classMethod, , , result] = JSON.parse(key);
-        const [expectedKind, expectedClass, , , expectedResult] = JSON.parse(candidate.routineSignatureKey);
-        if (kind === expectedKind && classMethod === expectedClass && (!result || result === expectedResult)) node = candidate;
-      }
-    }
+    const node = findRoutineCounterpart(declarations.get(type), signature, header.name);
     if (node) {
       node.implementationOffset = header.nameOffset;
       node.implementationEndOffset = implementation.end;
       node.missingCounterpart = undefined;
     } else {
-      const routineKind = routineKeywordAt(text, header.nameOffset);
+      const routineKind = /^(?:class\s+)?(function|procedure|constructor|destructor|operator)\b/i
+        .exec(code.slice(header.start))?.[1]?.toLowerCase() || 'procedure';
       const orphan = { kind: 'routine', name: header.name, label: header.name, owner: type.name,
         offset: header.nameOffset, implementationOffset: header.nameOffset, implementationEndOffset: implementation.end,
         routineKind, routineFlavor: routineFlavorAt(code, header.nameOffset, type.name),
@@ -1036,6 +971,44 @@ function reconcileClassRoutineCounterparts(text, code, types, rootTypes, routine
       type.children.push(orphan); routines.push(orphan);
     }
   }
+}
+
+/** Give globals the same overload-safe counterpart matching used for class methods. */
+function reconcileGlobalRoutineCounterparts(text, code, globals, routines, forest) {
+  const implementation = /\bimplementation\b/i.exec(code);
+  if (!implementation) return;
+  const declarations = globals.filter(node => node.declarationOffset < implementation.index);
+  for (const node of declarations) {
+    node.implementationOffset = undefined;
+    node.routineSignatureKey = routineCounterpartKey(node.signature, node.name);
+    node.routineOverloaded = methodDeclarationDirectives(code, node).has('overload');
+  }
+  const index = indexRoutineDeclarations(declarations);
+  const privateByOffset = new Map(globals.filter(node => node.declarationOffset >= implementation.index)
+    .map(node => [node.declarationOffset, node]));
+  for (const body of forest) {
+    const header = body.header;
+    if (header.owner) continue;
+    const signature = text.slice(header.start, header.headerEnd < 0 ? lineEndOffset(text, header.start) : header.headerEnd)
+      .replace(/\s+/g, ' ').trim();
+    let node = findRoutineCounterpart(index, signature, header.name);
+    const privateNode = privateByOffset.get(header.nameOffset);
+    if (node && privateNode && node !== privateNode) {
+      globals.splice(globals.indexOf(privateNode), 1);
+      routines.splice(routines.indexOf(privateNode), 1);
+    }
+    if (!node) node = privateNode;
+    if (!node) {
+      node = { kind: 'routine', name: header.name, label: header.name, access: 'public',
+        routineFlavor: 'global', routineKind: routineKeywordAt(text, header.nameOffset),
+        declarationOffset: header.nameOffset, signature, children: [] };
+      globals.push(node); routines.push(node);
+    }
+    node.routineSignatureKey = routineCounterpartKey(node.signature, node.name);
+    node.implementationOffset = header.nameOffset;
+    node.implementationEndOffset = body.end;
+  }
+  globals.sort((left, right) => left.declarationOffset - right.declarationOffset);
 }
 
 function buildClassNavigatorModel(text, filePath = '', options = {}) {
@@ -1226,11 +1199,16 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
     parent.children.splice(insertAt, 0, node);
   }
   const implementationForest = implementationRoutineForest(code);
+  addDeclarationHeaders(text, code, routineNodes);
   const visibleTypeOffsets = new Set(allTypeNodes.map(type => type.offset));
   const hiddenOwners = new Set(typeDefinitions.filter(type => !visibleTypeOffsets.has(type.offset))
     .map(type => type.symbol.toLowerCase()));
   reconcileClassRoutineCounterparts(text, code, allTypeNodes, rootTypeNodes, routineNodes,
     implementationForest, source?.unitName, hiddenOwners);
+  reconcileGlobalRoutineCounterparts(text, code, uniqueGlobals, routineNodes, implementationForest);
+  if (settings.showGlobalRoutines && uniqueGlobals.length && !roots.some(node => node.kind === 'global-group')) {
+    roots.push({ id: 'root:global', kind: 'global-group', label: 'global', children: uniqueGlobals });
+  }
   for (const type of allTypeNodes) {
     // Nested types and the properties group retain their leading positions.
     const methods = type.children.filter(node => node.kind === 'routine')
@@ -1245,6 +1223,7 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
 
   const globalRoot = roots.find(node => node.kind === 'global-group');
   nestLocalRoutines(code, routineNodes, globalRoot, implementationForest);
+  addDeclarationHeaders(text, code, routineNodes);
   if (globalRoot && globalRoot.children.length === 0) {
     roots.splice(roots.indexOf(globalRoot), 1);
   }
@@ -1281,6 +1260,7 @@ function buildClassNavigatorModel(text, filePath = '', options = {}) {
     roots,
     routineNodes,
     implementationNodes,
+    implementationRoutines: implementationForest,
     declarationNodes,
     propertyNodes,
     typeNodes,
@@ -3329,6 +3309,17 @@ function registerClassNavigator(context, output, vscodeApi, projectProvider, pro
       updatePresentation();
       scheduleFollow('cursor');
     }),
+    vscode.commands.registerCommand('pascalAtlas.createImplementation', createImplementationCommand(vscode, {
+      readyModel: document => provider.readyModel(document),
+      onCreated: () => {
+        // This explicit editor operation commits immediately through the same
+        // data-diff path as ordinary edits, without opening or rebuilding the view.
+        lastDocumentEditAt = 0;
+        navigationLock = undefined;
+        navigationHoldUntil = 0;
+        refresh('cursor', true);
+      }
+    })),
     vscode.commands.registerCommand('pascalAtlas.classNavigator.selectSort', () => {
       if (navigatorMode !== 'class') return;
       if (tree.sortPanelOpen) return tree.hideSort();

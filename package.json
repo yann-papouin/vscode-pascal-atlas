@@ -356,6 +356,10 @@
 				"shortTitle": "Insert GUID"
 			},
 			{
+				"command": "pascalAtlas.createImplementation",
+				"title": "Pascal Atlas: Create Routine Implementation"
+			},
+			{
 				"command": "pascalAtlas.addUnit",
 				"title": "Pascal Atlas: Add Unit to uses",
 				"shortTitle": "Add Unit to uses"
@@ -386,6 +390,11 @@
 			}
 		],
 		"keybindings": [
+			{
+				"command": "pascalAtlas.createImplementation",
+				"key": "ctrl+shift+c",
+				"when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(pascal|objectpascal)$/ && config.pascalAtlas.enabled"
+			},
 			{
 				"command": "pascalAtlas.classNavigator.find",
 				"key": "ctrl+alt+n",

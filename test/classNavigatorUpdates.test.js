@@ -7,6 +7,7 @@ const {
   buildClassNavigatorModel, ClassNavigatorProvider, serializeNavigatorNode
 } = require('../src/classNavigator');
 const { ClassNavigatorWebview, navigatorWebviewHtml } = require('../src/classNavigatorWebview');
+const { planRoutineImplementation } = require('../src/implementationCore');
 
 class Emitter {
   listeners = new Set();
@@ -359,4 +360,38 @@ test('counterpart repairs clear red styling through a patch and retain the selec
     assert.equal(client.document.activeElement, row);
     assert.doesNotMatch(row.title, /Missing (implementation|declaration)/);
   }
+});
+
+test('generated implementations repair the selected Navigator row through a data patch', async () => {
+  const client = clientHarness();
+  let source = SOURCE.replace('    procedure Last;', '    procedure Missing;\n    procedure Last;');
+  let model = modelFor(source);
+  const messages = [];
+  const tree = new ClassNavigatorWebview({ EventEmitter: Emitter }, 'test', {
+    getRoots: () => model.roots, serializeNode: serializeNavigatorNode,
+    nodePath: node => node?.parent ? [node.parent.id] : []
+  });
+  tree.webview = { postMessage: message => {
+    const payload = JSON.parse(JSON.stringify(message));
+    messages.push(payload); client.send(payload); return Promise.resolve(true);
+  } };
+  tree.handleMessage({ type: 'ready' });
+  const routine = model.routineNodes.find(node => node.name === 'Missing');
+  await tree.reveal(routine, { select: true });
+  const row = client.row(routine.id);
+  row.focus();
+  const before = client.counts();
+  const plan = planRoutineImplementation(source, model, routine.declarationStartOffset);
+  assert.equal(plan.reason, undefined);
+  source = source.slice(0, plan.offset) + plan.text + source.slice(plan.offset);
+  model = modelFor(source);
+  tree.refresh();
+  assert.equal(messages.at(-1).type, 'patch');
+  assert.equal(messages.at(-1).upsert.length, 1);
+  assert.equal(client.row(routine.id), row);
+  assert.equal(row.classList.contains('missing-counterpart'), false);
+  assert.equal(row.classList.contains('selected'), true);
+  assert.equal(client.document.activeElement, row);
+  assert.equal(client.row(routine.parent.id).getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(client.counts(), before);
 });
