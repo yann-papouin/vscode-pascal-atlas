@@ -683,7 +683,53 @@ function findInlineVariableDeclarationEnd(
 }
 
 /**
+ * Finds lines beginning inside routine parameter lists in comment-masked code.
+ * Tracks nested signatures separately from call parentheses so inline variables in
+ * anonymous routine bodies remain eligible for continuation alignment.
+ */
+function findRoutineParameterLineIndexes(codeLines: string[]) {
+  const lineIndexes = new Set<number>()
+  const parameterDepths = new Set<number>()
+  let parenthesisDepth = 0
+  let awaitingParameters = false
+  let previousToken = ""
+
+  for (let lineIndex = 0; lineIndex < codeLines.length; lineIndex += 1) {
+    // A final `var` parameter is inside the signature even when its closing
+    // parenthesis appears on the same line.
+    if (parameterDepths.size > 0) {
+      lineIndexes.add(lineIndex)
+    }
+    for (const match of codeLines[lineIndex].matchAll(/&?[A-Za-z_]\w*|[().;]/g)) {
+      const token = match[0].toLowerCase()
+      if (token === "(") {
+        parenthesisDepth += 1
+        if (awaitingParameters) {
+          parameterDepths.add(parenthesisDepth)
+          awaitingParameters = false
+        }
+      } else if (token === ")") {
+        parameterDepths.delete(parenthesisDepth)
+        parenthesisDepth = Math.max(0, parenthesisDepth - 1)
+      } else if (token === ";" || token === PascalKeyword.Begin) {
+        awaitingParameters = false
+      } else if (
+        !token.startsWith("&") &&
+        previousToken !== "." &&
+        DECLARATION_PATTERN.test(token)
+      ) {
+        awaitingParameters = true
+      }
+      previousToken = token
+    }
+  }
+
+  return lineIndexes
+}
+
+/**
  * Aligns statements following a multiline inline-variable declaration to its indent.
+ * Wrapped `var` parameters inside parentheses are not inline-variable declarations.
  * @param {string[]} lines Pascal source lines.
  * @param {{includeBlankLineIndexes?:number[]}} [options] Blank lines eligible for alignment.
  * @returns {string[]} New lines with declaration continuations aligned.
@@ -698,12 +744,17 @@ function normalizeInlineVariableContinuations(
   const codeLines = maskPascalLines(lines)
   const result = [...lines]
   const includeBlankLineIndexes = new Set(options.includeBlankLineIndexes ?? [])
+  const parameterLineIndexes = findRoutineParameterLineIndexes(codeLines)
 
   for (
     let declarationIndex = 0;
     declarationIndex < result.length - 1;
     declarationIndex += 1
   ) {
+    if (parameterLineIndexes.has(declarationIndex)) {
+      continue
+    }
+
     const declarationEnd = findInlineVariableDeclarationEnd(codeLines, declarationIndex)
     if (declarationEnd < 0) {
       continue
