@@ -2,7 +2,7 @@
   "name": "pascal-atlas",
   "displayName": "Pascal Atlas",
   "description": "%pascalAtlas.description%",
-  "version": "0.8.117",
+  "version": "0.9.0",
   "publisher": "yannpapouin",
   "author": "Yann Papouin",
   "icon": "media/pascal-atlas-icon.png",
@@ -2352,6 +2352,11 @@
     }
   },
   "scripts": {
+    "bump": "npm version --no-git-tag-version",
+    "bump:patch": "npm run bump -- patch",
+    "bump:minor": "npm run bump -- minor",
+    "bump:major": "npm run bump -- major",
+    "bump:prerelease": "npm run bump -- prerelease",
     "check-types": "tsc --noEmit && tsc -p tsconfig.webview.json",
     "build": "tsc && tsc -p tsconfig.webview.json && npm run build:webviews",
     "build:webviews": "esbuild src/webview/classNavigatorClient.ts src/webview/controlCenterClient.ts --bundle --platform=browser --format=iife --target=es2022 --outdir=out/webview --sourcemap",
