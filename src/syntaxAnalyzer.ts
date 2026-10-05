@@ -125,6 +125,7 @@ function tokenizePascal(text: string, options: SyntaxOptions = {}) {
     if (
       directive.name === CompilerDirective.IFDEF ||
       directive.name === CompilerDirective.IFNDEF ||
+      directive.name === CompilerDirective.IFOPT ||
       directive.name === CompilerDirective.IF
     ) {
       let condition
@@ -132,7 +133,11 @@ function tokenizePascal(text: string, options: SyntaxOptions = {}) {
         condition = defines.has(directive.argument.toUpperCase())
       else if (directive.name === CompilerDirective.IFNDEF)
         condition = !defines.has(directive.argument.toUpperCase())
-      else condition = evaluateIfExpression(directive.argument, defines)
+      else if (directive.name === CompilerDirective.IFOPT) {
+        // Compiler switch state is unavailable here; use the same active-first-branch
+        // fallback as unsupported IF expressions while still tracking block nesting.
+        condition = true
+      } else condition = evaluateIfExpression(directive.argument, defines)
       conditionals.push({
         offset,
         parentActive,

@@ -168,6 +168,22 @@ test("syntax worker preserves document identity and reports diagnostic offsets",
   )
 })
 
+test("syntax worker accepts an IFOPT range-check conditional without orphan diagnostics", async () => {
+  const request = {
+    id: 32,
+    uri: "file:///RangeCheck.pas",
+    version: 8,
+    text: "{$IFOPT R+} {$DEFINE RANGECHECK} {$ELSE} {$UNDEF RANGECHECK} {$ENDIF} {$R-}",
+  } satisfies SyntaxRequest
+  const response = await workerReply("syntaxWorker.js", request)
+  assert.deepEqual(response, {
+    id: request.id,
+    uri: request.uri,
+    version: request.version,
+    diagnostics: [],
+  })
+})
+
 for (const [entrypoint, request] of [
   ["compiledSymbolWorker.js", { id: 41, operation: "unsupported", text: "" }],
   ["sourceIndexWorker.js", { id: 42, text: 123, filePath: "Invalid.pas" }],

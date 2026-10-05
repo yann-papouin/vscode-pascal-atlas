@@ -127,6 +127,7 @@ export type PascalKeywordValue = (typeof PascalKeyword)[keyof typeof PascalKeywo
 export const CompilerDirective = Object.freeze({
   IFDEF: "IFDEF",
   IFNDEF: "IFNDEF",
+  IFOPT: "IFOPT",
   IF: "IF",
   ELSEIF: "ELSEIF",
   ELSE: "ELSE",

@@ -888,7 +888,7 @@ function conditionalDepthAt(text: string, offset: number) {
     if (comment.start >= offset) break
     if (!comment.directive) continue
     const match = new RegExp(
-      String.raw`^(?:\{|\(\*)\s*\$\s*(${CompilerDirective.IFDEF}|${CompilerDirective.IFNDEF}|IFOPT|${CompilerDirective.IF}|${CompilerDirective.ENDIF}|${CompilerDirective.IFEND})\b`,
+      String.raw`^(?:\{|\(\*)\s*\$\s*(${CompilerDirective.IFDEF}|${CompilerDirective.IFNDEF}|${CompilerDirective.IFOPT}|${CompilerDirective.IF}|${CompilerDirective.ENDIF}|${CompilerDirective.IFEND})\b`,
       "i",
     ).exec(text.slice(comment.start, comment.end))
     if (match)
