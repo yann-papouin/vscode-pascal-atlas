@@ -65,11 +65,18 @@ const KEYWORD_HIGHLIGHT_SELECTOR = [
   ...SELECTOR,
   { language: LanguageId.Platform, scheme: UriScheme.File },
 ]
+/**
+ * Ask for a destination and save the active/default formatter rule profile as editable
+ * UTF-8 JSON, doing nothing when the dialog is cancelled.
+ */
 async function saveStyleProfile(output: vscode.LogOutputChannel) {
   const configuration = vscode.workspace.getConfiguration("pascalAtlas.formatter")
   const usingDefault = configuration.get("style.useDefault", true)
   const profile = createStyleProfile(
-    (key, defaultValue) => configuration.get(key, defaultValue),
+    /** Read a configured formatter setting with its profile default. */ (
+      key,
+      defaultValue,
+    ) => configuration.get(key, defaultValue),
     usingDefault,
   )
   const uri = await vscode.window.showSaveDialog({
@@ -93,6 +100,10 @@ async function saveStyleProfile(output: vscode.LogOutputChannel) {
   void vscode.window.showInformationMessage(message)
 }
 
+/**
+ * Read and validate a chosen formatting profile, enable custom styling, and update its
+ * rule values at workspace or global scope.
+ */
 async function loadStyleProfile(output: vscode.LogOutputChannel) {
   const uris = await vscode.window.showOpenDialog({
     title: "Load Pascal Atlas Formatting Profile",
@@ -118,6 +129,10 @@ async function loadStyleProfile(output: vscode.LogOutputChannel) {
   )
 }
 
+/**
+ * Recognize ordinary Pascal/Object Pascal documents eligible for formatting commands
+ * and on-type edits.
+ */
 function isPascal(document: vscode.TextDocument) {
   return (
     document.languageId === LanguageId.Pascal ||
@@ -125,10 +140,12 @@ function isPascal(document: vscode.TextDocument) {
   )
 }
 
+/** Read formatter settings in the optional document URI scope. */
 function formatterConfiguration(document?: Pick<vscode.TextDocument, "uri">) {
   return vscode.workspace.getConfiguration("pascalAtlas.formatter", document?.uri)
 }
 
+/** Require both Pascal Atlas and its formatter to be enabled for the document. */
 function formatterEnabled(document: vscode.TextDocument) {
   return (
     vscode.workspace
@@ -138,6 +155,10 @@ function formatterEnabled(document: vscode.TextDocument) {
   )
 }
 
+/**
+ * Select the configured line scope for semicolon, closing-parenthesis, or newline
+ * formatting triggers.
+ */
 function onTypeScope(document: vscode.TextDocument, character: string) {
   const configuration = formatterConfiguration(document)
   if (character === ";")
@@ -147,10 +168,17 @@ function onTypeScope(document: vscode.TextDocument, character: string) {
   return configuration.get("onType.enter.scope", "currentAndPrevious")
 }
 
+/**
+ * Check whether an on-type scope includes a requested current/previous-line operation.
+ */
 function scopeIncludes(scope: string, part: string) {
   return scope === part || scope === "currentAndPrevious"
 }
 
+/**
+ * Resolve the configured or installed RAD Studio formatter path for the document's
+ * settings scope.
+ */
 function findFormatterExecutable(document: vscode.TextDocument | undefined) {
   const configured = formatterConfiguration(document).get("executablePath", "").trim()
   if (configured) {
@@ -169,9 +197,21 @@ function findFormatterExecutable(document: vscode.TextDocument | undefined) {
 
   const versions = fs
     .readdirSync(studioRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }))
+    .filter(
+      /** Select formatter installation subdirectories. */ (entry) =>
+        entry.isDirectory(),
+    )
+    .map(
+      /** Extract local formatter subdirectory names from directory entries. */ (
+        entry,
+      ) => entry.name,
+    )
+    .sort(
+      /**
+       * Prefer the newest formatter subdirectory using descending numeric name
+       * ordering.
+       */ (left, right) => right.localeCompare(left, undefined, { numeric: true }),
+    )
 
   for (const version of versions) {
     const candidate = path.join(studioRoot, version, "bin", "Formatter.exe")
@@ -183,44 +223,71 @@ function findFormatterExecutable(document: vscode.TextDocument | undefined) {
   return undefined
 }
 
+/**
+ * Execute the local formatter hidden with cancellation support, settling its
+ * completion/error promise and disposing the cancellation subscription.
+ */
 function runFormatter(
   executable: string,
   args: readonly string[],
   workingDirectory: string,
   cancellationToken: vscode.CancellationToken,
 ) {
-  return new Promise<void>((resolve, reject) => {
-    const child = execFile(
-      executable,
-      args,
-      { cwd: workingDirectory, windowsHide: true, maxBuffer: 1024 * 1024 },
-      (error, stdout, stderr) => {
-        cancellationSubscription.dispose()
-        if (error) {
-          reject(new Error(stderr?.trim() || stdout?.trim() || error.message))
-        } else {
-          resolve()
-        }
-      },
-    )
+  return new Promise<void>(
+    /**
+     * Connect formatter process completion and cancellation to the returned promise.
+     */ (resolve, reject) => {
+      const child = execFile(
+        executable,
+        args,
+        { cwd: workingDirectory, windowsHide: true, maxBuffer: 1024 * 1024 },
+        /**
+         * Release formatter cancellation handling and resolve success or reject with
+         * process output.
+         */ (error, stdout, stderr) => {
+          cancellationSubscription.dispose()
+          if (error) {
+            reject(new Error(stderr?.trim() || stdout?.trim() || error.message))
+          } else {
+            resolve()
+          }
+        },
+      )
 
-    const cancellationSubscription = cancellationToken.onCancellationRequested(() => {
-      child.kill()
-      reject(new vscode.CancellationError())
-    })
-  })
+      const cancellationSubscription = cancellationToken.onCancellationRequested(
+        /**
+         * Kill the formatter process and reject its result when cancellation is requested.
+         */ () => {
+          child.kill()
+          reject(new vscode.CancellationError())
+        },
+      )
+    },
+  )
 }
 
+/**
+ * Quote an executable/logging argument using Windows-safe backslash/quote escaping
+ * when whitespace or quotes require it.
+ */
 function quoteCommandArgument(argument: string) {
   const value = String(argument)
   if (!/[\s"]/.test(value)) return value
   return `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, "$1$1")}"`
 }
 
+/**
+ * Render the formatter executable and arguments as a readable quoted command line for
+ * logs.
+ */
 function formatCommandLine(executable: string, args: string[]) {
   return [executable, ...args].map(quoteCommandArgument).join(" ")
 }
 
+/**
+ * Format an isolated source copy with the configured local Formatter.exe, postprocess
+ * its output, restore protected caret lines, and always clean temporary files.
+ */
 async function formatDocument(
   context: { asAbsolutePath: (relativePath: string) => string },
   document: vscode.TextDocument,
@@ -232,14 +299,18 @@ async function formatDocument(
     const message =
       "Embarcadero Formatter.exe was not found. Configure pascalAtlas.formatter.executablePath."
     output.error(message)
-    void vscode.window.showErrorMessage(message, "Open Settings").then((choice) => {
-      if (choice === "Open Settings") {
-        void vscode.commands.executeCommand(
-          "workbench.action.openSettings",
-          "pascalAtlas.formatter.executablePath",
-        )
-      }
-    })
+    void vscode.window.showErrorMessage(message, "Open Settings").then(
+      /** Open formatter settings when the user selects the offered setup action. */ (
+        choice,
+      ) => {
+        if (choice === "Open Settings") {
+          void vscode.commands.executeCommand(
+            "workbench.action.openSettings",
+            "pascalAtlas.formatter.executablePath",
+          )
+        }
+      },
+    )
     return undefined
   }
 
@@ -273,6 +344,7 @@ async function formatDocument(
             continue
           }
           let marker = `__DELPHI_PERSONAL_FORMATTER_CARET_${lineNumber}__`
+          // Choose a marker absent from the source so genuine comment text cannot be mistaken for a protected caret line.
           while (source.includes(marker)) {
             marker = `${marker}_`
           }
@@ -293,7 +365,10 @@ async function formatDocument(
     const formatterConfig = resolveFormatterConfig(
       baseConfig,
       configuration.get("style.useDefault", true),
-      (key, defaultValue) => configuration.get(key, defaultValue),
+      /** Read a document-scoped formatter setting with its profile default. */ (
+        key,
+        defaultValue,
+      ) => configuration.get(key, defaultValue),
     )
     await Promise.all([
       fs.promises.writeFile(
@@ -338,7 +413,10 @@ async function formatDocument(
       text: formatted,
       caretPositions: protectedBlankLines
         .filter(
-          (
+          /**
+           * Keep blank-line protections with both resolved line and character
+           * positions.
+           */ (
             protection,
           ): protection is BlankLineProtection & {
             selectionIndexes: number[]
@@ -348,17 +426,27 @@ async function formatDocument(
             protection.resolvedLineNumber !== undefined &&
             protection.resolvedCharacter !== undefined,
         )
-        .map((protection) => ({
-          lineNumber: protection.resolvedLineNumber,
-          character: protection.resolvedCharacter,
-          selectionIndexes: protection.selectionIndexes,
-        })),
+        .map(
+          /**
+           * Carry resolved blank-line positions and their affected selection indexes
+           * into caret restoration.
+           */ (protection) => ({
+            lineNumber: protection.resolvedLineNumber,
+            character: protection.resolvedCharacter,
+            selectionIndexes: protection.selectionIndexes,
+          }),
+        ),
     }
   } finally {
+    // The formatter works only on the isolated copy; its temporary source/config files must be removed on cancellation or failure too.
     await fs.promises.rm(temporaryDirectory, { recursive: true, force: true })
   }
 }
 
+/**
+ * Compute a local line replacement under current normalization settings, retaining
+ * comment state and returning undefined when no text change is needed.
+ */
 function lineFormattingEdit(
   document: vscode.TextDocument,
   lineNumber: number,
@@ -370,8 +458,10 @@ function lineFormattingEdit(
 
   let lines = Array.from(
     { length: document.lineCount },
-    (_, index) => document.lineAt(index).text,
+    /** Create the next initialized entry used by line formatting edit. */ (_, index) =>
+      document.lineAt(index).text,
   )
+  // Recover lexical state from preceding lines before applying spacing rules; an apparent code line may still be inside a block comment.
   const initialCommentState = commentStateBeforeLine(lines, lineNumber)
   const trimmedTarget = lines[lineNumber].trimStart()
   const isContinuationSlotLine =
@@ -437,6 +527,10 @@ function lineFormattingEdit(
     : vscode.TextEdit.replace(line.range, lines[lineNumber])
 }
 
+/**
+ * Adjust only indentation for an eligible blank/closing-delimiter continuation line,
+ * leaving other document text unchanged.
+ */
 function continuationFormattingEdit(document: vscode.TextDocument, lineNumber: number) {
   const targetText =
     lineNumber >= 0 && lineNumber < document.lineCount
@@ -454,7 +548,10 @@ function continuationFormattingEdit(document: vscode.TextDocument, lineNumber: n
 
   let lines = Array.from(
     { length: document.lineCount },
-    (_, index) => document.lineAt(index).text,
+    /** Create the next initialized entry used by continuation formatting edit. */ (
+      _,
+      index,
+    ) => document.lineAt(index).text,
   )
   lines = alignWrappedParameters(lines, { alignBlankLineIndexes: [lineNumber] })
 
@@ -485,6 +582,10 @@ function continuationFormattingEdit(document: vscode.TextDocument, lineNumber: n
       )
 }
 
+/**
+ * Register structural keyword occurrence/highlight providers and reusable editor
+ * decorations, with settings-aware debounced refresh and complete disposal.
+ */
 function registerKeywordHighlighting(context: { subscriptions: vscode.Disposable[] }) {
   const uniformFontDecoration = vscode.window.createTextEditorDecorationType({
     fontWeight: "normal",
@@ -521,6 +622,10 @@ function registerKeywordHighlighting(context: { subscriptions: vscode.Disposable
 
   context.subscriptions.push(
     vscode.languages.registerDocumentHighlightProvider(KEYWORD_HIGHLIGHT_SELECTOR, {
+      /**
+       * Return the structural keyword group at the caret only when the extension is
+       * enabled, leaving unmatched symbols to other providers.
+       */
       provideDocumentHighlights(document, position) {
         if (
           !vscode.workspace
@@ -532,7 +637,9 @@ function registerKeywordHighlighting(context: { subscriptions: vscode.Disposable
         const matches = findDelphiKeywordMatchGroup(document.getText(), position)
         if (!matches) return undefined
         return matches.map(
-          (match) =>
+          /** Convert matching Pascal keyword spans to textual document highlights. */ (
+            match,
+          ) =>
             new vscode.DocumentHighlight(
               new vscode.Range(match.line, match.start, match.line, match.end),
               vscode.DocumentHighlightKind.Text,
@@ -549,15 +656,23 @@ function registerKeywordHighlighting(context: { subscriptions: vscode.Disposable
     fieldDecoration,
     commentDecoration,
     {
-      dispose: () => {
-        for (const decorations of blockDecorationSets.values()) {
-          decorations.forEach((decoration) => decoration.dispose())
-        }
-        blockDecorationSets.clear()
-      },
+      dispose:
+        /** Dispose all block decoration variants and release their cached sets. */ () => {
+          for (const decorations of blockDecorationSets.values()) {
+            decorations.forEach(
+              /** Release each cached block decoration type. */ (decoration) =>
+                decoration.dispose(),
+            )
+          }
+          blockDecorationSets.clear()
+        },
     },
   )
 
+  /**
+   * Cache one decoration set per validated structural color palette so editors sharing
+   * a palette reuse the same resources.
+   */
   const blockDecorationsFor = (document: vscode.TextDocument) => {
     const colors = normalizeBlockLevelColors(
       formatterConfiguration(document).get(
@@ -565,31 +680,49 @@ function registerKeywordHighlighting(context: { subscriptions: vscode.Disposable
         DEFAULT_BLOCK_LEVEL_COLORS,
       ),
     )
-    const key = colors.map((color) => color.toUpperCase()).join(",")
+    const key = colors
+      .map(
+        /** Normalize colors for stable decoration-cache keys. */ (color) =>
+          color.toUpperCase(),
+      )
+      .join(",")
     if (!blockDecorationSets.has(key)) {
       blockDecorationSets.set(
         key,
-        colors.map((color) =>
-          vscode.window.createTextEditorDecorationType({
+        colors.map(
+          /** Create a VS Code decoration type for each nesting-level color. */ (
             color,
-          }),
+          ) =>
+            vscode.window.createTextEditorDecorationType({
+              color,
+            }),
         ),
       )
     }
     return blockDecorationSets.get(key) || []
   }
 
+  /**
+   * Remove every cached block-palette decoration from an editor before replacing or
+   * disabling its structural coloring.
+   */
   const clearBlockDecorations = (
     editor: vscode.TextEditor,
     retainedDecorations?: vscode.TextEditorDecorationType[],
   ) => {
     for (const decorations of blockDecorationSets.values()) {
       if (decorations === retainedDecorations) continue
-      decorations.forEach((decoration) => editor.setDecorations(decoration, []))
+      decorations.forEach(
+        /** Remove every decoration in this set from the editor. */ (decoration) =>
+          editor.setDecorations(decoration, []),
+      )
     }
   }
 
-  const refreshEditor = (editor: vscode.TextEditor | undefined) => {
+  const refreshEditor = /**
+   * Refresh one Pascal editor using current enablement, font, and syntax-highlighting
+   * settings.
+   */ (editor: vscode.TextEditor | undefined) => {
     if (!editor || !isPascal(editor.document)) {
       return
     }
@@ -635,8 +768,15 @@ function registerKeywordHighlighting(context: { subscriptions: vscode.Disposable
       indentSize: configuration.get("style.indentation.indentSize", 2),
       blockLevelCount: blockLevelDecorations.length,
     })
-    const toRanges = (items: { line: number; start: number; end: number }[]) =>
-      items.map((item) => new vscode.Range(item.line, item.start, item.line, item.end))
+    const toRanges =
+      /** Convert line-relative highlight spans to VS Code decoration ranges. */ (
+        items: { line: number; start: number; end: number }[],
+      ) =>
+        items.map(
+          /** Convert one line-relative highlight span into a VS Code range. */ (
+            item,
+          ) => new vscode.Range(item.line, item.start, item.line, item.end),
+        )
     editor.setDecorations(
       classDecoration,
       toRanges([
@@ -652,11 +792,14 @@ function registerKeywordHighlighting(context: { subscriptions: vscode.Disposable
       selfKeywordDecoration,
       toRanges(findDelphiSelfKeywordHighlights(editor.document.getText())),
     )
-    blockLevelDecorations.forEach((decoration, index) =>
-      editor.setDecorations(
-        decoration,
-        toRanges(highlights.blockLevelKeywords[index] || []),
-      ),
+    blockLevelDecorations.forEach(
+      /**
+       * Apply each nesting-level keyword bucket using its matching decoration color.
+       */ (decoration, index) =>
+        editor.setDecorations(
+          decoration,
+          toRanges(highlights.blockLevelKeywords[index] || []),
+        ),
     )
     const paConfiguration = vscode.workspace.getConfiguration(
       ConfigurationSection,
@@ -688,47 +831,78 @@ function registerKeywordHighlighting(context: { subscriptions: vscode.Disposable
     )
   }
 
-  const refreshVisibleEditors = () =>
-    vscode.window.visibleTextEditors.forEach(refreshEditor)
+  const refreshVisibleEditors =
+    /** Refresh syntax decorations for all currently visible editors. */ () =>
+      vscode.window.visibleTextEditors.forEach(refreshEditor)
+  /**
+   * Debounce keyword highlighting and rebind its scheduled work to the live editor
+   * rather than a stale editor object.
+   */
   const scheduleRefresh = (document: vscode.TextDocument) => {
     const key = document.uri.toString()
     clearTimeout(pendingRefreshes.get(key))
     pendingRefreshes.set(
       key,
-      setTimeout(() => {
-        pendingRefreshes.delete(key)
-        vscode.window.visibleTextEditors
-          .filter((editor) => editor.document.uri.toString() === key)
-          .forEach(refreshEditor)
-      }, 50),
+      setTimeout(
+        /**
+         * Refresh all visible instances of this document after its debounce expires.
+         */ () => {
+          pendingRefreshes.delete(key)
+          vscode.window.visibleTextEditors
+            .filter(
+              /** Select visible editors displaying the scheduled document. */ (
+                editor,
+              ) => editor.document.uri.toString() === key,
+            )
+            .forEach(refreshEditor)
+        },
+        50,
+      ),
     )
   }
 
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(refreshEditor),
     vscode.window.onDidChangeVisibleTextEditors(refreshVisibleEditors),
-    vscode.workspace.onDidChangeTextDocument((event) =>
-      scheduleRefresh(event.document),
+    vscode.workspace.onDidChangeTextDocument(
+      /** Debounce keyword highlight updates for the changed document. */ (event) =>
+        scheduleRefresh(event.document),
     ),
-    vscode.workspace.onDidChangeConfiguration((event) => {
-      if (
-        event.affectsConfiguration(
-          "pascalAtlas.formatter.highlighting.blockLevelColors",
-        ) ||
-        event.affectsConfiguration("pascalAtlas.formatter.highlighting.enabled") ||
-        event.affectsConfiguration("pascalAtlas.formatter.enabled") ||
-        event.affectsConfiguration("pascalAtlas.coloring.enabled") ||
-        event.affectsConfiguration("pascalAtlas.enabled")
-      ) {
-        refreshVisibleEditors()
-      }
-    }),
-    { dispose: () => pendingRefreshes.forEach((timeout) => clearTimeout(timeout)) },
+    vscode.workspace.onDidChangeConfiguration(
+      /**
+       * Refresh visible keyword decorations when relevant formatter or coloring settings
+       * change.
+       */ (event) => {
+        if (
+          event.affectsConfiguration(
+            "pascalAtlas.formatter.highlighting.blockLevelColors",
+          ) ||
+          event.affectsConfiguration("pascalAtlas.formatter.highlighting.enabled") ||
+          event.affectsConfiguration("pascalAtlas.formatter.enabled") ||
+          event.affectsConfiguration("pascalAtlas.coloring.enabled") ||
+          event.affectsConfiguration("pascalAtlas.enabled")
+        ) {
+          refreshVisibleEditors()
+        }
+      },
+    ),
+    {
+      dispose:
+        /** Cancel pending editor decoration refresh timers during disposal. */ () =>
+          pendingRefreshes.forEach(
+            /** Cancel each delayed editor highlight refresh. */ (timeout) =>
+              clearTimeout(timeout),
+          ),
+    },
   )
 
   refreshVisibleEditors()
 }
 
+/**
+ * Register formatter commands/providers and guarded continuation/caret restoration
+ * handlers, retaining subscriptions and pending-work cleanup.
+ */
 function registerFormatter(
   context: Pick<vscode.ExtensionContext, "subscriptions" | "asAbsolutePath">,
 ) {
@@ -754,6 +928,10 @@ function registerFormatter(
       }[]
     }
   >()
+  /**
+   * Rebind to a visible editor and restore selections whose protected blank-line
+   * markers were resolved by document formatting.
+   */
   const applyCaretRestoration = (documentKey: string) => {
     const pending = pendingCaretRestorations.get(documentKey)
     if (!pending) {
@@ -761,7 +939,8 @@ function registerFormatter(
     }
     pendingCaretRestorations.delete(documentKey)
     const editor = vscode.window.visibleTextEditors.find(
-      (candidate) => candidate.document.uri.toString() === documentKey,
+      /** Find a visible editor for the saved document identity. */ (candidate) =>
+        candidate.document.uri.toString() === documentKey,
     )
     if (!editor) {
       return
@@ -789,30 +968,45 @@ function registerFormatter(
   registerKeywordHighlighting(context)
 
   context.subscriptions.push(
-    vscode.commands.registerCommand(CommandId.FormatterFormatDocument, () => {
-      return vscode.commands.executeCommand("editor.action.formatDocument")
-    }),
-    vscode.commands.registerCommand(CommandId.FormatterStyleSave, async () => {
-      try {
-        await saveStyleProfile(output)
-      } catch (error) {
-        output.error(error instanceof Error ? error : errorMessage(error))
-        void vscode.window.showErrorMessage(
-          `Failed to save formatting profile: ${errorMessage(error) ?? error}`,
-        )
-      }
-    }),
-    vscode.commands.registerCommand(CommandId.FormatterStyleLoad, async () => {
-      try {
-        await loadStyleProfile(output)
-      } catch (error) {
-        output.error(error instanceof Error ? error : errorMessage(error))
-        void vscode.window.showErrorMessage(
-          `Failed to load formatting profile: ${errorMessage(error) ?? error}`,
-        )
-      }
-    }),
+    vscode.commands.registerCommand(
+      CommandId.FormatterFormatDocument,
+      /** Invoke VS Code document formatting through the registered Pascal provider. */ () => {
+        return vscode.commands.executeCommand("editor.action.formatDocument")
+      },
+    ),
+    vscode.commands.registerCommand(
+      CommandId.FormatterStyleSave,
+      /**
+       * Save the current formatter style profile and report any persistence failure.
+       */ async () => {
+        try {
+          await saveStyleProfile(output)
+        } catch (error) {
+          output.error(error instanceof Error ? error : errorMessage(error))
+          void vscode.window.showErrorMessage(
+            `Failed to save formatting profile: ${errorMessage(error) ?? error}`,
+          )
+        }
+      },
+    ),
+    vscode.commands.registerCommand(
+      CommandId.FormatterStyleLoad,
+      /** Load the selected formatter style profile and report any loading failure. */ async () => {
+        try {
+          await loadStyleProfile(output)
+        } catch (error) {
+          output.error(error instanceof Error ? error : errorMessage(error))
+          void vscode.window.showErrorMessage(
+            `Failed to load formatting profile: ${errorMessage(error) ?? error}`,
+          )
+        }
+      },
+    ),
     vscode.languages.registerDocumentFormattingEditProvider(SELECTOR, {
+      /**
+       * Format a supported enabled document through the local formatter and return a
+       * replacement only when output differs, logging non-cancellation failures.
+       */
       async provideDocumentFormattingEdits(document, options, cancellationToken) {
         if (!formatterEnabled(document)) return []
         try {
@@ -831,7 +1025,13 @@ function registerFormatter(
               caretPositions: result.caretPositions,
             })
             if (result.text === document.getText()) {
-              setTimeout(() => applyCaretRestoration(documentKey), 0)
+              setTimeout(
+                /**
+                 * Restore the caret after document formatting edits have reached the
+                 * editor.
+                 */ () => applyCaretRestoration(documentKey),
+                0,
+              )
             }
           }
           if (result.text === document.getText()) {
@@ -856,53 +1056,64 @@ function registerFormatter(
         }
       },
     }),
-    vscode.workspace.onWillSaveTextDocument((event) => {
-      const document = event.document
-      if (
-        !formatterEnabled(document) ||
-        !formatterConfiguration(document).get("formatOnSave", true)
-      )
-        return
+    vscode.workspace.onWillSaveTextDocument(
+      /** Queue enabled format-on-save edits through the save event lifetime. */ (
+        event,
+      ) => {
+        const document = event.document
+        if (
+          !formatterEnabled(document) ||
+          !formatterConfiguration(document).get("formatOnSave", true)
+        )
+          return
 
-      const cancellation = new vscode.CancellationTokenSource()
-      event.waitUntil(
-        (async () => {
-          try {
-            const result = await formatDocument(
-              context,
-              document,
-              cancellation.token,
-              output,
-            )
-            if (!result || result.text === document.getText()) return []
-            const lastLine = document.lineAt(document.lineCount - 1)
-            const range = new vscode.Range(
-              0,
-              0,
-              document.lineCount - 1,
-              lastLine.text.length,
-            )
-            return [vscode.TextEdit.replace(range, result.text)]
-          } catch (error) {
-            if (!(error instanceof vscode.CancellationError)) {
-              output.error(error instanceof Error ? error : errorMessage(error))
-              void vscode.window.showErrorMessage(
-                `Delphi formatting failed: ${errorMessage(error) ?? error}`,
+        const cancellation = new vscode.CancellationTokenSource()
+        event.waitUntil(
+          /**
+           * Format the saved document and return a whole-document edit only when its
+           * text changes.
+           */ (async () => {
+            try {
+              const result = await formatDocument(
+                context,
+                document,
+                cancellation.token,
+                output,
               )
+              if (!result || result.text === document.getText()) return []
+              const lastLine = document.lineAt(document.lineCount - 1)
+              const range = new vscode.Range(
+                0,
+                0,
+                document.lineCount - 1,
+                lastLine.text.length,
+              )
+              return [vscode.TextEdit.replace(range, result.text)]
+            } catch (error) {
+              if (!(error instanceof vscode.CancellationError)) {
+                output.error(error instanceof Error ? error : errorMessage(error))
+                void vscode.window.showErrorMessage(
+                  `Delphi formatting failed: ${errorMessage(error) ?? error}`,
+                )
+              }
+              return []
+            } finally {
+              cancellation.dispose()
             }
-            return []
-          } finally {
-            cancellation.dispose()
-          }
-        })(),
-      )
-    }),
+          })(),
+        )
+      },
+    ),
   )
 
   context.subscriptions.push(
     vscode.languages.registerOnTypeFormattingEditProvider(
       SELECTOR,
       {
+        /**
+         * Translate the typed trigger into configured line-formatting requests and
+         * return only changed-line edits.
+         */
         provideOnTypeFormattingEdits(document, position, character) {
           if (
             !formatterEnabled(document) ||
@@ -912,10 +1123,20 @@ function registerFormatter(
           const scope = onTypeScope(document, character)
           const lineRequests = onTypeLineRequests(position.line, character, scope)
           const edits = lineRequests
-            .map(({ lineNumber, alignBlankContinuationLine }) =>
-              lineFormattingEdit(document, lineNumber, { alignBlankContinuationLine }),
+            .map(
+              /**
+               * Compute each requested line-formatting edit with its continuation
+               * alignment policy.
+               */ ({ lineNumber, alignBlankContinuationLine }) =>
+                lineFormattingEdit(document, lineNumber, {
+                  alignBlankContinuationLine,
+                }),
             )
-            .filter((edit): edit is vscode.TextEdit => Boolean(edit))
+            .filter(
+              /** Discard line-formatting requests that produced no edit. */ (
+                edit,
+              ): edit is vscode.TextEdit => Boolean(edit),
+            )
 
           if (formatterConfiguration(document).get("onType.logging", false)) {
             output.info(
@@ -932,68 +1153,119 @@ function registerFormatter(
   )
 
   context.subscriptions.push(
-    vscode.workspace.onDidChangeTextDocument((event) => {
-      const document = event.document
-      const documentKey = document.uri.toString()
-      if (pendingCaretRestorations.has(documentKey)) {
-        setTimeout(() => applyCaretRestoration(documentKey), 0)
-      }
-      if (
-        !isPascal(document) ||
-        !formatterEnabled(document) ||
-        !formatterConfiguration(document).get("onType.enabled", true) ||
-        !scopeIncludes(onTypeScope(document, "\n"), "currentLine") ||
-        applyingContinuationEdits.has(documentKey) ||
-        !vscode.workspace
-          .getConfiguration("editor", document.uri)
-          .get("formatOnType", false)
-      ) {
-        return
-      }
-
-      const destinationLines = event.contentChanges
-        .filter((change) => /^(?:\r?\n[ \t]*)+$/.test(change.text))
-        .map((change) => {
-          const newlineCount = change.text.match(/\r\n|\n/g)?.length ?? 0
-          return change.range.start.line + newlineCount
-        })
-      if (destinationLines.length === 0) {
-        return
-      }
-
-      const pending = pendingContinuationLines.get(documentKey) ?? {
-        document,
-        lineNumbers: new Set<number>(),
-        timeout: undefined,
-      }
-      destinationLines.forEach((lineNumber) => pending.lineNumbers.add(lineNumber))
-      clearTimeout(pending.timeout)
-      pending.timeout = setTimeout(() => {
-        pendingContinuationLines.delete(documentKey)
-        const edits = [...pending.lineNumbers]
-          .map((lineNumber) => continuationFormattingEdit(pending.document, lineNumber))
-          .filter((edit): edit is vscode.TextEdit => Boolean(edit))
-        if (formatterConfiguration(pending.document).get("onType.logging", false)) {
-          output.info(
-            `Post-Enter continuation indentation on line(s) ${[...pending.lineNumbers].map((line) => line + 1).join(", ")}; changed=${edits.length > 0}.`,
+    vscode.workspace.onDidChangeTextDocument(
+      /**
+       * Restore pending caret state and schedule eligible Enter continuation edits for
+       * the changed document.
+       */ (event) => {
+        const document = event.document
+        const documentKey = document.uri.toString()
+        if (pendingCaretRestorations.has(documentKey)) {
+          setTimeout(
+            /**
+             * Restore the caret after the pending format-on-type edits have reached the
+             * editor.
+             */ () => applyCaretRestoration(documentKey),
+            0,
           )
         }
-        if (edits.length === 0) {
+        if (
+          !isPascal(document) ||
+          !formatterEnabled(document) ||
+          !formatterConfiguration(document).get("onType.enabled", true) ||
+          !scopeIncludes(onTypeScope(document, "\n"), "currentLine") ||
+          applyingContinuationEdits.has(documentKey) ||
+          !vscode.workspace
+            .getConfiguration("editor", document.uri)
+            .get("formatOnType", false)
+        ) {
           return
         }
 
-        const workspaceEdit = new vscode.WorkspaceEdit()
-        workspaceEdit.set(pending.document.uri, edits)
-        applyingContinuationEdits.add(documentKey)
-        void Promise.resolve(vscode.workspace.applyEdit(workspaceEdit)).finally(() =>
-          applyingContinuationEdits.delete(documentKey),
+        const destinationLines = event.contentChanges
+          .filter(
+            /**
+             * Select Enter changes containing only newlines and optional indentation.
+             */ (change) => /^(?:\r?\n[ \t]*)+$/.test(change.text),
+          )
+          .map(
+            /** Locate the destination line after each inserted newline sequence. */ (
+              change,
+            ) => {
+              const newlineCount = change.text.match(/\r\n|\n/g)?.length ?? 0
+              return change.range.start.line + newlineCount
+            },
+          )
+        if (destinationLines.length === 0) {
+          return
+        }
+
+        const pending = pendingContinuationLines.get(documentKey) ?? {
+          document,
+          lineNumbers: new Set<number>(),
+          timeout: undefined,
+        }
+        destinationLines.forEach(
+          /**
+           * Merge destination lines into the pending continuation-formatting request.
+           */ (lineNumber) => pending.lineNumbers.add(lineNumber),
         )
-      }, 0)
-      pendingContinuationLines.set(documentKey, pending)
-    }),
+        clearTimeout(pending.timeout)
+        pending.timeout = setTimeout(
+          /**
+           * Apply accumulated continuation indentation edits after the Enter debounce
+           * expires.
+           */ () => {
+            pendingContinuationLines.delete(documentKey)
+            const edits = [...pending.lineNumbers]
+              .map(
+                /** Compute continuation edits for the accumulated affected lines. */ (
+                  lineNumber,
+                ) => continuationFormattingEdit(pending.document, lineNumber),
+              )
+              .filter(
+                /** Discard continuation lines whose indentation already matches. */ (
+                  edit,
+                ): edit is vscode.TextEdit => Boolean(edit),
+              )
+            if (formatterConfiguration(pending.document).get("onType.logging", false)) {
+              output.info(
+                `Post-Enter continuation indentation on line(s) ${[
+                  ...pending.lineNumbers,
+                ]
+                  .map(
+                    /**
+                     * Convert pending zero-based continuation lines to display line numbers.
+                     */ (line) => line + 1,
+                  )
+                  .join(", ")}; changed=${edits.length > 0}.`,
+              )
+            }
+            if (edits.length === 0) {
+              return
+            }
+
+            const workspaceEdit = new vscode.WorkspaceEdit()
+            workspaceEdit.set(pending.document.uri, edits)
+            applyingContinuationEdits.add(documentKey)
+            void Promise.resolve(vscode.workspace.applyEdit(workspaceEdit)).finally(
+              /** Release the continuation-edit reentrancy guard on either outcome. */ () =>
+                applyingContinuationEdits.delete(documentKey),
+            )
+          },
+          0,
+        )
+        pendingContinuationLines.set(documentKey, pending)
+      },
+    ),
     {
-      dispose: () => {
-        pendingContinuationLines.forEach((pending) => clearTimeout(pending.timeout))
+      dispose: /**
+       * Cancel pending continuation timers and release saved caret restoration state.
+       */ () => {
+        pendingContinuationLines.forEach(
+          /** Cancel each pending continuation-formatting timer. */ (pending) =>
+            clearTimeout(pending.timeout),
+        )
         pendingCaretRestorations.clear()
       },
     },
@@ -1002,6 +1274,10 @@ function registerFormatter(
   output.info(`${EXTENSION_ID} activated. Document and on-type formatting are ready.`)
 }
 
+/**
+ * Migrate managed legacy formatter choices into Pascal Atlas without overwriting
+ * explicit user settings.
+ */
 async function migrateLegacyFormatterSettings() {
   const legacy = vscode.workspace.getConfiguration("delphiPersonalFormatter")
   const current = vscode.workspace.getConfiguration("pascalAtlas.formatter")

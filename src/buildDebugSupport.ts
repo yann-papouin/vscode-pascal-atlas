@@ -38,10 +38,18 @@ const DETAILS_KEY = "pascalAtlas.delphiProjectDetails.v1"
 // after the user scrolls upward even though the current viewport was redrawn.
 const CLEAR_ENTIRE_TERMINAL = "\x1b[2J\x1b[3J\x1b[H"
 
+/**
+ * Resolve supplied target paths and retain the first occurrence of each canonical
+ * directory/file identity.
+ */
 function uniquePaths(values: (string | undefined)[]) {
   const seen = new Set()
   const result = []
-  for (const value of values.filter((value): value is string => Boolean(value))) {
+  for (const value of values.filter(
+    /** Discard absent paths before resolving and deduplicating them. */ (
+      value,
+    ): value is string => Boolean(value),
+  )) {
     const resolved = path.resolve(value)
     const key = normalizeKey(resolved)
     if (!seen.has(key)) {
@@ -52,6 +60,10 @@ function uniquePaths(values: (string | undefined)[]) {
   return result
 }
 
+/**
+ * Split configured Run parameters into arguments while preserving quoted spaces and
+ * decoding supported escaped/doubled quotes.
+ */
 function parseCommandLine(value: string) {
   const result = []
   for (const match of String(value || "").matchAll(
@@ -64,6 +76,10 @@ function parseCommandLine(value: string) {
   return result
 }
 
+/**
+ * Extract a source diagnostic from supported dcc/MSBuild output, normalize its
+ * relative filename, and convert positions for VS Code Problems.
+ */
 function parseBuildDiagnosticLine(value: string, cwd = "") {
   let line = String(value || "").trim()
   line = line.replace(/^\[(?:ERROR|WARN)\]\s+/, "")
@@ -115,12 +131,20 @@ function parseBuildDiagnosticLine(value: string, cwd = "") {
   }
 }
 
+/**
+ * Classify terminal lines as errors, warnings, or other output using the build
+ * runner's explicit prefixes.
+ */
 function buildOutputCategory(line: string): BuildOutputCategory {
   if (/^\s*\[ERROR\]/i.test(line)) return "errors"
   if (/^\s*\[WARN\]/i.test(line)) return "warnings"
   return "other"
 }
 
+/**
+ * Apply ANSI emphasis to filtered build output by severity and build status without
+ * changing its stored plain-text form.
+ */
 function colorBuildOutputLine(line: string, category: string) {
   if (category === "errors" || /BUILD FAILED/i.test(line))
     return `\x1b[31m${line}\x1b[0m`
@@ -163,8 +187,15 @@ class RunDebugAdapter {
   sendEmitter
   onDidSendMessage
   completed
-  resolveCompleted: (value: number) => void = () => {}
+  resolveCompleted: (value: number) => void = /**
+   * Provide a no-op completion resolver until the terminal constructor installs the
+   * real one.
+   */ () => {}
 
+  /**
+   * Initialize the run-only Debug Adapter Protocol bridge and a promise that resolves
+   * when its launched process finishes.
+   */
   constructor(configuration: vscode.DebugConfiguration) {
     this.configuration = configuration
     this.sequence = 1
@@ -173,11 +204,17 @@ class RunDebugAdapter {
     this.process = undefined
     this.sendEmitter = new vscode.EventEmitter<RunProtocolMessage>()
     this.onDidSendMessage = this.sendEmitter.event
-    this.completed = new Promise<number>((resolve) => {
-      this.resolveCompleted = resolve
-    })
+    this.completed = new Promise<number>(
+      /**
+       * Connect asynchronous completion and rejection to the run debug adapter
+       * constructor promise.
+       */ (resolve) => {
+        this.resolveCompleted = resolve
+      },
+    )
   }
 
+  /** Emit a successful correlated DAP response with a monotonic sequence number. */
   sendResponse(
     request: { seq: number; command: string },
     body: Record<string, unknown> = {},
@@ -192,10 +229,15 @@ class RunDebugAdapter {
     })
   }
 
+  /** Emit a DAP event with its own sequence number and optional payload. */
   sendEvent(event: string, body: Record<string, unknown> = {}) {
     this.sendEmitter.fire({ type: "event", seq: this.sequence++, event, body })
   }
 
+  /**
+   * Validate and handle the run-only DAP request subset, acknowledging unsupported
+   * breakpoint/thread features without providing debugging semantics.
+   */
   handleMessage(value: unknown) {
     if (
       !isRecord(value) ||
@@ -235,6 +277,10 @@ class RunDebugAdapter {
     }
   }
 
+  /**
+   * Launch the configured program once with hidden process windows, forward output to
+   * Debug Console, and wire its completion/error events.
+   */
   start() {
     if (this.started) return
     this.started = true
@@ -259,30 +305,51 @@ class RunDebugAdapter {
       this.process = child
       const stdoutDecoder = new TextDecoder("utf-8")
       const stderrDecoder = new TextDecoder("utf-8")
-      child.stdout.on("data", (chunk) => {
-        const output = stdoutDecoder.decode(chunk, { stream: true })
-        if (output) this.sendEvent("output", { category: "stdout", output })
-      })
-      child.stderr.on("data", (chunk) => {
-        const output = stderrDecoder.decode(chunk, { stream: true })
-        if (output) this.sendEvent("output", { category: "stderr", output })
-      })
-      child.once("error", (error) => {
-        this.sendEvent("output", {
-          category: "stderr",
-          output: `[ERROR] ${error.message}\n`,
-        })
-        this.finish(1)
-      })
-      child.once("close", (code) => {
-        const stdoutTail = stdoutDecoder.decode()
-        const stderrTail = stderrDecoder.decode()
-        if (stdoutTail)
-          this.sendEvent("output", { category: "stdout", output: stdoutTail })
-        if (stderrTail)
-          this.sendEvent("output", { category: "stderr", output: stderrTail })
-        this.finish(code ?? 1)
-      })
+      child.stdout.on(
+        "data",
+        /** Decode stdout incrementally and forward it to the Debug Console. */ (
+          chunk,
+        ) => {
+          const output = stdoutDecoder.decode(chunk, { stream: true })
+          if (output) this.sendEvent("output", { category: "stdout", output })
+        },
+      )
+      child.stderr.on(
+        "data",
+        /** Decode stderr incrementally and forward it to the Debug Console. */ (
+          chunk,
+        ) => {
+          const output = stderrDecoder.decode(chunk, { stream: true })
+          if (output) this.sendEvent("output", { category: "stderr", output })
+        },
+      )
+      child.once(
+        "error",
+        /**
+         * Report process-launch failure and finish the Run session with a failing exit
+         * code.
+         */ (error) => {
+          this.sendEvent("output", {
+            category: "stderr",
+            output: `[ERROR] ${error.message}\n`,
+          })
+          this.finish(1)
+        },
+      )
+      child.once(
+        "close",
+        /**
+         * Flush trailing decoded output and complete the Run session with its exit code.
+         */ (code) => {
+          const stdoutTail = stdoutDecoder.decode()
+          const stderrTail = stderrDecoder.decode()
+          if (stdoutTail)
+            this.sendEvent("output", { category: "stdout", output: stdoutTail })
+          if (stderrTail)
+            this.sendEvent("output", { category: "stderr", output: stderrTail })
+          this.finish(code ?? 1)
+        },
+      )
     } catch (error) {
       this.sendEvent("output", {
         category: "stderr",
@@ -292,6 +359,10 @@ class RunDebugAdapter {
     }
   }
 
+  /**
+   * Complete the run once, emit exit/termination events, release the process
+   * reference, and settle the run completion promise.
+   */
   finish(exitCode: number) {
     if (this.finished) return
     this.finished = true
@@ -305,6 +376,10 @@ class RunDebugAdapter {
     this.resolveCompleted(exitCode)
   }
 
+  /**
+   * Stop the active process tree on Windows or kill the child elsewhere, finishing an
+   * already absent process with a failure code.
+   */
   terminate() {
     const child = this.process
     if (!child || child.killed) return this.finish(1)
@@ -312,12 +387,19 @@ class RunDebugAdapter {
       const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
         windowsHide: true,
       })
-      killer.on("error", () => child.kill())
+      killer.on(
+        "error",
+        /**
+         * Fall back to killing the child directly if Windows process-tree termination
+         * fails.
+         */ () => child.kill(),
+      )
     } else {
       child.kill("SIGTERM")
     }
   }
 
+  /** Terminate any active Run process and dispose the DAP event emitter. */
   dispose() {
     this.terminate()
     this.sendEmitter.dispose()
@@ -336,6 +418,10 @@ class BuildTerminalSession {
   writeEmitter
   onDidWrite
 
+  /**
+   * Initialize a reusable plain-output buffer, category filters, partial-line state,
+   * and pseudoterminal write events.
+   */
   constructor(filters: BuildOutputFilters, onClosed?: () => void) {
     this.filters = { ...filters }
     this.onClosed = onClosed
@@ -349,11 +435,16 @@ class BuildTerminalSession {
     this.onDidWrite = this.writeEmitter.event
   }
 
+  /** Mark the terminal open and replay its current filtered buffer. */
   open() {
     this.opened = true
     this.rerender()
   }
 
+  /**
+   * Close the terminal, terminate its active process, dispose output events, and
+   * notify its owner.
+   */
   close() {
     this.closed = true
     this.terminate()
@@ -361,19 +452,31 @@ class BuildTerminalSession {
     this.onClosed?.()
   }
 
+  /** Treat Ctrl+C as a termination request for the active foreground build process. */
   handleInput(data: string) {
     if (data === "\x03") this.terminate()
   }
 
+  /**
+   * Replace output category filters and redraw the stored build buffer without
+   * rerunning the build.
+   */
   setFilters(filters: { errors: boolean; warnings: boolean; other: boolean }) {
     this.filters = { ...filters }
     this.rerender()
   }
 
+  /**
+   * Check whether a stored line's category is enabled by the current terminal filters.
+   */
   visible(line: string) {
     return this.filters[buildOutputCategory(line)] !== false
   }
 
+  /**
+   * Store one ANSI-stripped line and emit a colored copy only when the open terminal's
+   * category filter permits it.
+   */
   emitLine(line: string) {
     const clean = String(line || "").replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
     this.lines.push(clean)
@@ -382,6 +485,10 @@ class BuildTerminalSession {
     this.writeEmitter.fire(`${colorBuildOutputLine(clean, category)}\r\n`)
   }
 
+  /**
+   * Join process chunks with any incomplete line, normalize line endings, and emit
+   * only complete lines.
+   */
   acceptChunk(chunk: string | Uint8Array) {
     const text =
       this.partial +
@@ -389,21 +496,37 @@ class BuildTerminalSession {
         .replace(/\r\n/g, "\n")
         .replace(/\r/g, "\n")
     const lines = text.split("\n")
+    // Process stdout chunks can split a logical line, so retain the final fragment until another chunk or exit completes it.
     this.partial = lines.pop() || ""
     for (const line of lines) this.emitLine(line)
   }
 
+  /**
+   * Clear/redraw the open terminal from its current filtered plain-text buffer while
+   * preserving stored hidden output.
+   */
   rerender() {
     if (!this.opened || this.closed) return
     const rendered = this.lines
-      .filter((line) => this.visible(line))
-      .map((line) => colorBuildOutputLine(line, buildOutputCategory(line)))
+      .filter(
+        /** Retain terminal lines enabled by the current output-category filters. */ (
+          line,
+        ) => this.visible(line),
+      )
+      .map(
+        /** Apply severity and build-summary colors to visible terminal lines. */ (
+          line,
+        ) => colorBuildOutputLine(line, buildOutputCategory(line)),
+      )
       .join("\r\n")
     this.writeEmitter.fire(
       `${CLEAR_ENTIRE_TERMINAL}${rendered}${rendered ? "\r\n" : ""}`,
     )
   }
 
+  /**
+   * Replace filters, clear prior run/partial output, and redraw the terminal baseline.
+   */
   reset(filters: BuildOutputFilters) {
     this.filters = { ...filters }
     this.lines = []
@@ -411,11 +534,19 @@ class BuildTerminalSession {
     this.rerender()
   }
 
+  /**
+   * Prepare a clean terminal buffer for the next build without clearing it again when
+   * process execution starts.
+   */
   beginRun(filters: { errors: boolean; warnings: boolean; other: boolean }) {
     this.reset(filters)
     this.runPrepared = true
   }
 
+  /**
+   * Spawn a hidden foreground process, stream its output into the buffer, flush the
+   * trailing partial line, and resolve its exit code exactly once.
+   */
   run(
     executable: string,
     args: readonly string[],
@@ -423,38 +554,70 @@ class BuildTerminalSession {
   ) {
     if (!this.runPrepared) this.reset(this.filters)
     this.runPrepared = false
-    return new Promise<number>((resolve) => {
-      let settled = false
-      const finish = (code: number | null) => {
-        if (settled) return
-        settled = true
-        if (this.partial) this.emitLine(this.partial)
-        this.partial = ""
-        this.process = undefined
-        resolve(isInteger(code) ? code : 1)
-      }
-      try {
-        const child = spawn(executable, args, {
-          cwd: options.cwd,
-          env: options.env,
-          windowsHide: true,
-          stdio: ["ignore", "pipe", "pipe"],
-        })
-        this.process = child
-        child.stdout.on("data", (chunk) => this.acceptChunk(chunk))
-        child.stderr.on("data", (chunk) => this.acceptChunk(chunk))
-        child.on("error", (error) => {
-          this.emitLine(`[ERROR] ${error.message}`)
+    return new Promise<number>(
+      /**
+       * Connect asynchronous completion and rejection to the build terminal session run
+       * promise.
+       */ (resolve) => {
+        let settled = false
+        /**
+         * Settle the active terminal process once, flush any trailing incomplete line,
+         * and release its process reference.
+         */
+        const finish = (code: number | null) => {
+          if (settled) return
+          settled = true
+          if (this.partial) this.emitLine(this.partial)
+          this.partial = ""
+          this.process = undefined
+          resolve(isInteger(code) ? code : 1)
+        }
+        try {
+          const child = spawn(executable, args, {
+            cwd: options.cwd,
+            env: options.env,
+            windowsHide: true,
+            stdio: ["ignore", "pipe", "pipe"],
+          })
+          this.process = child
+          child.stdout.on(
+            "data",
+            /** Append stdout chunks to the terminal line buffer. */ (chunk) =>
+              this.acceptChunk(chunk),
+          )
+          child.stderr.on(
+            "data",
+            /** Append stderr chunks to the terminal line buffer. */ (chunk) =>
+              this.acceptChunk(chunk),
+          )
+          child.on(
+            "error",
+            /**
+             * Report build-process launch failure and settle the build with a failing exit
+             * code.
+             */ (error) => {
+              this.emitLine(`[ERROR] ${error.message}`)
+              finish(1)
+            },
+          )
+          child.on(
+            "close",
+            /**
+             * Flush remaining terminal output and settle the completed build process.
+             */ (code) => finish(code),
+          )
+        } catch (error) {
+          this.emitLine(`[ERROR] ${errorMessage(error)}`)
           finish(1)
-        })
-        child.on("close", (code) => finish(code))
-      } catch (error) {
-        this.emitLine(`[ERROR] ${errorMessage(error)}`)
-        finish(1)
-      }
-    })
+        }
+      },
+    )
   }
 
+  /**
+   * Terminate the active build process tree on Windows or kill the child on other
+   * platforms.
+   */
   terminate() {
     const child = this.process
     if (!child || child.killed) return
@@ -462,18 +625,29 @@ class BuildTerminalSession {
       const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
         windowsHide: true,
       })
-      killer.on("error", () => child.kill())
+      killer.on(
+        "error",
+        /**
+         * Fall back to killing the child directly if Windows process-tree termination
+         * fails.
+         */ () => child.kill(),
+      )
     } else {
       child.kill("SIGTERM")
     }
   }
 }
 
+/** Format a nonnegative elapsed time as a concise tenths-of-a-second status label. */
 function formatBuildDuration(milliseconds: number) {
   const seconds = Math.max(0, Math.round(milliseconds / 100) / 10)
   return `${seconds.toFixed(1)}s`
 }
 
+/**
+ * Resolve auto build configuration/platform values against project defaults, retaining
+ * a usable Debug/Win32 fallback.
+ */
 function resolvedBuildSelection(projectPath: string, selection: ProjectOverrides = {}) {
   const fallback = {
     configuration:
@@ -500,6 +674,10 @@ function resolvedBuildSelection(projectPath: string, selection: ProjectOverrides
   }
 }
 
+/**
+ * Append nonempty named property overrides to an MSBuild argument array without
+ * replacing existing arguments.
+ */
 function appendMsbuildProperties(
   args: string[],
   properties: BuildOverrides["msbuildProperties"] = {},
@@ -511,12 +689,19 @@ function appendMsbuildProperties(
   return args
 }
 
+/**
+ * Copy defined environment values while removing navigation-injected DCC Unit Search
+ * Path variables from production builds.
+ */
 function formalBuildEnvironment(
   environment: NodeJS.ProcessEnv = {},
 ): Record<string, string> {
   const result = Object.fromEntries(
     Object.entries(environment).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
+      /**
+       * Omit undefined environment values before constructing the child-process
+       * environment.
+       */ (entry): entry is [string, string] => entry[1] !== undefined,
     ),
   )
   for (const name of Object.keys(result)) {
@@ -525,11 +710,19 @@ function formalBuildEnvironment(
   return result
 }
 
+/**
+ * Test true path containment so similarly prefixed sibling directories do not count as
+ * project descendants.
+ */
 function isInside(parent: string, candidate: string) {
   const relative = path.relative(parent, candidate)
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
 }
 
+/**
+ * Read a project output artifact's modification time, returning zero when it is
+ * missing or unreadable.
+ */
 function artifactTimestamp(descriptor: { output: fs.PathLike }) {
   try {
     return fs.statSync(descriptor.output).mtimeMs
@@ -566,6 +759,10 @@ class BuildDebugSupport {
   buildDiagnostics
   runAdapters
 
+  /**
+   * Create project/build/run state, the project tree provider, status controls,
+   * diagnostics, and a serialized foreground action queue.
+   */
   constructor(
     context: vscode.ExtensionContext,
     output: vscode.OutputChannel,
@@ -577,7 +774,11 @@ class BuildDebugSupport {
     this.model = new DelphiProjectModel(
       context,
       output,
-      (vscode.workspace.workspaceFolders || []).map((folder) => folder.uri.fsPath),
+      (vscode.workspace.workspaceFolders || []).map(
+        /** Initialize the project model with the workspace root directories. */ (
+          folder,
+        ) => folder.uri.fsPath,
+      ),
     )
     this.projectNavigator = new ProjectNavigatorProvider(this.model)
     this.queue = Promise.resolve()
@@ -614,6 +815,10 @@ class BuildDebugSupport {
     this.runAdapters = new Map<string, RunDebugAdapter>()
   }
 
+  /**
+   * Restore/publish cached project state, register lifecycle
+   * events/commands/watchers/providers, and refresh project discovery asynchronously.
+   */
   register() {
     this.model.restore()
     // The provider is constructed before cached project data is restored.
@@ -627,35 +832,65 @@ class BuildDebugSupport {
       ...Object.values(this.statusItems),
       this.buildDiagnostics,
       this.projectNavigator,
-      this.model.onDidChange(() => {
-        this.updateContexts()
-        this.projectNavigator.refresh()
-        this.refreshStatusBar()
-      }),
-      vscode.window.onDidChangeActiveTextEditor(() => this.refreshStatusBar()),
-      vscode.window.onDidChangeActiveTerminal((terminal) =>
-        this.updateBuildTerminalContext(terminal),
+      this.model.onDidChange(
+        /**
+         * Refresh project contexts, tree data, and status controls when the project
+         * model changes.
+         */ () => {
+          this.updateContexts()
+          this.projectNavigator.refresh()
+          this.refreshStatusBar()
+        },
       ),
-      vscode.window.onDidCloseTerminal((terminal) => {
-        if (terminal !== this.buildTerminal) return
-        this.buildTerminal = undefined
-        this.buildTerminalSession = undefined
-        this.updateBuildTerminalContext()
-      }),
+      vscode.window.onDidChangeActiveTextEditor(
+        /**
+         * Refresh status controls for the project group containing the active editor.
+         */ () => this.refreshStatusBar(),
+      ),
+      vscode.window.onDidChangeActiveTerminal(
+        /** Update the context key controlling managed-build terminal actions. */ (
+          terminal,
+        ) => this.updateBuildTerminalContext(terminal),
+      ),
+      vscode.window.onDidCloseTerminal(
+        /**
+         * Clear the managed terminal references and context when that terminal closes.
+         */ (terminal) => {
+          if (terminal !== this.buildTerminal) return
+          this.buildTerminal = undefined
+          this.buildTerminalSession = undefined
+          this.updateBuildTerminalContext()
+        },
+      ),
       vscode.tasks.registerTaskProvider("pascal-atlas", {
-        provideTasks: () => this.provideTasks(),
-        resolveTask: () => undefined,
+        provideTasks:
+          /** Provide build tasks for the currently indexed Delphi projects. */ () =>
+            this.provideTasks(),
+        resolveTask:
+          /** Leave unresolved external task definitions to their original provider. */ () =>
+            undefined,
       }),
-      vscode.debug.onDidStartDebugSession((session) => {
-        if (session.type === "pascal-atlas-run") this.activeRunSession = session
-        this.refreshStatusBar()
-      }),
-      vscode.debug.onDidTerminateDebugSession((session) => {
-        if (session === this.activeRunSession) this.activeRunSession = undefined
-        this.refreshStatusBar()
-      }),
+      vscode.debug.onDidStartDebugSession(
+        /** Track Atlas Run sessions and refresh execution status controls. */ (
+          session,
+        ) => {
+          if (session.type === "pascal-atlas-run") this.activeRunSession = session
+          this.refreshStatusBar()
+        },
+      ),
+      vscode.debug.onDidTerminateDebugSession(
+        /**
+         * Release a completed Atlas Run session and refresh execution status controls.
+         */ (session) => {
+          if (session === this.activeRunSession) this.activeRunSession = undefined
+          this.refreshStatusBar()
+        },
+      ),
       vscode.debug.registerDebugAdapterDescriptorFactory("pascal-atlas-run", {
-        createDebugAdapterDescriptor: (session) => {
+        createDebugAdapterDescriptor: /**
+         * Reuse the run adapter for an existing session or create an inline adapter
+         * for a new run.
+         */ (session) => {
           const adapter =
             this.runAdapters.get(session.configuration.runId) ||
             new RunDebugAdapter(session.configuration)
@@ -665,15 +900,21 @@ class BuildDebugSupport {
     )
     this.registerCommands()
     this.registerWatchers()
-    void this.model
-      .refresh()
-      .catch((error) =>
+    void this.model.refresh().catch(
+      /**
+       * Handle an asynchronous failure from build debug support register without
+       * leaving it as an unobserved rejection.
+       */ (error) =>
         this.output.appendLine(
           `Delphi project model refresh failed: ${error.stack || error.message}`,
         ),
-      )
+    )
   }
 
+  /**
+   * Publish whether loaded project groups exist so VS Code command/menu availability
+   * follows the current model.
+   */
   updateContexts() {
     void vscode.commands.executeCommand(
       "setContext",
@@ -682,6 +923,7 @@ class BuildDebugSupport {
     )
   }
 
+  /** Publish whether the focused terminal is Pascal Atlas's managed build terminal. */
   updateBuildTerminalContext(terminal = vscode.window.activeTerminal) {
     void vscode.commands.executeCommand(
       "setContext",
@@ -690,6 +932,10 @@ class BuildDebugSupport {
     )
   }
 
+  /**
+   * Watch Delphi group/project/package files and refresh model/status/context data
+   * after their lifecycle changes.
+   */
   registerWatchers() {
     for (const folder of vscode.workspace.workspaceFolders || []) {
       for (const pattern of ["**/*.groupproj", "**/*.dproj", "**/*.dpk"]) {
@@ -697,27 +943,45 @@ class BuildDebugSupport {
           new vscode.RelativePattern(folder, pattern),
         )
         let timer: string | number | NodeJS.Timeout | undefined
-        const changed = () => {
-          clearTimeout(timer)
-          timer = setTimeout(() => void this.model.refresh(), 250)
-        }
+        const changed =
+          /** Debounce project model refreshes after watched build files change. */ () => {
+            clearTimeout(timer)
+            timer = setTimeout(
+              /** Refresh the project model after a burst of project-file changes. */ () =>
+                void this.model.refresh(),
+              250,
+            )
+          }
         watcher.onDidCreate(changed)
         watcher.onDidChange(changed)
         watcher.onDidDelete(changed)
-        this.context.subscriptions.push(watcher, { dispose: () => clearTimeout(timer) })
+        this.context.subscriptions.push(watcher, {
+          dispose:
+            /** Cancel the pending watcher refresh when its subscription is disposed. */ () =>
+              clearTimeout(timer),
+        })
       }
     }
     this.context.subscriptions.push(
-      vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration("pascalAtlas.projectNavigator"))
-          this.projectNavigator.refresh()
-        if (event.affectsConfiguration("pascalAtlas.build")) this.refreshStatusBar()
-        if (event.affectsConfiguration("pascalAtlas.build.output"))
-          this.refreshBuildTerminalFilters()
-      }),
+      vscode.workspace.onDidChangeConfiguration(
+        /**
+         * Refresh the project tree, status controls, or terminal filters affected by
+         * changed settings.
+         */ (event) => {
+          if (event.affectsConfiguration("pascalAtlas.projectNavigator"))
+            this.projectNavigator.refresh()
+          if (event.affectsConfiguration("pascalAtlas.build")) this.refreshStatusBar()
+          if (event.affectsConfiguration("pascalAtlas.build.output"))
+            this.refreshBuildTerminalFilters()
+        },
+      ),
     )
   }
 
+  /**
+   * Choose the project group applicable to the active file or available selection for
+   * status-bar actions.
+   */
   statusGroup() {
     const groups = [...this.model.groups.values()]
     if (!groups.length) return undefined
@@ -727,13 +991,26 @@ class BuildDebugSupport {
         : ""
     if (activeFile) {
       const activeGroup = groups
-        .filter((group) => isInside(group.groupDir, activeFile))
-        .sort((left, right) => right.groupDir.length - left.groupDir.length)[0]
+        .filter(
+          /** Find project groups whose directory contains the active source file. */ (
+            group,
+          ) => isInside(group.groupDir, activeFile),
+        )
+        .sort(
+          /**
+           * Prefer the most deeply nested project group containing the active source
+           * file.
+           */ (left, right) => right.groupDir.length - left.groupDir.length,
+        )[0]
       if (activeGroup) return activeGroup
     }
     return groups[0]
   }
 
+  /**
+   * Render build/run/configuration/platform status for the applicable group, hiding
+   * controls when disabled or unavailable.
+   */
   refreshStatusBar() {
     const items = Object.values(this.statusItems)
     const group = this.statusGroup()
@@ -801,47 +1078,124 @@ class BuildDebugSupport {
     }
   }
 
+  /**
+   * Register package/group build, clean, run, stop, selection, and output-filter
+   * actions with the extension lifecycle.
+   */
   registerCommands() {
+    /**
+     * Register one build/run command and retain its disposable with the extension
+     * context.
+     */
     const command = (
       name: string,
       handler: (uri?: BuildTarget, selected?: BuildTarget[]) => unknown,
     ) => this.context.subscriptions.push(vscode.commands.registerCommand(name, handler))
-    command(CommandId.BuildCompilePackage, (uri, selected) =>
-      this.runPackageCommand("Make", uri, selected),
+    command(
+      CommandId.BuildCompilePackage,
+      /** Run the Make target for the selected package. */ (uri, selected) =>
+        this.runPackageCommand("Make", uri, selected),
     )
-    command(CommandId.BuildBuildPackage, (uri, selected) =>
-      this.runPackageCommand("Build", uri, selected),
+    command(
+      CommandId.BuildBuildPackage,
+      /** Run the Build target for the selected package. */ (uri, selected) =>
+        this.runPackageCommand("Build", uri, selected),
     )
-    command(CommandId.BuildCleanPackage, (uri, selected) =>
-      this.runPackageCommand("Clean", uri, selected),
+    command(
+      CommandId.BuildCleanPackage,
+      /** Run the Clean target for the selected package. */ (uri, selected) =>
+        this.runPackageCommand("Clean", uri, selected),
     )
-    command(CommandId.BuildCompileGroup, (uri) => this.runGroupCommand("Make", uri))
-    command(CommandId.BuildBuildGroup, (uri) => this.runGroupCommand("Build", uri))
-    command(CommandId.BuildCleanGroup, (uri) => this.runGroupCommand("Clean", uri))
-    command(CommandId.BuildSelectConfiguration, (uri) =>
-      this.selectBuildValue(uri, "configuration"),
+    command(
+      CommandId.BuildCompileGroup,
+      /** Run the Make target for the selected project group. */ (uri) =>
+        this.runGroupCommand("Make", uri),
     )
-    command(CommandId.BuildSelectPlatform, (uri) =>
-      this.selectBuildValue(uri, PascalKeyword.Platform),
+    command(
+      CommandId.BuildBuildGroup,
+      /** Run the Build target for the selected project group. */ (uri) =>
+        this.runGroupCommand("Build", uri),
     )
-    command(CommandId.BuildSelectOutputFilters, () => this.selectBuildOutputFilters())
-    command(CommandId.BuildToggleErrors, () => this.toggleBuildOutput("errors"))
-    command(CommandId.BuildToggleWarnings, () => this.toggleBuildOutput("warnings"))
-    command(CommandId.BuildToggleOther, () => this.toggleBuildOutput("other"))
-    command(CommandId.BuildToggleErrorsChecked, () => this.toggleBuildOutput("errors"))
-    command(CommandId.BuildToggleWarningsChecked, () =>
-      this.toggleBuildOutput("warnings"),
+    command(
+      CommandId.BuildCleanGroup,
+      /** Run the Clean target for the selected project group. */ (uri) =>
+        this.runGroupCommand("Clean", uri),
     )
-    command(CommandId.BuildToggleOtherChecked, () => this.toggleBuildOutput("other"))
-    command(CommandId.RunSelectStartupProject, (uri) =>
-      this.selectStartupProjectForUri(uri, true),
+    command(
+      CommandId.BuildSelectConfiguration,
+      /** Select the build configuration for the project at this URI. */ (uri) =>
+        this.selectBuildValue(uri, "configuration"),
     )
-    command(CommandId.RunGroup, (uri) => this.startRunCommand(uri))
-    command(CommandId.RunStop, () => this.stopRun())
-    command(CommandId.ProjectNavigatorActions, (uri) => this.showProjectActions(uri))
-    command(CommandId.ProjectNavigatorRefresh, () => this.model.refresh())
+    command(
+      CommandId.BuildSelectPlatform,
+      /** Select the target platform for the project at this URI. */ (uri) =>
+        this.selectBuildValue(uri, PascalKeyword.Platform),
+    )
+    command(
+      CommandId.BuildSelectOutputFilters,
+      /** Choose which compiler output categories are visible. */ () =>
+        this.selectBuildOutputFilters(),
+    )
+    command(
+      CommandId.BuildToggleErrors,
+      /** Toggle compiler error output visibility. */ () =>
+        this.toggleBuildOutput("errors"),
+    )
+    command(
+      CommandId.BuildToggleWarnings,
+      /** Toggle compiler warning output visibility. */ () =>
+        this.toggleBuildOutput("warnings"),
+    )
+    command(
+      CommandId.BuildToggleOther,
+      /** Toggle other compiler output visibility. */ () =>
+        this.toggleBuildOutput("other"),
+    )
+    command(
+      CommandId.BuildToggleErrorsChecked,
+      /** Toggle compiler error output visibility from its checked menu action. */ () =>
+        this.toggleBuildOutput("errors"),
+    )
+    command(
+      CommandId.BuildToggleWarningsChecked,
+      /** Toggle compiler warning output visibility from its checked menu action. */ () =>
+        this.toggleBuildOutput("warnings"),
+    )
+    command(
+      CommandId.BuildToggleOtherChecked,
+      /** Toggle other compiler output visibility from its checked menu action. */ () =>
+        this.toggleBuildOutput("other"),
+    )
+    command(
+      CommandId.RunSelectStartupProject,
+      /** Select and persist the startup project for this URI. */ (uri) =>
+        this.selectStartupProjectForUri(uri, true),
+    )
+    command(
+      CommandId.RunGroup,
+      /** Start the configured project run for this URI. */ (uri) =>
+        this.startRunCommand(uri),
+    )
+    command(
+      CommandId.RunStop,
+      /** Stop the currently tracked project run. */ () => this.stopRun(),
+    )
+    command(
+      CommandId.ProjectNavigatorActions,
+      /** Show the build and run actions available for this project. */ (uri) =>
+        this.showProjectActions(uri),
+    )
+    command(
+      CommandId.ProjectNavigatorRefresh,
+      /** Rescan project metadata after an explicit refresh command. */ () =>
+        this.model.refresh(),
+    )
   }
 
+  /**
+   * Describe an existing Run launch/process, Debug session, or foreground build that
+   * prevents another conflicting execution.
+   */
   executionBusyMessage() {
     if (this.runInProgress || this.runLaunchInProgress)
       return "A Run process is starting or already running. Stop it first."
@@ -850,6 +1204,10 @@ class BuildDebugSupport {
     return ""
   }
 
+  /**
+   * Guard against conflicting execution, mark Run launch state, and clear that
+   * state/status even when launch fails.
+   */
   async startRunCommand(uri?: BuildTarget) {
     const busy = this.executionBusyMessage()
     if (busy) return void vscode.window.showInformationMessage(`Pascal Atlas：${busy}`)
@@ -863,6 +1221,7 @@ class BuildDebugSupport {
     }
   }
 
+  /** Stop the managed active Run debug session when one is running. */
   async stopRun() {
     if (!this.runInProgress) return
     const session =
@@ -874,6 +1233,7 @@ class BuildDebugSupport {
     else this.activeRunAdapter?.terminate()
   }
 
+  /** Read independent error, warning, and other-output visibility settings. */
   buildOutputFilters() {
     const configuration = vscode.workspace.getConfiguration(ConfigurationSection)
     return {
@@ -883,10 +1243,15 @@ class BuildDebugSupport {
     }
   }
 
+  /** Apply current output visibility to the retained terminal session. */
   refreshBuildTerminalFilters() {
     this.buildTerminalSession?.setFilters(this.buildOutputFilters())
   }
 
+  /**
+   * Persist a requested output category toggle and redraw the terminal's buffered
+   * output.
+   */
   async toggleBuildOutput(category: BuildOutputCategory) {
     const keys = {
       errors: SettingKey.BuildOutputShowErrors,
@@ -903,6 +1268,10 @@ class BuildDebugSupport {
     this.refreshBuildTerminalFilters()
   }
 
+  /**
+   * Present multi-select output categories, persist accepted choices, and retain
+   * unchanged filters when the picker is cancelled.
+   */
   selectBuildOutputFilters() {
     const filters = this.buildOutputFilters()
     const items: (vscode.QuickPickItem & { category: BuildOutputCategory })[] = [
@@ -930,7 +1299,10 @@ class BuildDebugSupport {
     picker.placeholder =
       "Select the items to show. Changes take effect immediately; no confirmation needed."
     picker.items = items
-    picker.selectedItems = items.filter((item) => filters[item.category])
+    picker.selectedItems = items.filter(
+      /** Preselect the currently enabled terminal output categories. */ (item) =>
+        filters[item.category],
+    )
 
     const target = vscode.workspace.workspaceFolders?.length
       ? vscode.ConfigurationTarget.Workspace
@@ -940,51 +1312,87 @@ class BuildDebugSupport {
     const disposables: vscode.Disposable[] = []
 
     disposables.push(
-      picker.onDidChangeSelection((selection) => {
-        const selected = new Set(selection.map((item) => item.category))
-        const next: BuildOutputFilters = {
-          errors: selected.has("errors"),
-          warnings: selected.has("warnings"),
-          other: selected.has("other"),
-        }
+      picker.onDidChangeSelection(
+        /**
+         * Redraw terminal output immediately and queue persistence of changed category
+         * filters.
+         */ (selection) => {
+          const selected = new Set(
+            selection.map(
+              /**
+               * Collect enabled output-category identities from the picker selection.
+               */ (item) => item.category,
+            ),
+          )
+          const next: BuildOutputFilters = {
+            errors: selected.has("errors"),
+            warnings: selected.has("warnings"),
+            other: selected.has("other"),
+          }
 
-        // Redraw first so checking a box feels immediate. Persist only the values
-        // that changed, in order, so rapid clicks cannot restore an older state.
-        this.buildTerminalSession?.setFilters(next)
-        const changed = items.filter(
-          (item) => current[item.category] !== next[item.category],
-        )
-        current = next
-        if (!changed.length) return
-        updateQueue = updateQueue
-          .then(async () => {
-            const configuration =
-              vscode.workspace.getConfiguration(ConfigurationSection)
-            for (const item of changed) {
-              const suffix =
-                item.category.charAt(0).toUpperCase() + item.category.slice(1)
-              await configuration.update(
-                `build.output.show${suffix}`,
-                next[item.category],
-                target,
-              )
-            }
-          })
-          .catch((error) => {
-            console.error("Pascal Atlas: failed to persist build output filters", error)
-          })
-      }),
+          // Redraw first so checking a box feels immediate. Persist only the values
+          // that changed, in order, so rapid clicks cannot restore an older state.
+          this.buildTerminalSession?.setFilters(next)
+          const changed = items.filter(
+            /** Persist only output categories whose checked state changed. */ (item) =>
+              current[item.category] !== next[item.category],
+          )
+          current = next
+          if (!changed.length) return
+          updateQueue = updateQueue
+            .then(
+              /**
+               * Persist filter changes in order so rapid selections cannot overwrite newer
+               * values.
+               */ async () => {
+                const configuration =
+                  vscode.workspace.getConfiguration(ConfigurationSection)
+                for (const item of changed) {
+                  const suffix =
+                    item.category.charAt(0).toUpperCase() + item.category.slice(1)
+                  await configuration.update(
+                    `build.output.show${suffix}`,
+                    next[item.category],
+                    target,
+                  )
+                }
+              },
+            )
+            .catch(
+              /**
+               * Handle an asynchronous failure from build debug support select build
+               * output filters without leaving it as an unobserved rejection.
+               */ (error) => {
+                console.error(
+                  "Pascal Atlas: failed to persist build output filters",
+                  error,
+                )
+              },
+            )
+        },
+      ),
     )
-    disposables.push(picker.onDidAccept(() => picker.hide()))
     disposables.push(
-      picker.onDidHide(() => {
-        for (const disposable of disposables) disposable.dispose()
-        picker.dispose()
-      }),
+      picker.onDidAccept(
+        /** Close the filter picker when its selection is accepted. */ () =>
+          picker.hide(),
+      ),
+    )
+    disposables.push(
+      picker.onDidHide(
+        /** Dispose picker listeners and release the hidden filter picker. */ () => {
+          for (const disposable of disposables) disposable.dispose()
+          picker.dispose()
+        },
+      ),
     )
     picker.show()
   }
 
+  /**
+   * Reuse a live managed pseudoterminal or create one with filter/state cleanup wired
+   * to its close callback.
+   */
   ensureBuildTerminal() {
     if (
       this.buildTerminal &&
@@ -993,11 +1401,14 @@ class BuildDebugSupport {
     ) {
       return this.buildTerminalSession
     }
-    const session = new BuildTerminalSession(this.buildOutputFilters(), () => {
-      if (this.buildTerminalSession !== session) return
-      this.buildTerminalSession = undefined
-      this.buildTerminal = undefined
-    })
+    const session = new BuildTerminalSession(
+      this.buildOutputFilters(),
+      /** Clear the active build terminal only when the closed session still owns it. */ () => {
+        if (this.buildTerminalSession !== session) return
+        this.buildTerminalSession = undefined
+        this.buildTerminal = undefined
+      },
+    )
     this.buildTerminalSession = session
     this.buildTerminal = vscode.window.createTerminal({
       name: "Pascal Atlas Build",
@@ -1007,6 +1418,10 @@ class BuildDebugSupport {
     return session
   }
 
+  /**
+   * Read the foreground runner's diagnostic log, map entries to source
+   * URIs/ranges/severities, and publish grouped build Problems.
+   */
   async loadBuildDiagnostics(diagnosticsPath: string, cwd: string | undefined) {
     let contents = ""
     try {
@@ -1038,10 +1453,18 @@ class BuildDebugSupport {
       grouped.set(key, entry)
     }
     this.buildDiagnostics.set(
-      [...grouped.values()].map((entry) => [entry.uri, entry.diagnostics]),
+      [...grouped.values()].map(
+        /** Publish each source URI with its grouped foreground build diagnostics. */ (
+          entry,
+        ) => [entry.uri, entry.diagnostics],
+      ),
     )
   }
 
+  /**
+   * Resolve or pick a group and offer its build/run/startup/configuration/platform
+   * actions without invoking an action on cancellation.
+   */
   async showProjectActions(uri?: BuildTarget) {
     const group = this.groupFromTarget(uri) || (await this.pickGroup(uri?.fsPath || ""))
     if (!group)
@@ -1053,42 +1476,50 @@ class BuildDebugSupport {
         {
           label: "$(tools) Build All",
           description: group.name,
-          action: () => this.runGroupCommand("Build", group),
+          action: /** Build all projects in the selected group. */ () =>
+            this.runGroupCommand("Build", group),
         },
         {
           label: "$(run-all) Compile All",
           description: group.name,
-          action: () => this.runGroupCommand("Make", group),
+          action: /** Make all projects in the selected group. */ () =>
+            this.runGroupCommand("Make", group),
         },
         {
           label: "$(trash) Clean All",
           description: group.name,
-          action: () => this.runGroupCommand("Clean", group),
+          action: /** Clean all projects in the selected group. */ () =>
+            this.runGroupCommand("Clean", group),
         },
         {
           label: "$(run) Run",
           description: group.name,
-          action: () => vscode.commands.executeCommand(CommandId.RunGroup, group),
+          action: /** Invoke the run command for the selected project group. */ () =>
+            vscode.commands.executeCommand(CommandId.RunGroup, group),
         },
         {
           label: "$(list-selection) Select Startup Project",
           description: group.name,
-          action: () => this.selectStartupProject(group, true),
+          action:
+            /** Choose and persist a startup project for the selected group. */ () =>
+              this.selectStartupProject(group, true),
         },
         {
           label: "$(settings-gear) Select Build Configuration",
           description: group.name,
-          action: () =>
-            this.selectBuildValue(vscode.Uri.file(group.groupDir), "configuration"),
+          action:
+            /** Choose the build configuration for the selected group directory. */ () =>
+              this.selectBuildValue(vscode.Uri.file(group.groupDir), "configuration"),
         },
         {
           label: "$(symbol-enum) Select Build Platform",
           description: group.name,
-          action: () =>
-            this.selectBuildValue(
-              vscode.Uri.file(group.groupDir),
-              PascalKeyword.Platform,
-            ),
+          action:
+            /** Choose the target platform for the selected group directory. */ () =>
+              this.selectBuildValue(
+                vscode.Uri.file(group.groupDir),
+                PascalKeyword.Platform,
+              ),
         },
       ],
       {
@@ -1099,45 +1530,59 @@ class BuildDebugSupport {
     if (picked) await picked.action()
   }
 
+  /**
+   * Memoize local RAD Studio compiler/MSBuild paths and its expanded rsvars
+   * environment, rejecting when the toolchain is unavailable.
+   */
   async tools() {
     if (this.toolsPromise) return this.toolsPromise
-    this.toolsPromise = Promise.resolve().then(() => {
-      const installation = findDelphiInstallation()
-      if (!installation)
-        throw new Error("Delphi/RAD Studio command-line tools were not found.")
-      const rsvars = path.join(installation, "bin", "rsvars.bat")
-      const environment = readRsvarsEnvironment(rsvars)
-      const frameworkDir =
-        environment.FrameworkDir ||
-        path.join(
-          process.env.WINDIR || "C:\\Windows",
-          "Microsoft.NET",
-          "Framework",
-          "v4.0.30319",
-        )
-      const msbuild =
-        vscode.workspace
-          .getConfiguration(ConfigurationSection)
-          .get(SettingKey.BuildMsbuildPath, "") ||
-        vscode.workspace.getConfiguration("vallenta.studio").get("msbuildPath", "") ||
-        path.join(frameworkDir, "MSBuild.exe")
-      return {
-        installation,
-        environment,
-        msbuild,
-        dcc32: path.join(installation, "bin", "dcc32.exe"),
-        dcc64: fs.existsSync(path.join(installation, "bin64", "dcc64.exe"))
-          ? path.join(installation, "bin64", "dcc64.exe")
-          : path.join(installation, "bin", "dcc64.exe"),
-      }
-    })
+    this.toolsPromise = Promise.resolve().then(
+      /**
+       * Discover the local RAD Studio toolchain once and cache its paths and
+       * environment.
+       */ () => {
+        const installation = findDelphiInstallation()
+        if (!installation)
+          throw new Error("Delphi/RAD Studio command-line tools were not found.")
+        const rsvars = path.join(installation, "bin", "rsvars.bat")
+        const environment = readRsvarsEnvironment(rsvars)
+        const frameworkDir =
+          environment.FrameworkDir ||
+          path.join(
+            process.env.WINDIR || "C:\\Windows",
+            "Microsoft.NET",
+            "Framework",
+            "v4.0.30319",
+          )
+        const msbuild =
+          vscode.workspace
+            .getConfiguration(ConfigurationSection)
+            .get(SettingKey.BuildMsbuildPath, "") ||
+          vscode.workspace.getConfiguration("vallenta.studio").get("msbuildPath", "") ||
+          path.join(frameworkDir, "MSBuild.exe")
+        return {
+          installation,
+          environment,
+          msbuild,
+          dcc32: path.join(installation, "bin", "dcc32.exe"),
+          dcc64: fs.existsSync(path.join(installation, "bin64", "dcc64.exe"))
+            ? path.join(installation, "bin64", "dcc64.exe")
+            : path.join(installation, "bin", "dcc64.exe"),
+        }
+      },
+    )
     return this.toolsPromise
   }
 
+  /** Canonicalize a build target path for persisted configuration/platform choices. */
   selectionKey(targetPath: string) {
     return normalizeKey(targetPath)
   }
 
+  /**
+   * Combine persisted target-specific build choices with current default settings and
+   * project fallback metadata.
+   */
   selection(targetPath: string, fallback: ProjectOverrides = {}) {
     const all = this.context.workspaceState.get<Record<string, ProjectOverrides>>(
       SELECTION_KEY,
@@ -1159,6 +1604,10 @@ class BuildDebugSupport {
     }
   }
 
+  /**
+   * Resolve the intended group/workspace target, offer valid configuration/platform
+   * choices, persist accepted selection, and refresh status.
+   */
   async selectBuildValue(
     uri: BuildTarget | undefined,
     kind: "configuration" | "platform",
@@ -1191,30 +1640,53 @@ class BuildDebugSupport {
     this.refreshStatusBar()
   }
 
+  /**
+   * Extract and deduplicate context-menu target paths from the explicit selection or
+   * single URI.
+   */
   uriDirectories(uri?: BuildTarget, selected?: BuildTarget[]) {
     const values = Array.isArray(selected) && selected.length ? selected : [uri]
     return uniquePaths(
       values
-        .filter((value): value is BuildTarget => Boolean(value))
-        .map((value) => value.fsPath),
+        .filter(
+          /** Discard absent URI targets before collecting selected directories. */ (
+            value,
+          ): value is BuildTarget => Boolean(value),
+        )
+        .map(
+          /** Read the filesystem path from each selected URI target. */ (value) =>
+            value.fsPath,
+        ),
     )
   }
 
+  /**
+   * Return the only package for a directory or ask the user to choose among its
+   * packages; return undefined when unavailable/cancelled.
+   */
   async pickPackage(directory: string) {
     const projects = this.model.packageProjects(directory)
     if (projects.length === 1) return projects[0]
     if (!projects.length) return undefined
     const picked = await vscode.window.showQuickPick(
-      projects.map((project) => ({
-        label: project.name,
-        description: project.projectPath,
-        project,
-      })),
+      projects.map(
+        /**
+         * Offer each package by name and project path while retaining its descriptor.
+         */ (project) => ({
+          label: project.name,
+          description: project.projectPath,
+          project,
+        }),
+      ),
       { placeHolder: "Select a Delphi package to process" },
     )
     return picked?.project
   }
 
+  /**
+   * Resolve the only applicable project group or ask the user to choose one from the
+   * available group list.
+   */
   async pickGroup(directory: string) {
     const groups = directory
       ? this.model.groupsAt(directory)
@@ -1222,16 +1694,24 @@ class BuildDebugSupport {
     if (groups.length === 1) return groups[0]
     if (!groups.length) return undefined
     const picked = await vscode.window.showQuickPick(
-      groups.map((group) => ({
-        label: group.name,
-        description: group.groupPath,
-        group,
-      })),
+      groups.map(
+        /** Offer each project group by name and path while retaining its descriptor. */ (
+          group,
+        ) => ({
+          label: group.name,
+          description: group.groupPath,
+          group,
+        }),
+      ),
       { placeHolder: "Select a Delphi Project Group" },
     )
     return picked?.group
   }
 
+  /**
+   * Resolve an explicit project target through the model, falling back to minimal
+   * metadata for a valid project path.
+   */
   projectFromTarget(target: BuildTarget | undefined) {
     if (!target?.projectPath) return undefined
     return (
@@ -1240,22 +1720,36 @@ class BuildDebugSupport {
     )
   }
 
+  /** Look up a group explicitly identified by a context/menu target. */
   groupFromTarget(target: BuildTarget | undefined) {
     if (!target?.groupPath) return undefined
     return this.model.groups.get(normalizeKey(target.groupPath))
   }
 
+  /** Find the loaded group whose project list contains the canonical project path. */
   groupForProject(projectPath: string) {
     const key = normalizeKey(projectPath)
-    return [...this.model.groups.values()].find((group) =>
-      group.projectPaths.some((item) => normalizeKey(item) === key),
+    return [...this.model.groups.values()].find(
+      /** Find a project group containing the requested project path. */ (group) =>
+        group.projectPaths.some(
+          /** Match group membership using canonical project-path identities. */ (
+            item,
+          ) => normalizeKey(item) === key,
+        ),
     )
   }
 
+  /**
+   * Resolve exact or selected-directory package targets and serialize their requested
+   * Make/Build/Clean actions.
+   */
   async runPackageCommand(target: string, uri?: BuildTarget, selected?: BuildTarget[]) {
     const exactProject = this.projectFromTarget(uri)
     if (exactProject) {
-      await this.enqueue(() => this.buildProject(exactProject, target))
+      await this.enqueue(
+        /** Build the exact project match with the requested target. */ () =>
+          this.buildProject(exactProject, target),
+      )
       return
     }
     const directories = this.uriDirectories(uri, selected)
@@ -1268,31 +1762,50 @@ class BuildDebugSupport {
       return void vscode.window.showWarningMessage(
         "The selected directory is not a recognized Delphi package root.",
       )
-    projects.sort((left, right) => {
-      const group = this.groupForProject(left.projectPath)
-      if (!group || group !== this.groupForProject(right.projectPath))
-        return left.projectPath.localeCompare(right.projectPath)
-      return (
-        group.projectPaths.findIndex(
-          (item) => normalizeKey(item) === normalizeKey(left.projectPath),
-        ) -
-        group.projectPaths.findIndex(
-          (item) => normalizeKey(item) === normalizeKey(right.projectPath),
+    projects.sort(
+      /**
+       * Preserve group build order when packages share a group; otherwise order them by
+       * path.
+       */ (left, right) => {
+        const group = this.groupForProject(left.projectPath)
+        if (!group || group !== this.groupForProject(right.projectPath))
+          return left.projectPath.localeCompare(right.projectPath)
+        return (
+          group.projectPaths.findIndex(
+            /** Find the left package position in the project group build order. */ (
+              item,
+            ) => normalizeKey(item) === normalizeKey(left.projectPath),
+          ) -
+          group.projectPaths.findIndex(
+            /** Find the right package position in the project group build order. */ (
+              item,
+            ) => normalizeKey(item) === normalizeKey(right.projectPath),
+          )
         )
-      )
-    })
+      },
+    )
     for (const project of projects) {
-      const result = await this.enqueue(() => this.buildProject(project, target))
+      const result = await this.enqueue(
+        /** Build the resolved package project with the requested target. */ () =>
+          this.buildProject(project, target),
+      )
       if (result !== 0) break
     }
   }
 
+  /**
+   * Resolve group/loose-project targets and serialize the requested production actions
+   * according to failure policy.
+   */
   async runGroupCommand(target: string, uri?: BuildTarget) {
     if (Array.isArray(uri?.projectPaths) && !uri.groupPath) {
       for (const projectPath of uri.projectPaths) {
         const project =
           this.model.project(projectPath) || minimalProjectDescriptor(projectPath)
-        const result = await this.enqueue(() => this.buildProject(project, target))
+        const result = await this.enqueue(
+          /** Build a standalone project with the requested group command target. */ () =>
+            this.buildProject(project, target),
+        )
         if (
           result !== 0 &&
           vscode.workspace
@@ -1308,15 +1821,32 @@ class BuildDebugSupport {
       return void vscode.window.showWarningMessage(
         "The selected directory is not a recognized Delphi Project Group root.",
       )
-    await this.enqueue(() => this.buildGroup(group, target))
+    await this.enqueue(
+      /** Build the resolved project group with the requested target. */ () =>
+        this.buildGroup(group, target),
+    )
   }
 
+  /**
+   * Serialize a foreground action after the previous outcome while keeping later
+   * actions runnable after an earlier rejection.
+   */
   enqueue<T>(action: () => T | PromiseLike<T>) {
+    // Continue the queue after either outcome; one failed build must not permanently prevent later requested actions.
     const run = this.queue.then(action, action)
-    this.queue = run.catch(() => undefined)
+    this.queue = run.catch(
+      /**
+       * Handle an asynchronous failure from build debug support enqueue without leaving
+       * it as an unobserved rejection.
+       */ () => undefined,
+    )
     return run
   }
 
+  /**
+   * Save only relevant dirty project source files when configured and cancel the build
+   * if a required save is rejected.
+   */
   async saveForProjects(projectPaths: string[]) {
     if (
       !vscode.workspace
@@ -1324,7 +1854,11 @@ class BuildDebugSupport {
         .get(SettingKey.BuildSaveBeforeBuild, true)
     )
       return true
-    const roots = projectPaths.map((projectPath) => path.dirname(projectPath))
+    const roots = projectPaths.map(
+      /** Collect project directories when selecting source documents to save. */ (
+        projectPath,
+      ) => path.dirname(projectPath),
+    )
     const projectFiles = new Set(projectPaths.map(normalizeKey))
     for (const projectPath of projectPaths) {
       try {
@@ -1334,14 +1868,32 @@ class BuildDebugSupport {
       } catch {}
     }
     const documents = vscode.workspace.textDocuments.filter(
-      (document) =>
+      /**
+       * Save dirty file documents explicitly referenced by, or located beneath, the
+       * build projects.
+       */ (document) =>
         document.isDirty &&
         document.uri.scheme === UriScheme.File &&
         (projectFiles.has(normalizeKey(document.fileName)) ||
-          roots.some((root) => isInside(root, document.fileName))),
+          roots.some(
+            /** Include source files located beneath a selected project directory. */ (
+              root,
+            ) => isInside(root, document.fileName),
+          )),
     )
-    const results = await Promise.all(documents.map((document) => document.save()))
-    if (results.some((result) => !result)) {
+    const results = await Promise.all(
+      documents.map(
+        /** Save each selected dirty document before invoking the compiler. */ (
+          document,
+        ) => document.save(),
+      ),
+    )
+    if (
+      results.some(
+        /** Cancel the build if any required document could not be saved. */ (result) =>
+          !result,
+      )
+    ) {
       void vscode.window.showErrorMessage(
         "Some Delphi source files could not be saved. The build was cancelled.",
       )
@@ -1350,6 +1902,10 @@ class BuildDebugSupport {
     return true
   }
 
+  /**
+   * Resolve effective project/tool settings and execute a configured production target
+   * after enablement and save checks.
+   */
   async buildProject(
     project: ProjectDescriptor,
     target: string,
@@ -1366,10 +1922,15 @@ class BuildDebugSupport {
       return 1
     }
     if (!(await this.saveForProjects([project.projectPath]))) return 1
-    const tools = await this.tools().catch((error) => {
-      void vscode.window.showErrorMessage(`Pascal Atlas：${error.message}`)
-      return undefined
-    })
+    const tools = await this.tools().catch(
+      /**
+       * Handle an asynchronous failure from build debug support build project without
+       * leaving it as an unobserved rejection.
+       */ (error) => {
+        void vscode.window.showErrorMessage(`Pascal Atlas：${error.message}`)
+        return undefined
+      },
+    )
     if (!tools) return 1
     const selected = { ...this.selection(project.projectDir), ...overrides }
     const descriptor = projectDescriptor(
@@ -1395,6 +1956,10 @@ class BuildDebugSupport {
     )
   }
 
+  /**
+   * Execute a group target directly when stop-on-failure is enabled, otherwise build
+   * projects sequentially and retain a nonzero failure result.
+   */
   async buildGroup(
     group: GroupDescriptor,
     target: string,
@@ -1425,10 +1990,15 @@ class BuildDebugSupport {
       return finalExitCode
     }
     if (!(await this.saveForProjects(group.projectPaths))) return 1
-    const tools = await this.tools().catch((error) => {
-      void vscode.window.showErrorMessage(`Pascal Atlas：${error.message}`)
-      return undefined
-    })
+    const tools = await this.tools().catch(
+      /**
+       * Handle an asynchronous failure from build debug support build group without
+       * leaving it as an unobserved rejection.
+       */ (error) => {
+        void vscode.window.showErrorMessage(`Pascal Atlas：${error.message}`)
+        return undefined
+      },
+    )
     if (!tools) return 1
     const fallback = this.model.project(group.projectPaths[0]) || {}
     const selected = { ...this.selection(group.groupDir, fallback), ...overrides }
@@ -1446,6 +2016,10 @@ class BuildDebugSupport {
     )
   }
 
+  /**
+   * Run a foreground build with filtered output/Problems and deadlines, suspending
+   * background compilation and restoring status/lifecycle state on either outcome.
+   */
   async executeBuild(
     label: string,
     executable: string,
@@ -1459,6 +2033,7 @@ class BuildDebugSupport {
       )
       return 1
     }
+    // Foreground builds own compiler resources and output; pause background checks until this production run has finished.
     this.backgroundDiagnostics?.suspendCompiler?.("foreground build")
     this.buildInProgress = true
     this.lastBuildResult = undefined
@@ -1539,13 +2114,24 @@ class BuildDebugSupport {
             ],
             { cwd, env: executionEnvironment },
           ),
-          new Promise<number>((resolve) => {
-            timeout = setTimeout(() => {
-              session.emitLine("[ERROR] Build timed out and was terminated.")
-              session.terminate()
-              resolve(1)
-            }, timeoutSeconds * 1000)
-          }),
+          new Promise<number>(
+            /**
+             * Coordinate completion and timeout handling for build debug support execute
+             * build.
+             */ (resolve) => {
+              timeout = setTimeout(
+                /**
+                 * Terminate the managed build process and return failure when its deadline
+                 * expires.
+                 */ () => {
+                  session.emitLine("[ERROR] Build timed out and was terminated.")
+                  session.terminate()
+                  resolve(1)
+                },
+                timeoutSeconds * 1000,
+              )
+            },
+          ),
         ])
         clearTimeout(timeout)
       } else {
@@ -1571,18 +2157,34 @@ class BuildDebugSupport {
           showReuseMessage: false,
         }
         const execution = await vscode.tasks.executeTask(task)
-        taskExitCode = await new Promise<number>((resolve) => {
-          const timeout = setTimeout(() => {
-            execution.terminate()
-            resolve(1)
-          }, timeoutSeconds * 1000)
-          const disposable = vscode.tasks.onDidEndTaskProcess((event) => {
-            if (event.execution !== execution) return
-            clearTimeout(timeout)
-            disposable.dispose()
-            resolve(event.exitCode ?? 1)
-          })
-        })
+        taskExitCode = await new Promise<number>(
+          /**
+           * Coordinate completion and timeout handling for build debug support execute
+           * build.
+           */ (resolve) => {
+            const timeout = setTimeout(
+              /**
+               * Terminate the VS Code build task and return failure when its deadline
+               * expires.
+               */ () => {
+                execution.terminate()
+                resolve(1)
+              },
+              timeoutSeconds * 1000,
+            )
+            const disposable = vscode.tasks.onDidEndTaskProcess(
+              /**
+               * Settle only the task execution started by this build and release its
+               * deadline listener.
+               */ (event) => {
+                if (event.execution !== execution) return
+                clearTimeout(timeout)
+                disposable.dispose()
+                resolve(event.exitCode ?? 1)
+              },
+            )
+          },
+        )
       }
       let exitCode = taskExitCode
       if (useRunner) {
@@ -1595,10 +2197,20 @@ class BuildDebugSupport {
         } catch {
           if (taskExitCode === 0) exitCode = 1
         } finally {
-          void fs.promises.unlink(resultPath).catch(() => undefined)
+          void fs.promises.unlink(resultPath).catch(
+            /**
+             * Handle an asynchronous failure from build debug support execute build
+             * without leaving it as an unobserved rejection.
+             */ () => undefined,
+          )
         }
         await this.loadBuildDiagnostics(diagnosticsPath, cwd)
-        void fs.promises.unlink(diagnosticsPath).catch(() => undefined)
+        void fs.promises.unlink(diagnosticsPath).catch(
+          /**
+           * Handle an asynchronous failure from build debug support execute build
+           * without leaving it as an unobserved rejection.
+           */ () => undefined,
+        )
       }
       const duration = formatBuildDuration(Date.now() - startedAt)
       const succeeded = exitCode === 0
@@ -1624,6 +2236,10 @@ class BuildDebugSupport {
     }
   }
 
+  /**
+   * Re-read effective project descriptor/artifact metadata for the currently selected
+   * build configuration and platform.
+   */
   async detailedProject(projectPath: string, overrides: ProjectOverrides = {}) {
     const tools = await this.tools()
     const minimal = this.model.project(projectPath)
@@ -1648,6 +2264,10 @@ class BuildDebugSupport {
     return descriptor
   }
 
+  /**
+   * Reuse a valid saved runnable project or offer a startup selection, persisting its
+   * identity under the project group.
+   */
   async selectStartupProject(group: GroupDescriptor, force = false) {
     const saved = this.context.workspaceState.get<Record<string, string>>(
       STARTUP_KEY,
@@ -1655,23 +2275,34 @@ class BuildDebugSupport {
     )
     const key = normalizeKey(group.groupPath)
     const candidates = group.projectPaths
-      .map((projectPath) => this.model.project(projectPath))
+      .map(
+        /**
+         * Resolve descriptors for the group projects before selecting a startup
+         * application.
+         */ (projectPath) => this.model.project(projectPath),
+      )
       .filter(
-        (project): project is ProjectDescriptor => project?.kind === "application",
+        /** Offer only application projects as startup candidates. */ (
+          project,
+        ): project is ProjectDescriptor => project?.kind === "application",
       )
     if (!force) {
       const existing = candidates.find(
-        (project) =>
+        /**
+         * Reuse the saved startup project when it still belongs to the candidate list.
+         */ (project) =>
           normalizeKey(project.projectPath) === normalizeKey(saved[key] || ""),
       )
       if (existing) return existing
     }
     const picked = await vscode.window.showQuickPick(
-      candidates.map((project) => ({
-        label: project.name,
-        description: project.projectPath,
-        project,
-      })),
+      candidates.map(
+        /** Offer each startup application by name and project path. */ (project) => ({
+          label: project.name,
+          description: project.projectPath,
+          project,
+        }),
+      ),
       { placeHolder: "Select the startup project for this Project Group" },
     )
     if (!picked) return undefined
@@ -1680,34 +2311,52 @@ class BuildDebugSupport {
     return picked.project
   }
 
+  /** Resolve/pick the URI's group and optionally force a startup-project selection. */
   async selectStartupProjectForUri(uri: BuildTarget | undefined, force?: boolean) {
     const group = this.groupFromTarget(uri) || (await this.pickGroup(uri?.fsPath || ""))
     if (group) await this.selectStartupProject(group, force)
   }
 
+  /**
+   * Decide whether artifacts need building under always/never/outdated Run policy
+   * using effective source/output timestamps.
+   */
   shouldBuildBeforeRun(descriptors: DetailedProjectDescriptor[]) {
     const mode = vscode.workspace
       .getConfiguration(ConfigurationSection)
       .get<string>(SettingKey.RunBuildBeforeRun, "ifOutdated")
     if (mode === "always") return true
     if (mode === "never") return false
-    return descriptors.some((descriptor) => {
-      const outputTime = artifactTimestamp(descriptor)
-      if (!outputTime) return true
-      return uniquePaths([
-        descriptor.projectPath,
-        descriptor.mainSource,
-        ...(descriptor.references || []),
-      ]).some((filePath) => {
-        try {
-          return fs.statSync(filePath).mtimeMs > outputTime
-        } catch {
-          return false
-        }
-      })
-    })
+    return descriptors.some(
+      /** Require a build when a project output is missing or older than its inputs. */ (
+        descriptor,
+      ) => {
+        const outputTime = artifactTimestamp(descriptor)
+        if (!outputTime) return true
+        return uniquePaths([
+          descriptor.projectPath,
+          descriptor.mainSource,
+          ...(descriptor.references || []),
+        ]).some(
+          /**
+           * Check whether any project or source input is newer than the existing output
+           * artifact.
+           */ (filePath) => {
+            try {
+              return fs.statSync(filePath).mtimeMs > outputTime
+            } catch {
+              return false
+            }
+          },
+        )
+      },
+    )
   }
 
+  /**
+   * Resolve a runnable startup project, optionally build required artifacts, and
+   * launch it through the managed Run session.
+   */
   async runGroup(uri?: BuildTarget) {
     if (this.runInProgress) {
       return void vscode.window.showInformationMessage(
@@ -1734,8 +2383,9 @@ class BuildDebugSupport {
       }
     }
     if (this.shouldBuildBeforeRun(descriptors)) {
-      const exitCode = await this.enqueue(() =>
-        this.buildGroup(group, "Build", selected),
+      const exitCode = await this.enqueue(
+        /** Build the group before launching its selected startup project. */ () =>
+          this.buildGroup(group, "Build", selected),
       )
       if (exitCode !== 0) return
       descriptors = []
@@ -1750,14 +2400,21 @@ class BuildDebugSupport {
       }
     }
     const descriptor = descriptors.find(
-      (item) => normalizeKey(item.projectPath) === normalizeKey(startup.projectPath),
+      /** Find the resolved output descriptor for the selected startup project. */ (
+        item,
+      ) => normalizeKey(item.projectPath) === normalizeKey(startup.projectPath),
     )
     if (!descriptor || !fs.existsSync(descriptor.output)) {
       return void vscode.window.showErrorMessage(
         `Startup project output does not exist: ${descriptor?.output || startup.projectPath}`,
       )
     }
-    const tools = await this.tools().catch(() => undefined)
+    const tools = await this.tools().catch(
+      /**
+       * Handle an asynchronous failure from build debug support run group without
+       * leaving it as an unobserved rejection.
+       */ () => undefined,
+    )
     const args = parseCommandLine(descriptor.runParams)
     this.output.appendLine(
       `Run without debugging: ${descriptor.output} ${args.join(" ")}`,
@@ -1776,6 +2433,10 @@ class BuildDebugSupport {
     }
   }
 
+  /**
+   * Launch the program through the run-only debug adapter, track its completion, and
+   * synchronize execution state/status.
+   */
   async runInDebugConsole(
     descriptor: DetailedProjectDescriptor,
     args: string[],
@@ -1821,8 +2482,17 @@ class BuildDebugSupport {
     )
   }
 
+  /**
+   * Expose Make/Build tasks for loaded groups using current tool and
+   * configuration/platform selections.
+   */
   async provideTasks() {
-    const tools = await this.tools().catch(() => undefined)
+    const tools = await this.tools().catch(
+      /**
+       * Handle an asynchronous failure from build debug support provide tasks without
+       * leaving it as an unobserved rejection.
+       */ () => undefined,
+    )
     if (!tools) return []
     const tasks = []
     for (const group of this.model.groups.values()) {

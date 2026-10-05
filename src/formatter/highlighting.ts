@@ -96,20 +96,36 @@ const PASCAL_KEYWORDS = new Set<string>([
 ])
 const KEYWORD_IDENTIFIER = /\b[A-Za-z_][A-Za-z0-9_]*\b/g
 
+/**
+ * Validate a bounded list of hexadecimal structural colors, returning a fresh default
+ * palette when the configured value is invalid.
+ */
 function normalizeBlockLevelColors(value: unknown) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 12) {
     return [...DEFAULT_BLOCK_LEVEL_COLORS]
   }
-  const colors = value.map((color) => String(color || "").trim())
-  return colors.every((color) => COLOR_VALUE.test(color))
+  const colors = value.map(
+    /** Normalize configured color strings and tolerate empty entries. */ (color) =>
+      String(color || "").trim(),
+  )
+  return colors.every(
+    /** Require every configured highlight color to match the supported color syntax. */ (
+      color,
+    ) => COLOR_VALUE.test(color),
+  )
     ? colors
     : [...DEFAULT_BLOCK_LEVEL_COLORS]
 }
 
+/** Build a stable source-range identity for deduplicating structural keyword tokens. */
 function keywordTokenKey(token: HighlightRange) {
   return `${token.line}:${token.start}:${token.end}`
 }
 
+/**
+ * Find the structural keyword at the caret and return its matched block/control group,
+ * excluding comments, strings, escaped names, and dotted members.
+ */
 function findDelphiKeywordMatchGroup(
   text: string,
   position: Pick<Position, "line" | "character">,
@@ -140,7 +156,9 @@ function findDelphiKeywordMatchGroup(
   }
 
   const current = tokens.find(
-    (token) =>
+    /** Find the keyword token containing the requested character on this line. */ (
+      token,
+    ) =>
       token.line === position.line &&
       position.character >= token.start &&
       position.character < token.end,
@@ -148,10 +166,18 @@ function findDelphiKeywordMatchGroup(
   if (!current) return undefined
 
   const matchesByToken = new Map<string, Map<string, KeywordToken>>()
+  /**
+   * Associate every keyword in a deduplicated structural group with all other members
+   * of that same group.
+   */
   const addGroup = (group: KeywordToken[]) => {
     const unique = [
       ...new Map(
-        group.map((token: KeywordToken) => [keywordTokenKey(token), token]),
+        group.map(
+          /** Index each keyword group member by its stable token key. */ (
+            token: KeywordToken,
+          ) => [keywordTokenKey(token), token],
+        ),
       ).values(),
     ]
     for (const token of unique) {
@@ -197,13 +223,17 @@ function findDelphiKeywordMatchGroup(
       continue
     }
     if (token.keyword === PascalKeyword.Of) {
-      const opening = [...blockStack]
-        .reverse()
-        .find(
-          (item) =>
-            item.kind === PascalKeyword.Case &&
-            !item.group.some((member) => member.keyword === PascalKeyword.Of),
-        )
+      const opening = [...blockStack].reverse().find(
+        /**
+         * Find the innermost case block that has not yet encountered its of keyword.
+         */ (item) =>
+          item.kind === PascalKeyword.Case &&
+          !item.group.some(
+            /** Detect whether this case group has already claimed its of keyword. */ (
+              member,
+            ) => member.keyword === PascalKeyword.Of,
+          ),
+      )
       if (opening) opening.group.push(token)
       continue
     }
@@ -213,13 +243,18 @@ function findDelphiKeywordMatchGroup(
     ) {
       const opening = [...blockStack]
         .reverse()
-        .find((item) => item.kind === PascalKeyword.Try)
+        .find(
+          /** Find the innermost enclosing try block. */ (item) =>
+            item.kind === PascalKeyword.Try,
+        )
       if (opening) opening.group.push(token)
       continue
     }
     if (token.keyword === PascalKeyword.Until) {
       const index = blockStack.findLastIndex(
-        (item: { kind: string }) => item.kind === PascalKeyword.Repeat,
+        /** Find the last unmatched repeat block for the closing until keyword. */ (item: {
+          kind: string
+        }) => item.kind === PascalKeyword.Repeat,
       )
       if (index >= 0) {
         const opening = blockStack[index]
@@ -251,6 +286,10 @@ function findDelphiKeywordMatchGroup(
     }
   }
 
+  /**
+   * Collect one control header through its expected terminator, stopping at a new
+   * statement/block boundary or the bounded token lookahead.
+   */
   const findHeaderTerminator = (
     index: number,
     terminator: string,
@@ -269,7 +308,11 @@ function findDelphiKeywordMatchGroup(
       }
       if (
         intermediate.includes(candidate.keyword) &&
-        !group.some((member) => member.keyword === candidate.keyword)
+        !group.some(
+          /** Avoid adding the same branch keyword twice to one block group. */ (
+            member,
+          ) => member.keyword === candidate.keyword,
+        )
       ) {
         group.push(candidate)
       }
@@ -309,22 +352,36 @@ function findDelphiKeywordMatchGroup(
     }
   }
 
-  for (const token of tokens.filter((item) => item.keyword === PascalKeyword.Else)) {
-    const owner = [...ifGroups]
-      .reverse()
-      .find(
-        (item) =>
-          item.token.line <= token.line &&
-          item.token.indent === token.indent &&
-          !item.group.some((member) => member.keyword === PascalKeyword.Else),
-      )
+  for (const token of tokens.filter(
+    /** Select else tokens for matching their preceding if groups. */ (item) =>
+      item.keyword === PascalKeyword.Else,
+  )) {
+    const owner = [...ifGroups].reverse().find(
+      /**
+       * Find the nearest same-indent if group that has not already claimed an else.
+       */ (item) =>
+        item.token.line <= token.line &&
+        item.token.indent === token.indent &&
+        !item.group.some(
+          /** Detect whether this if group has already claimed an else keyword. */ (
+            member,
+          ) => member.keyword === PascalKeyword.Else,
+        ),
+    )
     if (owner) owner.group.push(token)
   }
-  ifGroups.forEach((item) => addGroup(item.group))
+  ifGroups.forEach(
+    /** Register completed if groups for matching-keyword highlighting. */ (item) =>
+      addGroup(item.group),
+  )
 
   return [...(matchesByToken.get(keywordTokenKey(current))?.values() || [current])]
 }
 
+/**
+ * Collect module/header and interface/implementation boundary keywords while excluding
+ * interface type declarations and non-code spans.
+ */
 function findDelphiModuleKeywordHighlights(text: string) {
   const lines = text.split(/\r\n|\n|\r/)
   const codeLines = maskPascalLines(lines)
@@ -345,6 +402,10 @@ function findDelphiModuleKeywordHighlights(text: string) {
   return ranges
 }
 
+/**
+ * Locate standalone Self keyword spans without capturing strings, comments, escaped
+ * names, or qualified member spellings.
+ */
 function findDelphiSelfKeywordHighlights(text: string) {
   const lines = text.split(/\r\n|\n|\r/)
   const codeLines = maskPascalLines(lines)
@@ -444,18 +505,30 @@ const NON_CALLABLE_KEYWORDS = new Set<string>([
   PascalKeyword.Xor,
 ])
 
+/**
+ * Distinguish an actual class/record/object/interface block opener from casts,
+ * class-of references, and member identifiers.
+ */
 function isTypeBlockKeyword(codeLine: string, keywordStart: number) {
   return new RegExp(String.raw`=\s*(?:${PascalKeyword.Packed}\s+)?$`, "i").test(
     codeLine.slice(0, keywordStart),
   )
 }
 
+/**
+ * Determine whether a type declaration owns a block body rather than ending as a
+ * forward declaration or alias.
+ */
 function typeDeclarationHasBody(codeLine: string, keywordEnd: number) {
   const suffix = codeLine.slice(keywordEnd)
   if (new RegExp(String.raw`^\s+${PascalKeyword.Of}\b`, "i").test(suffix)) return false
   return !/^\s*(?:\([^)]*\)\s*)?;/.test(suffix)
 }
 
+/**
+ * Recognize type-form of keywords that belong to type syntax rather than executable
+ * case/loop structure.
+ */
 function isTypeOfKeyword(codeLine: string, keywordStart: number) {
   const prefix = codeLine.slice(0, keywordStart)
   return (
@@ -469,6 +542,10 @@ function isTypeOfKeyword(codeLine: string, keywordStart: number) {
   )
 }
 
+/**
+ * Measure indentation in visual columns using configured tab stops for structural
+ * palette and boundary matching.
+ */
 function leadingIndentColumns(line: string, tabSize = 2) {
   let columns = 0
   for (const character of line) {
@@ -483,12 +560,18 @@ function leadingIndentColumns(line: string, tabSize = 2) {
   return columns
 }
 
+/**
+ * Scan comment and directive ranges across lines while preserving source positions and
+ * distinguishing line/block comments from string literals.
+ */
 function findPascalCommentHighlights(text: string) {
   const lines = text.split(/\r\n|\n|\r/)
   const ranges: HighlightRange[] = []
   let state = "code"
 
-  const add = (line: number, start: number, end: number) => {
+  const add = /**
+   * Append a nonempty comment highlight span using line-relative character offsets.
+   */ (line: number, start: number, end: number) => {
     if (end > start) ranges.push({ line, start, end })
   }
 
@@ -560,6 +643,10 @@ function findPascalCommentHighlights(text: string) {
   return ranges
 }
 
+/**
+ * Collect structural/type-boundary and lightweight identifier highlighting ranges on
+ * masked lines, assigning executable levels without repainting type boundaries.
+ */
 function findDelphiKeywordHighlights(
   text: string,
   options: {
@@ -580,7 +667,7 @@ function findDelphiKeywordHighlights(
   const typeDeclarationEndKeywords = []
   const blockLevelKeywords = Array.from(
     { length: blockLevelCount },
-    (): HighlightRange[] => [],
+    /** Create the next initialized entry used by find delphi keyword highlights. */ (): HighlightRange[] => [],
   )
   const typeLikeIdentifiers = []
   const callableIdentifiers = []
@@ -747,13 +834,20 @@ function findDelphiKeywordHighlights(
 
   const typeBoundaryKeys = new Set(
     [...typeDeclarationKeywords, ...typeDeclarationEndKeywords].map(
-      (range) => `${range.line}:${range.start}:${range.end}`,
+      /** Create positional keys for type-declaration closing keywords. */ (range) =>
+        `${range.line}:${range.start}:${range.end}`,
     ),
   )
-  const visibleLevelKeywords = blockLevelKeywords.map((ranges) =>
-    ranges.filter(
-      (range) => !typeBoundaryKeys.has(`${range.line}:${range.start}:${range.end}`),
-    ),
+  const visibleLevelKeywords = blockLevelKeywords.map(
+    /** Remove type boundaries from each general block-level keyword bucket. */ (
+      ranges,
+    ) =>
+      ranges.filter(
+        /**
+         * Keep block keyword spans that are not already classified as type boundaries.
+         */ (range) =>
+          !typeBoundaryKeys.has(`${range.line}:${range.start}:${range.end}`),
+      ),
   )
 
   return {

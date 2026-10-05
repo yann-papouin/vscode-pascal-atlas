@@ -156,6 +156,10 @@ interface SettingsApi {
   ConfigurationTarget: Pick<typeof VSCode.ConfigurationTarget, "Global" | "Workspace">
   window: Pick<typeof VSCode.window, "showInformationMessage">
 }
+/**
+ * Detect any explicit global, workspace, folder, or language override so first-run
+ * initialization never overwrites a user choice.
+ */
 function hasExplicitValue(inspected: Record<string, unknown> | undefined) {
   if (!inspected) return false
   return [
@@ -165,9 +169,17 @@ function hasExplicitValue(inspected: Record<string, unknown> | undefined) {
     "globalLanguageValue",
     "workspaceLanguageValue",
     "workspaceFolderLanguageValue",
-  ].some((key) => inspected[key] !== undefined)
+  ].some(
+    /**
+     * Detect an explicit setting at any global, workspace, folder, or language scope.
+     */ (key) => inspected[key] !== undefined,
+  )
 }
 
+/**
+ * Apply the versioned first-run profile only to unset defaults, persist the applied
+ * profile version, and report which settings were written.
+ */
 async function initializeFirstRunSettings(
   context: Pick<VSCode.ExtensionContext, "globalState">,
   output: OutputChannel,
@@ -200,6 +212,10 @@ async function initializeFirstRunSettings(
   return { initialized: true, updated }
 }
 
+/**
+ * Restore only the managed symbol color values at workspace or global scope and notify
+ * the user without resetting feature or timing preferences.
+ */
 async function resetSymbolColors(
   output: { appendLine: (line: string) => void },
   vscodeApi?: SettingsApi,

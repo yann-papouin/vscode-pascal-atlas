@@ -2,6 +2,10 @@ import { PascalKeyword } from "./shared/pascal"
 import { isInteger } from "./shared/guards"
 import { maskPascalNonCode } from "./binarySymbols"
 
+/**
+ * Find the Pascal identifier touching a UTF-16 offset, including the character before
+ * an end-of-word caret; reject invalid offsets or tokens.
+ */
 function identifierAt(text: string, offset: unknown) {
   if (!isInteger(offset)) return undefined
   let cursor = Math.max(0, Math.min(offset, text.length))
@@ -15,16 +19,28 @@ function identifierAt(text: string, offset: unknown) {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(word) ? { word, start, end } : undefined
 }
 
+/**
+ * Find case-insensitive, whole-identifier references after masking comments and
+ * strings, preserving document offsets.
+ */
 function findIdentifierOccurrences(text: string, identifier: string) {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier || "")) return []
   const code = maskPascalNonCode(text)
   const escaped = identifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  return [...code.matchAll(new RegExp(`\\b${escaped}\\b`, "gi"))].map((match) => ({
-    offset: match.index,
-    length: match[0].length,
-  }))
+  return [...code.matchAll(new RegExp(`\\b${escaped}\\b`, "gi"))].map(
+    /** Return each identifier match's UTF-16 start offset and token length. */ (
+      match,
+    ) => ({
+      offset: match.index,
+      length: match[0].length,
+    }),
+  )
 }
 
+/**
+ * Build UTF-16 line-start offsets for repeated position lookups without rescanning the
+ * whole document.
+ */
 function lineStartsFor(text: string) {
   const starts = [0]
   for (let index = 0; index < text.length; index += 1) {
@@ -33,7 +49,12 @@ function lineStartsFor(text: string) {
   return starts
 }
 
+/**
+ * Locate an offset in a sorted line-start table with binary search and return a
+ * zero-based editor position.
+ */
 function positionAt(lineStarts: readonly number[], offset: number) {
+  // The precomputed line-start table makes each lookup logarithmic even when a large unit has many references.
   let low = 0
   let high = lineStarts.length - 1
   while (low <= high) {
@@ -45,6 +66,10 @@ function positionAt(lineStarts: readonly number[], offset: number) {
   return { line, character: offset - lineStarts[line] }
 }
 
+/**
+ * Normalize a UUID to an uppercase Delphi brace-delimited GUID, returning undefined
+ * for invalid UUID text.
+ */
 function formatDelphiGuid(uuid: string) {
   const normalized = String(uuid || "")
     .replace(/[{}]/g, "")
@@ -54,6 +79,10 @@ function formatDelphiGuid(uuid: string) {
   return `{${normalized}}`
 }
 
+/**
+ * Recognize an interface type heading that can receive a GUID attribute, including
+ * generic names and ancestor interfaces.
+ */
 function isDelphiInterfaceDeclaration(line: unknown) {
   return new RegExp(
     String.raw`^\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*<[^>\r\n]*>)?\s*=\s*${PascalKeyword.Interface}(?:\s*\([^)]*\))?\s*$`,
@@ -61,6 +90,10 @@ function isDelphiInterfaceDeclaration(line: unknown) {
   ).test(String(line || ""))
 }
 
+/**
+ * Build an indented Delphi interface GUID attribute using the document's line ending;
+ * return undefined when UUID validation fails.
+ */
 function automaticInterfaceGuidText(indentation: string, eol: string, uuid: string) {
   const guid = formatDelphiGuid(uuid)
   return guid ? `${indentation}['${guid}']${eol}${indentation}` : undefined

@@ -35,6 +35,10 @@ const IGNORED_DIRECTORY_NAMES = new Set<string>([
   "node_modules",
 ])
 
+/**
+ * Discover package artifacts in bounded parallel directory batches, excluding
+ * generated/vendor trees and symbolic links while tolerating unreadable folders.
+ */
 async function findCompiledPackageFiles(rootPath: string, extension: string) {
   const results = []
   const pending = [rootPath]
@@ -42,16 +46,20 @@ async function findCompiledPackageFiles(rootPath: string, extension: string) {
   while (pending.length > 0) {
     const batch = pending.splice(0, 16)
     const listings = await Promise.all(
-      batch.map(async (directory) => {
-        try {
-          return [
-            directory,
-            await fs.promises.readdir(directory, { withFileTypes: true }),
-          ] as const
-        } catch {
-          return [directory, []] as const
-        }
-      }),
+      batch.map(
+        /**
+         * Read directory entries in parallel, treating unreadable directories as empty.
+         */ async (directory) => {
+          try {
+            return [
+              directory,
+              await fs.promises.readdir(directory, { withFileTypes: true }),
+            ] as const
+          } catch {
+            return [directory, []] as const
+          }
+        },
+      ),
     )
 
     for (const [directory, entries] of listings) {
@@ -74,14 +82,20 @@ async function findCompiledPackageFiles(rootPath: string, extension: string) {
   return results
 }
 
+/** Find compiled BPL package files below the supplied source or installation root. */
 async function findBplFiles(rootPath: string) {
   return findCompiledPackageFiles(rootPath, FileExtension.CompiledPackage)
 }
 
+/** Find compiled DCP symbol files below the supplied source or installation root. */
 async function findDcpFiles(rootPath: string) {
   return findCompiledPackageFiles(rootPath, FileExtension.CompiledSymbols)
 }
 
+/**
+ * Replace comments and string contents with whitespace while preserving line breaks
+ * and every UTF-16 offset used by editor positions.
+ */
 function maskPascalNonCode(text: string) {
   // Index this buffer by UTF-16 code unit, exactly like String#slice and regex
   // offsets. Spreading a string collapses surrogate pairs and shifts every
@@ -89,6 +103,10 @@ function maskPascalNonCode(text: string) {
   const result = text.split("")
   let state: string = LexerState.Code
 
+  /**
+   * Mask one non-newline UTF-16 code unit without changing the buffer length or line
+   * structure.
+   */
   const blank = (index: number) => {
     if (result[index] !== "\r" && result[index] !== "\n") result[index] = " "
   }
@@ -141,18 +159,33 @@ function maskPascalNonCode(text: string) {
   return result.join("")
 }
 
+/**
+ * Find the most recent matching declared variable/parameter type in already masked
+ * Pascal code.
+ */
 function declarationType(code: string, identifier: string) {
   const key = identifier.toLowerCase()
   let result
   for (const match of code.matchAll(
     /\b([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*:\s*([A-Za-z_][A-Za-z0-9_.]*(?:\s*<[^;=()]+>)?)/gi,
   )) {
-    const names = match[1].split(",").map((item: string) => item.trim().toLowerCase())
+    const names = match[1]
+      .split(",")
+      .map(
+        /** Normalize grouped declaration names for case-insensitive identifier matching. */ (
+          item: string,
+        ) => item.trim().toLowerCase(),
+      )
     if (names.includes(key)) result = match[2]
   }
   return result
 }
 
+/**
+ * Infer an identifier's receiver type before a source offset using routine scope,
+ * declarations, assignments, casts, and recursive initializer evidence; stop cycles or
+ * unsupported cases.
+ */
 function inferPascalType(
   text: string,
   identifier: string,
@@ -163,6 +196,7 @@ function inferPascalType(
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) return undefined
   const code = preparedCode || maskPascalNonCode(text)
   const key = identifier.toLowerCase()
+  // Recursive initializer/receiver inference can revisit an identifier; terminate that branch rather than following an alias cycle indefinitely.
   if (seenIdentifiers.has(key)) return undefined
   const resolving = new Set(seenIdentifiers)
   resolving.add(key)
@@ -281,6 +315,9 @@ function inferPascalType(
   return cast?.[1]
 }
 
+/**
+ * Append a source-positioned inference fact under a case-insensitive identifier key.
+ */
 function appendInferenceEntry(
   map: Map<string, InferenceEntry[]>,
   name: string,
@@ -292,6 +329,10 @@ function appendInferenceEntry(
   map.get(key)!.push(value)
 }
 
+/**
+ * Binary-search sorted inference facts for the latest visible entry before an offset,
+ * rejecting facts outside the minimum scope boundary.
+ */
 function inferenceEntryAt(
   entries: InferenceEntry[] | undefined,
   offset: number,
@@ -310,10 +351,15 @@ function inferenceEntryAt(
       high = middle - 1
     }
   }
+  // Only facts inside the current routine scope are visible, even when a same-named declaration exists earlier in the file.
   const result = candidate >= 0 ? entries[candidate] : undefined
   return result && result.offset >= minimumOffset ? result : undefined
 }
 
+/**
+ * Binary-search sorted inference facts for the first entry after an offset, returning
+ * undefined when none follows it.
+ */
 function firstInferenceEntryAfter(
   entries: InferenceEntry[] | undefined,
   offset: number,
@@ -334,6 +380,10 @@ function firstInferenceEntryAfter(
   return candidate < entries.length ? entries[candidate] : undefined
 }
 
+/**
+ * Collect grouped parameter/variable names and their type text into a case-insensitive
+ * declaration map.
+ */
 function declarationMap(value: string) {
   const result = new Map<string, string>()
   for (const match of String(value || "").matchAll(
@@ -341,7 +391,10 @@ function declarationMap(value: string) {
   )) {
     for (const name of match[1]
       .split(",")
-      .map((item) => item.trim())
+      .map(
+        /** Trim each name from a grouped parameter declaration. */ (item) =>
+          item.trim(),
+      )
       .filter(Boolean)) {
       result.set(name.toLowerCase(), match[2])
     }
@@ -349,6 +402,10 @@ function declarationMap(value: string) {
   return result
 }
 
+/**
+ * Index declarations, routine parameters/owners, inline initializers, for-in
+ * collections, and casts once for repeated local receiver-type lookups.
+ */
 function buildPascalTypeInferenceIndex(text: string, preparedCode?: string) {
   const code = preparedCode || maskPascalNonCode(text)
   const declarations = new Map<string, InferenceEntry[]>()
@@ -447,6 +504,10 @@ function buildPascalTypeInferenceIndex(text: string, preparedCode?: string) {
   }
 }
 
+/**
+ * Collect lowercase names declared by inline var assignments and for-var loops from
+ * masked code.
+ */
 function collectPascalInlineVariableNames(text: string, preparedCode?: string) {
   const code = preparedCode || maskPascalNonCode(text)
   const result = new Set<string>()
@@ -472,6 +533,10 @@ function collectPascalInlineVariableNames(text: string, preparedCode?: string) {
   return result
 }
 
+/**
+ * Find the latest routine header preceding an offset so local inference uses the
+ * appropriate owner, parameters, and return type.
+ */
 function routineInferenceScopeAt(index: PascalTypeInferenceIndex, offset: number) {
   const routines = index?.routines || []
   let low = 0
@@ -489,6 +554,10 @@ function routineInferenceScopeAt(index: PascalTypeInferenceIndex, offset: number
   return candidate >= 0 ? routines[candidate] : undefined
 }
 
+/**
+ * Resolve an identifier from indexed local declarations, pseudo-variables,
+ * initializers, casts, and for-in elements while avoiding recursive identifier cycles.
+ */
 function inferPascalTypeFromIndex(
   index: PascalTypeInferenceIndex,
   identifier: string,
@@ -567,6 +636,10 @@ function inferPascalTypeFromIndex(
   return firstInferenceEntryAfter(index.declarations.get(key), offset)?.typeName
 }
 
+/**
+ * Read the nearest visible for-in collection fact for an identifier within the current
+ * routine scope.
+ */
 function pascalForInCollectionFromIndex(
   index: PascalTypeInferenceIndex,
   identifier: string,
@@ -581,6 +654,10 @@ function pascalForInCollectionFromIndex(
   )?.collectionName
 }
 
+/**
+ * Find the latest call-shaped initializer assigned to an identifier before the
+ * requested offset.
+ */
 function inferPascalInitializerRoutine(
   text: string,
   identifier: string,
@@ -600,6 +677,10 @@ function inferPascalInitializerRoutine(
   return result
 }
 
+/**
+ * Check whether the code before an offset ends in a member-access dot, ignoring
+ * whitespace and masked non-code spans.
+ */
 function isPascalMemberReference(text: string, offset: number, preparedCode?: string) {
   const code = preparedCode || maskPascalNonCode(text)
   let cursor = Math.max(0, Math.min(offset, code.length)) - 1
@@ -607,6 +688,10 @@ function isPascalMemberReference(text: string, offset: number, preparedCode?: st
   return code[cursor] === "."
 }
 
+/**
+ * Split a generic argument list on outer commas while retaining commas belonging to
+ * nested generic types.
+ */
 function splitPascalGenericArguments(value: string) {
   const result = []
   let start = 0
@@ -623,6 +708,10 @@ function splitPascalGenericArguments(value: string) {
   return result.filter(Boolean)
 }
 
+/**
+ * Separate a type reference's base name from its outer generic arguments, preserving
+ * nongeneric references as an empty argument list.
+ */
 function parsePascalTypeReference(value: unknown) {
   const text = String(value || "").trim()
   const open = text.indexOf("<")
@@ -633,10 +722,18 @@ function parsePascalTypeReference(value: unknown) {
   }
 }
 
+/**
+ * Return the unqualified base type name without generic arguments or unit namespace
+ * prefixes.
+ */
 function pascalTypeBaseName(value: unknown): string {
   return parsePascalTypeReference(value).base.split(".").at(-1) || ""
 }
 
+/**
+ * Substitute declared generic parameters with the receiver's corresponding type
+ * arguments using whole-identifier case-insensitive matches.
+ */
 function substitutePascalTypeParameters(
   value: string,
   parameters: readonly string[],
@@ -656,6 +753,10 @@ function substitutePascalTypeParameters(
   return result
 }
 
+/**
+ * Infer element types for recognized generic collection/array shapes, returning
+ * undefined when the type does not provide reliable element evidence.
+ */
 function inferPascalCollectionElementType(
   collectionType: string | undefined,
 ): string | undefined {
@@ -671,6 +772,10 @@ function inferPascalCollectionElementType(
   return undefined
 }
 
+/**
+ * Extract the return type of a function signature while excluding procedures and other
+ * routine forms.
+ */
 function pascalRoutineReturnType(signature: string | undefined) {
   const text = String(signature || "").trim()
   if (
@@ -698,6 +803,10 @@ function pascalRoutineReturnType(signature: string | undefined) {
   return /^\s*:\s*([^;]+)\s*;/i.exec(tail)?.[1].trim()
 }
 
+/**
+ * Parse the local receiver chain before a member dot, including casts, calls,
+ * generics, and index dereferences without rescanning an unrelated whole-file prefix.
+ */
 function pascalMemberChainBefore(text: string, offset: number, preparedCode?: string) {
   const code = preparedCode || maskPascalNonCode(text)
   let cursor = Math.max(0, Math.min(offset, code.length)) - 1
@@ -758,6 +867,10 @@ function pascalMemberChainBefore(text: string, offset: number, preparedCode?: st
   return reversed.reverse()
 }
 
+/**
+ * Collect the offsets of identifiers belonging to known unit references without
+ * treating ordinary member chains as unit names.
+ */
 function collectPascalUnitIdentifierOffsets(
   text: string,
   usedUnits = parseUsesUnits(text),
@@ -765,7 +878,15 @@ function collectPascalUnitIdentifierOffsets(
 ) {
   const code = preparedCode || maskPascalNonCode(text)
   const offsets = new Set<number>()
+  /**
+   * Escape a unit name for literal regex matching so namespace separators do not
+   * become wildcard characters.
+   */
   const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  /**
+   * Record each identifier component's original UTF-16 offset within a known
+   * unit-reference span.
+   */
   const addIdentifiers = (value: string, baseOffset: number) => {
     for (const identifier of value.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
       offsets.add(baseOffset + identifier.index)
@@ -795,19 +916,30 @@ function collectPascalUnitIdentifierOffsets(
   return offsets
 }
 
+/**
+ * Collect whole uses-clause unit-reference spans, preferring longer qualified names so
+ * dotted units remain one navigation target.
+ */
 function collectPascalUsesUnitRanges(
   text: string,
   usedUnits = parseUsesUnits(text),
   preparedCode?: string,
 ) {
   const code = preparedCode || maskPascalNonCode(text)
+  /**
+   * Escape a unit name for literal regex matching so namespace separators do not
+   * become wildcard characters.
+   */
   const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
   const usesSections = [
     ...code.matchAll(new RegExp("\\b" + PascalKeyword.Uses + "\\b([\\s\\S]*?);", "gi")),
   ]
   const ranges = []
   for (const unitName of [...usedUnits].sort(
-    (left, right) => right.length - left.length,
+    /**
+     * Check longer unit names first so qualified names win over shorter overlapping
+     * matches.
+     */ (left, right) => right.length - left.length,
   )) {
     const parts = unitName.split(".").filter(Boolean)
     if (parts.length === 0) continue
@@ -825,9 +957,16 @@ function collectPascalUsesUnitRanges(
       }
     }
   }
-  return ranges.sort((left, right) => left.start - right.start)
+  return ranges.sort(
+    /** Return uses-unit spans in source order. */ (left, right) =>
+      left.start - right.start,
+  )
 }
 
+/**
+ * Find the known uses-unit span containing a source offset, reusing supplied ranges
+ * when available.
+ */
 function findPascalUsesUnitAt(
   text: string,
   offset: number,
@@ -836,10 +975,17 @@ function findPascalUsesUnitAt(
   ranges?: PascalUsesRange[],
 ) {
   return (ranges || collectPascalUsesUnitRanges(text, usedUnits, preparedCode)).find(
-    (item: { start: number; end: number }) => offset >= item.start && offset < item.end,
+    /** Find the uses-unit span containing the clicked UTF-16 offset. */ (item: {
+      start: number
+      end: number
+    }) => offset >= item.start && offset < item.end,
   )
 }
 
+/**
+ * Return the latest matching declaration at or before the offset, or the first
+ * matching declaration when none precedes it.
+ */
 function findPascalDeclaration(
   text: string,
   identifier: string,
@@ -863,10 +1009,17 @@ function findPascalDeclaration(
       })
     }
   }
-  const before = declarations.filter((item) => item.offset <= offset)
+  const before = declarations.filter(
+    /** Retain declarations at or before the lookup offset. */ (item) =>
+      item.offset <= offset,
+  )
   return before.at(-1) || declarations[0]
 }
 
+/**
+ * Find the enclosing call and active argument at a caret offset by balancing nested
+ * parentheses in masked code.
+ */
 function findPascalCallAt(text: string, offset = text.length, preparedCode?: string) {
   const code = preparedCode || maskPascalNonCode(text)
   let nested = 0
@@ -910,6 +1063,10 @@ function findPascalCallAt(text: string, offset = text.length, preparedCode?: str
   }
 }
 
+/**
+ * Split routine signature parameters only at outer separators, respecting nested
+ * parentheses, brackets, and generic angles.
+ */
 function splitSignatureParameters(signature: string) {
   const open = signature.indexOf("(")
   if (open < 0) return []
@@ -950,6 +1107,10 @@ function splitSignatureParameters(signature: string) {
   return result
 }
 
+/**
+ * Read a bounded routine heading around its symbol offset through the first top-level
+ * semicolon, normalizing display whitespace.
+ */
 function extractPascalRoutineSignature(
   text: string,
   symbolOffset: number,
@@ -990,6 +1151,10 @@ function extractPascalRoutineSignature(
   return text.slice(start, end).replace(/\s+/g, " ").trim()
 }
 
+/**
+ * Return distinct lowercase unit names from masked uses clauses while retaining
+ * qualified unit spellings.
+ */
 function parseUsesUnits(text: string, preparedCode?: string) {
   const units = new Set<string>()
   const expression = new RegExp("\\b" + PascalKeyword.Uses + "\\s+([\\s\\S]*?);", "gi")
@@ -1002,6 +1167,10 @@ function parseUsesUnits(text: string, preparedCode?: string) {
   return [...units]
 }
 
+/**
+ * Merge case-insensitive receiver/member observations while retaining each member's
+ * first original spelling.
+ */
 function parseObservedMemberReferences(
   text: string,
   result: ObservedMemberIndex = new Map(),
@@ -1019,6 +1188,10 @@ function parseObservedMemberReferences(
   return result
 }
 
+/**
+ * Merge exported methods, inferred properties, RTTI, and observed members by
+ * precedence, mapping ABI constructors/destructors to Pascal Create/Destroy names.
+ */
 function knownCompiledMembers(
   classInfo: CompiledMemberOwner,
   observedMembers: CompiledMethod[] = [],
@@ -1074,6 +1247,10 @@ function knownCompiledMembers(
   return result
 }
 
+/**
+ * Resolve a member chain across candidate receiver types asynchronously, deduplicating
+ * each stage and stopping when no result type remains.
+ */
 async function resolvePascalReceiverTypeChain(
   initialTypes: string[],
   memberNames: string[],
@@ -1081,9 +1258,12 @@ async function resolvePascalReceiverTypeChain(
 ): Promise<string[]> {
   let types = [
     ...new Map(
-      (initialTypes || [])
-        .filter(Boolean)
-        .map((typeName: string) => [String(typeName).toLowerCase(), String(typeName)]),
+      (initialTypes || []).filter(Boolean).map(
+        /**
+         * Deduplicate initial receiver types case-insensitively while retaining their
+         * spelling.
+         */ (typeName: string) => [String(typeName).toLowerCase(), String(typeName)],
+      ),
     ).values(),
   ]
   for (const memberName of memberNames || []) {
@@ -1099,6 +1279,10 @@ async function resolvePascalReceiverTypeChain(
   return types
 }
 
+/**
+ * Provide a conservative missing interface-member fallback only when a same-unit
+ * compiled interface yields one unambiguous matching member.
+ */
 function uniqueCompiledInterfaceMember(
   receiverInfo: CompiledMemberOwner & { kind?: string; namespace?: string },
   allClasses: Iterable<CompiledClass> | Map<string, CompiledClass>,
@@ -1127,6 +1311,10 @@ function uniqueCompiledInterfaceMember(
   return matches.length === 1 ? matches[0] : undefined
 }
 
+/**
+ * Recover member metadata from tdump RTTI text while excluding already known exported
+ * method names and unrelated class sections.
+ */
 function parseTdumpRttiMembers(
   output: string,
   classInfo: { symbol: string; namespace: string; methods: Array<{ name: string }> },
@@ -1139,7 +1327,11 @@ function parseTdumpRttiMembers(
   }
   const classKey = classInfo.symbol.toLowerCase()
   const methodKeys = new Set(
-    classInfo.methods.map((item: { name: string }) => item.name.toLowerCase()),
+    classInfo.methods.map(
+      /** Record exported method names so RTTI recovery does not duplicate them. */ (item: {
+        name: string
+      }) => item.name.toLowerCase(),
+    ),
   )
   let methodMarker = -1
   for (let index = 0; index < entries.length; index += 1) {
@@ -1148,7 +1340,11 @@ function parseTdumpRttiMembers(
     if (
       entries
         .slice(index + 1, index + 6)
-        .some((item) => methodKeys.has(item.value.toLowerCase()))
+        .some(
+          /** Recognize a class marker by the exported method names that follow it. */ (
+            item,
+          ) => methodKeys.has(item.value.toLowerCase()),
+        )
     ) {
       methodMarker = index
       break
@@ -1157,6 +1353,10 @@ function parseTdumpRttiMembers(
   if (methodMarker < 0) return []
 
   const names = new Map<string, CompiledMethod>()
+  /**
+   * Normalize one qualified exported signature and retain it only once in encounter
+   * order.
+   */
   const add = (value: string) => {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) return
     const key = value.toLowerCase()
@@ -1210,13 +1410,24 @@ function parseTdumpRttiMembers(
   return [...names.values()]
 }
 
+/**
+ * Rank package paths against units used by a document, retaining deterministic
+ * path-length tie breaking.
+ */
 function rankBplCandidates(paths: string[], documentText: string) {
   const units = parseUsesUnits(documentText)
   const noise = /^(bcgl|dcl|rtl|vcl|fmx)/i
   return [...paths].sort(
-    (left, right) => score(right) - score(left) || left.length - right.length,
+    /** Rank packages by used-unit affinity, breaking ties with shorter paths. */ (
+      left,
+      right,
+    ) => score(right) - score(left) || left.length - right.length,
   )
 
+  /**
+   * Score a package basename against the document's used-unit names while discounting
+   * common RTL/VCL/design-time prefixes.
+   */
   function score(value: string) {
     const base = path.basename(value, path.extname(value)).toLowerCase()
     const stripped = base.replace(noise, "")
@@ -1232,17 +1443,32 @@ function rankBplCandidates(paths: string[], documentText: string) {
   }
 }
 
+/**
+ * Filter ranked package paths to basenames corresponding to the document's used units
+ * after known package-prefix normalization.
+ */
 function bplCandidatesForDocument(paths: string[], documentText: string) {
   const units = new Set(
-    parseUsesUnits(documentText).map((unit) => unit.split(".").at(-1)),
+    parseUsesUnits(documentText).map(
+      /** Compare package basenames with the leaf names of used units. */ (unit) =>
+        unit.split(".").at(-1),
+    ),
   )
   const noise = /^(bcgl|dcl|rtl|vcl|fmx)/i
-  return rankBplCandidates(paths, documentText).filter((value) => {
-    const base = path.basename(value, path.extname(value)).toLowerCase()
-    return units.has(base) || units.has(base.replace(noise, ""))
-  })
+  return rankBplCandidates(paths, documentText).filter(
+    /** Retain packages whose original or prefix-stripped basename matches a used unit. */ (
+      value,
+    ) => {
+      const base = path.basename(value, path.extname(value)).toLowerCase()
+      return units.has(base) || units.has(base.replace(noise, ""))
+    },
+  )
 }
 
+/**
+ * Recover first-spelling class/interface names from both demangled exports and Itanium
+ * type-info records.
+ */
 function parseTdumpClassNames(output: string) {
   const names = new Map<string, string>()
   for (const match of output.matchAll(/::([TI][A-Za-z0-9_]+)::/g)) {
@@ -1265,6 +1491,10 @@ function parseTdumpClassNames(output: string) {
   return names
 }
 
+/**
+ * Map lowercase class/interface names to the unit namespaces found in demangled
+ * exports and type-info records.
+ */
 function parseTdumpClassUnits(output: string) {
   const units = new Map<string, Set<string>>()
   for (const match of output.matchAll(
@@ -1288,9 +1518,17 @@ function parseTdumpClassUnits(output: string) {
   return units
 }
 
+/**
+ * Collect normalized, deduplicated qualified export signatures from supported complete
+ * or export-only tdump layouts.
+ */
 function exportedSignatures(output: string) {
   const result: string[] = []
   const seen = new Set()
+  /**
+   * Normalize one qualified exported signature and retain it only once in encounter
+   * order.
+   */
   const add = (value: string) => {
     const signature = value.replace(/\s+/g, " ").trim()
     if (signature.includes("::") && !seen.has(signature)) {
@@ -1311,6 +1549,10 @@ function exportedSignatures(output: string) {
   return result
 }
 
+/**
+ * Group Get/Set/Put accessor methods into inferred Pascal property metadata without
+ * replacing the original method records.
+ */
 function inferredProperties(methods: CompiledMethod[]): CompiledProperty[] {
   const groups = new Map<string, CompiledProperty>()
   for (const method of methods) {
@@ -1323,6 +1565,10 @@ function inferredProperties(methods: CompiledMethod[]): CompiledProperty[] {
   return [...groups.values()]
 }
 
+/**
+ * Rank compiled class names against a global symbol's spelling and common
+ * abbreviations to infer a plausible receiver type.
+ */
 function inferCompiledGlobalType(
   globalName: string,
   classes: CompiledClass[] | Map<string, CompiledClass>,
@@ -1333,21 +1579,36 @@ function inferCompiledGlobalType(
     .replace(/mgr$/, "manager")
     .replace(/cfg$/, "config")
   const ranked = [...classes.values()]
-    .map((info) => {
-      const stem = info.symbol.slice(1).toLowerCase()
-      let score = 0
-      if (stem === wanted) score = 100
-      else if (stem === expanded) score = 95
-      else if (stem.startsWith(wanted) || wanted.startsWith(stem)) score = 70
-      return { info, score }
-    })
-    .filter((item) => item.score > 0)
-    .sort((left, right) => right.score - left.score)
+    .map(
+      /**
+       * Score class-name stems against the global name and its expanded abbreviations.
+       */ (info) => {
+        const stem = info.symbol.slice(1).toLowerCase()
+        let score = 0
+        if (stem === wanted) score = 100
+        else if (stem === expanded) score = 95
+        else if (stem.startsWith(wanted) || wanted.startsWith(stem)) score = 70
+        return { info, score }
+      },
+    )
+    .filter(
+      /** Discard classes with no naming evidence linking them to the global. */ (
+        item,
+      ) => item.score > 0,
+    )
+    .sort(
+      /** Prefer the strongest global-to-class naming match. */ (left, right) =>
+        right.score - left.score,
+    )
   return ranked.length > 0 && (ranked.length === 1 || ranked[0].score > ranked[1].score)
     ? ranked[0].info.symbol
     : undefined
 }
 
+/**
+ * Decode bounded length-prefixed components of an Itanium nested-name symbol,
+ * rejecting malformed lengths or truncated names.
+ */
 function parseItaniumNameAt(output: string, start: number) {
   if (output.slice(start, start + 3) !== "_ZN") return undefined
   const components = []
@@ -1355,6 +1616,7 @@ function parseItaniumNameAt(output: string, start: number) {
   while (cursor < output.length && /\d/.test(output[cursor])) {
     const lengthStart = cursor
     while (/\d/.test(output[cursor])) cursor += 1
+    // ABI lengths come from external dump text; bounds checks prevent malformed names from consuming unrelated output.
     const length = Number(output.slice(lengthStart, cursor))
     if (!Number.isSafeInteger(length) || length <= 0 || cursor + length > output.length)
       return undefined
@@ -1364,6 +1626,10 @@ function parseItaniumNameAt(output: string, start: number) {
   return output[cursor] === "E" && components.length >= 2 ? components : undefined
 }
 
+/**
+ * Decode bounded length-prefixed type-info components, rejecting malformed or
+ * truncated ABI records.
+ */
 function parseItaniumTypeInfoAt(output: string, start: number) {
   if (output.slice(start, start + 5) !== "_ZTRN") return undefined
   const components = []
@@ -1380,11 +1646,19 @@ function parseItaniumTypeInfoAt(output: string, start: number) {
   return output[cursor] === "E" && components.length >= 2 ? components : undefined
 }
 
+/**
+ * Build class/interface descriptors and method/property metadata from mangled package
+ * output without requiring a demangling subprocess.
+ */
 function parseTdumpMangledClasses(
   output: string,
   bplPath: string,
 ): Map<string, CompiledClass> {
   const classes = new Map<string, CompiledClass>()
+  /**
+   * Create a stable compiled class descriptor on first encounter and reuse it for
+   * later member/signature evidence.
+   */
   const ensureClass = (symbol: string, namespace: string) => {
     const key = symbol.toLowerCase()
     if (!classes.has(key)) {
@@ -1414,8 +1688,9 @@ function parseTdumpMangledClasses(
         const signature = `${components.join("::")}()`
         if (
           !info.methods.some(
-            (item: { name: string }) =>
-              item.name.toLowerCase() === memberName.toLowerCase(),
+            /** Avoid adding a duplicate method recovered from a mangled name. */ (item: {
+              name: string
+            }) => item.name.toLowerCase() === memberName.toLowerCase(),
           )
         ) {
           info.methods.push({ name: memberName, signature, mangled: true })
@@ -1444,16 +1719,21 @@ function parseTdumpMangledClasses(
   // interfaces such as IBrowserBaseFrame expose SetResourcePath even though no
   // corresponding callable PE export exists.
   const rowIndexesByToken = new Map<string, number[]>()
-  const rows = [...output.matchAll(/^\s*(\d+):\s+(.+?)\s*$/gm)].map((match, index) => {
-    const value = match[2]
-    const token = /^([A-Za-z_][A-Za-z0-9_]*)/.exec(value)?.[1]
-    if (token) {
-      const key = token.toLowerCase()
-      if (!rowIndexesByToken.has(key)) rowIndexesByToken.set(key, [])
-      rowIndexesByToken.get(key)!.push(index)
-    }
-    return { offset: Number(match[1]), value, token }
-  })
+  const rows = [...output.matchAll(/^\s*(\d+):\s+(.+?)\s*$/gm)].map(
+    /**
+     * Decode RTTI rows and index their leading identifier tokens for later field
+     * recovery.
+     */ (match, index) => {
+      const value = match[2]
+      const token = /^([A-Za-z_][A-Za-z0-9_]*)/.exec(value)?.[1]
+      if (token) {
+        const key = token.toLowerCase()
+        if (!rowIndexesByToken.has(key)) rowIndexesByToken.set(key, [])
+        rowIndexesByToken.get(key)!.push(index)
+      }
+      return { offset: Number(match[1]), value, token }
+    },
+  )
   for (let index = 0; index < rows.length; index += 1) {
     const markerStart = rows[index].value.indexOf("_ZTRN")
     if (markerStart < 0) continue
@@ -1469,8 +1749,9 @@ function parseTdumpMangledClasses(
       if (memberName.toLowerCase() === symbol.toLowerCase()) continue
       if (
         !info.methods.some(
-          (item: { name: string }) =>
-            item.name.toLowerCase() === memberName.toLowerCase(),
+          /** Avoid adding an interface method already recovered from an export. */ (item: {
+            name: string
+          }) => item.name.toLowerCase() === memberName.toLowerCase(),
         )
       ) {
         info.methods.push({
@@ -1488,7 +1769,10 @@ function parseTdumpMangledClasses(
     for (const index of rowIndexesByToken.get(info.symbol.toLowerCase()) || []) {
       const nearbyFields = rows
         .slice(index + 1, index + 12)
-        .some((row) => /^F[A-Z][A-Za-z0-9_]*$/.test(row.token || ""))
+        .some(
+          /** Identify a class field table by nearby F-prefixed field names. */ (row) =>
+            /^F[A-Z][A-Za-z0-9_]*$/.test(row.token || ""),
+        )
       if (nearbyFields) {
         marker = index
         break
@@ -1508,7 +1792,10 @@ function parseTdumpMangledClasses(
       if (lower === pointerName || (/^T[A-Z]/.test(token) && index > marker + 1)) break
       if (
         /^F[A-Z][A-Za-z0-9_]*$/.test(token) &&
-        !fields.some((item) => item.name.toLowerCase() === lower)
+        !fields.some(
+          /** Avoid duplicate field names while collecting RTTI members. */ (item) =>
+            item.name.toLowerCase() === lower,
+        )
       ) {
         fields.push({
           name: token,
@@ -1543,33 +1830,52 @@ function parseTdumpMangledClasses(
   return classes
 }
 
+/**
+ * Rank class names and acronyms against a compiled routine name to infer its likely
+ * return class when explicit source typing is unavailable.
+ */
 function inferRoutineReturnClass(
   routineName: string,
   classes: CompiledClass[] | Map<string, CompiledClass>,
 ) {
   const wanted = routineName.toLowerCase()
   const ranked = [...classes.values()]
-    .map((info) => {
-      const sourceStem = info.symbol.slice(1)
-      const stem = sourceStem.toLowerCase()
-      const acronym = (sourceStem.match(/[A-Z][a-z0-9]*/g) || [])
-        .map((part: string) => part[0])
-        .join("")
-        .toLowerCase()
-      let score = 0
-      if (stem === wanted) score = 100
-      else if (acronym === wanted) score = 95
-      else if (stem.endsWith(wanted)) score = 90
-      else if (stem.startsWith(wanted)) score = 75
-      // Exported factory routines in Delphi packages most often expose their
-      // concrete T-prefixed implementation through callable RTTI. When a paired
-      // I-prefixed interface has the same acronym but no exported members, keep
-      // the concrete class as the useful navigation/completion target.
-      if (score > 0 && info.symbol.startsWith("T")) score += 1
-      return { info, score }
-    })
-    .filter((item) => item.score > 0)
-    .sort((left, right) => right.score - left.score)
+    .map(
+      /**
+       * Score possible return classes by full-name, acronym, and prefix or suffix
+       * matches.
+       */ (info) => {
+        const sourceStem = info.symbol.slice(1)
+        const stem = sourceStem.toLowerCase()
+        const acronym = (sourceStem.match(/[A-Z][a-z0-9]*/g) || [])
+          .map(
+            /** Form the class-name acronym from the initials of its capitalized words. */ (
+              part: string,
+            ) => part[0],
+          )
+          .join("")
+          .toLowerCase()
+        let score = 0
+        if (stem === wanted) score = 100
+        else if (acronym === wanted) score = 95
+        else if (stem.endsWith(wanted)) score = 90
+        else if (stem.startsWith(wanted)) score = 75
+        // Exported factory routines in Delphi packages most often expose their
+        // concrete T-prefixed implementation through callable RTTI. When a paired
+        // I-prefixed interface has the same acronym but no exported members, keep
+        // the concrete class as the useful navigation/completion target.
+        if (score > 0 && info.symbol.startsWith("T")) score += 1
+        return { info, score }
+      },
+    )
+    .filter(
+      /** Discard classes with no naming evidence for this factory routine. */ (item) =>
+        item.score > 0,
+    )
+    .sort(
+      /** Prefer the strongest factory-to-class naming match. */ (left, right) =>
+        right.score - left.score,
+    )
   return ranked.length > 0 && (ranked.length === 1 || ranked[0].score > ranked[1].score)
     ? ranked[0].info
     : undefined
@@ -1582,6 +1888,10 @@ function inferRoutineReturnClass(
  */
 function parseTdumpPackageIndex(output: string, bplPath: string): CompiledPackageIndex {
   const units = new Map<string, CompiledUnit>()
+  /**
+   * Create and reuse a unit descriptor with independent class, global, and routine
+   * lookup maps.
+   */
   const ensureUnit = (unitName: string) => {
     const key = unitName.toLowerCase()
     if (!units.has(key)) {
@@ -1634,7 +1944,10 @@ function parseTdumpPackageIndex(output: string, bplPath: string): CompiledPackag
       info.signatures.push(signature)
       if (
         !info.methods.some(
-          (item: CompiledMethod) =>
+          /**
+           * Deduplicate exported methods by case-insensitive name and complete
+           * signature.
+           */ (item: CompiledMethod) =>
             item.name.toLowerCase() === classMember[3].toLowerCase() &&
             item.signature === signature,
         )
@@ -1738,6 +2051,10 @@ function parseTdumpPackageIndex(output: string, bplPath: string): CompiledPackag
   return { units, classes, globals, routines }
 }
 
+/**
+ * Recover the selected class's qualified signatures and metadata from demangled or
+ * mangled tdump evidence for virtual navigation.
+ */
 function parseTdumpExports(
   output: string,
   symbol: string,
@@ -1776,7 +2093,9 @@ function parseTdumpExports(
     if (
       name &&
       !methods.some(
-        (item) =>
+        /** Keep distinct overload signatures while avoiding repeated export rows. */ (
+          item,
+        ) =>
           item.name.toLowerCase() === name.toLowerCase() &&
           item.signature === signature,
       )
@@ -1795,6 +2114,10 @@ function parseTdumpExports(
   }
 }
 
+/**
+ * Render ABI constructors/destructors as Pascal headings and retain other compiled
+ * signatures for commented virtual source.
+ */
 function renderedCompiledMethod(
   method: CompiledMethod,
   classInfo: CompiledMemberOwner,
@@ -1813,6 +2136,10 @@ function renderedCompiledMethod(
   return method.signature
 }
 
+/**
+ * Generate a navigable Pascal virtual unit from compiled metadata; globals require
+ * resolved class information.
+ */
 function renderVirtualUnit(info: CompiledInfo) {
   if (info.kind === PascalKeyword.Unit) {
     const lines = [
@@ -1837,7 +2164,11 @@ function renderVirtualUnit(info: CompiledInfo) {
         }
         for (const property of classInfo.properties) {
           const accessors = [...property.getters, ...property.setters]
-            .map((item) => item.name)
+            .map(
+              /** List the accessor method names explaining this inferred property. */ (
+                item,
+              ) => item.name,
+            )
             .join(", ")
           lines.push(
             `    // ${PascalKeyword.Property} ${property.name}; // inferred from ${accessors}`,
@@ -1846,11 +2177,17 @@ function renderVirtualUnit(info: CompiledInfo) {
         for (const member of classInfo.rttiMembers || []) {
           if (
             classInfo.methods.some(
-              (item: { name: string }) =>
+              /**
+               * Check whether an RTTI member is already represented by an exported
+               * method.
+               */ (item: { name: string }) =>
                 item.name.toLowerCase() === member.name.toLowerCase(),
             ) ||
             classInfo.properties.some(
-              (item: { name: string }) =>
+              /**
+               * Check whether an RTTI member is already represented by an inferred
+               * property.
+               */ (item: { name: string }) =>
                 item.name.toLowerCase() === member.name.toLowerCase(),
             )
           )
@@ -1894,7 +2231,10 @@ function renderVirtualUnit(info: CompiledInfo) {
     }
     for (const property of classInfo.properties) {
       const accessors = [...property.getters, ...property.setters]
-        .map((item) => item.name)
+        .map(
+          /** List the accessor names explaining this inferred property. */ (item) =>
+            item.name,
+        )
         .join(", ")
       lines.push(
         `    // ${PascalKeyword.Property} ${property.name}; // inferred from ${accessors}`,
@@ -1903,16 +2243,19 @@ function renderVirtualUnit(info: CompiledInfo) {
     for (const member of info.observedMembers || []) {
       if (
         classInfo.methods.some(
-          (item: { name: string }) =>
-            item.name.toLowerCase() === member.name.toLowerCase(),
+          /** Avoid repeating an observed member already exported as a method. */ (item: {
+            name: string
+          }) => item.name.toLowerCase() === member.name.toLowerCase(),
         ) ||
         classInfo.properties.some(
-          (item: { name: string }) =>
-            item.name.toLowerCase() === member.name.toLowerCase(),
+          /** Avoid repeating an observed member already represented as a property. */ (item: {
+            name: string
+          }) => item.name.toLowerCase() === member.name.toLowerCase(),
         ) ||
         classInfo.rttiMembers?.some(
-          (item: { name: string }) =>
-            item.name.toLowerCase() === member.name.toLowerCase(),
+          /** Avoid repeating an observed member already recovered from RTTI. */ (item: {
+            name: string
+          }) => item.name.toLowerCase() === member.name.toLowerCase(),
         )
       )
         continue
@@ -1923,11 +2266,17 @@ function renderVirtualUnit(info: CompiledInfo) {
     for (const member of classInfo.rttiMembers || []) {
       if (
         classInfo.methods.some(
-          (item: { name: string }) =>
+          /**
+           * Avoid rendering an RTTI member twice when an exported method represents
+           * it.
+           */ (item: { name: string }) =>
             item.name.toLowerCase() === member.name.toLowerCase(),
         ) ||
         classInfo.properties.some(
-          (item: { name: string }) =>
+          /**
+           * Avoid rendering an RTTI member twice when an inferred property represents
+           * it.
+           */ (item: { name: string }) =>
             item.name.toLowerCase() === member.name.toLowerCase(),
         )
       )
@@ -1968,7 +2317,10 @@ function renderVirtualUnit(info: CompiledInfo) {
       }
       for (const property of info.classInfo.properties || []) {
         const accessors = [...property.getters, ...property.setters]
-          .map((item) => item.name)
+          .map(
+            /** List the accessor names explaining this inferred property. */ (item) =>
+              item.name,
+          )
           .join(", ")
         lines.push(
           `    // ${PascalKeyword.Property} ${property.name}; // inferred from ${accessors}`,
@@ -1977,11 +2329,17 @@ function renderVirtualUnit(info: CompiledInfo) {
       for (const member of info.observedMembers || []) {
         if (
           info.classInfo.methods.some(
-            (item: { name: string }) =>
+            /**
+             * Avoid repeating a routine-result member already represented by an
+             * exported method.
+             */ (item: { name: string }) =>
               item.name.toLowerCase() === member.name.toLowerCase(),
           ) ||
           info.classInfo.properties?.some(
-            (item: { name: string }) =>
+            /**
+             * Avoid repeating a routine-result member already represented by an
+             * inferred property.
+             */ (item: { name: string }) =>
               item.name.toLowerCase() === member.name.toLowerCase(),
           )
         )
@@ -2018,7 +2376,10 @@ function renderVirtualUnit(info: CompiledInfo) {
   }
   for (const property of info.properties || []) {
     const accessors = [...property.getters, ...property.setters]
-      .map((item) => item.name)
+      .map(
+        /** List the accessor names explaining this inferred property. */ (item) =>
+          item.name,
+      )
       .join(", ")
     lines.push(
       `    // ${PascalKeyword.Property} ${property.name}; // inferred from ${accessors}`,
@@ -2027,12 +2388,14 @@ function renderVirtualUnit(info: CompiledInfo) {
   for (const member of info.rttiMembers || []) {
     if (
       info.methods.some(
-        (item: { name: string }) =>
-          item.name.toLowerCase() === member.name.toLowerCase(),
+        /** Exclude RTTI names already rendered as exported methods. */ (item: {
+          name: string
+        }) => item.name.toLowerCase() === member.name.toLowerCase(),
       ) ||
       info.properties?.some(
-        (item: { name: string }) =>
-          item.name.toLowerCase() === member.name.toLowerCase(),
+        /** Exclude RTTI names already rendered as inferred properties. */ (item: {
+          name: string
+        }) => item.name.toLowerCase() === member.name.toLowerCase(),
       )
     )
       continue

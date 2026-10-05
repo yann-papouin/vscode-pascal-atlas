@@ -29,12 +29,25 @@ const GROUPS = Object.freeze({
     "**/{__history,__recovery,Win32,Win64,Debug,Release,bin,lib,tmp}",
 })
 
+/**
+ * Serialize an object in key order for stable comparison of Explorer exclusion
+ * settings.
+ */
 function stableObject(value: Record<string, unknown>) {
   return JSON.stringify(
-    Object.entries(value || {}).sort(([left], [right]) => left.localeCompare(right)),
+    Object.entries(value || {}).sort(
+      /** Sort explorer exclusion entries for deterministic persisted settings. */ (
+        [left],
+        [right],
+      ) => left.localeCompare(right),
+    ),
   )
 }
 
+/**
+ * Migrate older managed exclusion patterns and synchronize enabled Delphi file
+ * categories while retaining unrelated global exclusions.
+ */
 async function syncExplorerExcludes(output: { appendLine: (arg0: string) => void }) {
   const pa = vscode.workspace.getConfiguration(ConfigurationSection)
   const files = vscode.workspace.getConfiguration("files")
@@ -61,21 +74,35 @@ async function syncExplorerExcludes(output: { appendLine: (arg0: string) => void
   output.appendLine("Synchronized configurable Delphi Explorer exclusion groups.")
 }
 
+/**
+ * Synchronize Explorer exclusions at startup and on relevant settings changes,
+ * retaining the subscription and logging refresh failures.
+ */
 function registerExplorerSupport(
   context: { subscriptions: vscode.Disposable[] },
   output: vscode.OutputChannel,
 ) {
   context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((event) => {
-      if (!event.affectsConfiguration("pascalAtlas.explorer")) return
-      void syncExplorerExcludes(output).catch((error) => {
-        output.appendLine(`Explorer exclusion synchronization failed: ${error.message}`)
-      })
-    }),
+    vscode.workspace.onDidChangeConfiguration(
+      /** Resynchronize explorer exclusions when their Pascal Atlas settings change. */ (
+        event,
+      ) => {
+        if (!event.affectsConfiguration("pascalAtlas.explorer")) return
+        void syncExplorerExcludes(output).catch(
+          /** Log a failed explorer exclusion refresh. */ (error) => {
+            output.appendLine(
+              `Explorer exclusion synchronization failed: ${error.message}`,
+            )
+          },
+        )
+      },
+    ),
   )
-  void syncExplorerExcludes(output).catch((error) => {
-    output.appendLine(`Explorer exclusion synchronization failed: ${error.message}`)
-  })
+  void syncExplorerExcludes(output).catch(
+    /** Log a failed initial explorer exclusion synchronization. */ (error) => {
+      output.appendLine(`Explorer exclusion synchronization failed: ${error.message}`)
+    },
+  )
 }
 
 export {

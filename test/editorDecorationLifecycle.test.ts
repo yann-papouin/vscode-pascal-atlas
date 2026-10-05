@@ -36,10 +36,10 @@ test("decoration commits are retried and only successful commits are logged comp
   const source = fs.readFileSync(sourcePath("extension.js"), "utf8")
   assert.match(
     source,
-    /if \(!this\.applyDecorationRanges\(editor, ranges\)\) \{[\s\S]*?state\.pending = true;[\s\S]*?return;/,
+    /if \(!this\.applyDecorationRanges\(editor, ranges\)\) \{[\s\S]*?state\.pending = true;?[\s\S]*?return\s*;?/,
   )
   assert.match(
     source,
-    /if \(!this\.applyDecorationRanges\(editor, ranges\)\) \{[\s\S]*?failedState\.pending = true;[\s\S]*?return;[\s\S]*?Complete decoration/,
+    /if \(!this\.applyDecorationRanges\(editor, ranges\)\) \{[\s\S]*?failedState\.pending = true;?[\s\S]*?return\s*;?[\s\S]*?Complete decoration/,
   )
 })

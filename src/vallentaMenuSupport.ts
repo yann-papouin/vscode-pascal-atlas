@@ -4,6 +4,10 @@ import * as path from "node:path"
 import { isRecord } from "./shared/guards"
 const VALLENTA_COMMAND_PREFIX = "vallenta.studio."
 const BACKUP_FILE = "package.json.pascal-atlas-editor-context-backup"
+/**
+ * Remove only Vallenta-owned editor-context commands from a parsed manifest and return
+ * the removed entries for reporting.
+ */
 function removeVallentaEditorContextMenus(
   manifest: Record<string, unknown>,
 ): unknown[] {
@@ -14,14 +18,21 @@ function removeVallentaEditorContextMenus(
   if (!menus || !Array.isArray(editorContext)) return []
   const items: unknown[] = editorContext
   const removed = items.filter(
-    (item) =>
+    /** Select Vallenta menu entries by their command prefix. */ (item) =>
       isRecord(item) &&
       typeof item.command === "string" &&
       item.command.startsWith(VALLENTA_COMMAND_PREFIX),
   )
-  menus["editor/context"] = items.filter((item) => !removed.includes(item))
+  menus["editor/context"] = items.filter(
+    /** Remove disabled menu items while preserving the remaining order. */ (item) =>
+      !removed.includes(item),
+  )
   return removed
 }
+/**
+ * Remove known Pascal keyword-bold overrides while preserving unrelated TextMate rules
+ * and other configuration defaults.
+ */
 function removeVallentaForcedKeywordBold(manifest: Record<string, unknown>): unknown[] {
   const contributes = isRecord(manifest.contributes) ? manifest.contributes : undefined
   const defaults =
@@ -35,20 +46,28 @@ function removeVallentaForcedKeywordBold(manifest: Record<string, unknown>): unk
   const rules = customizations?.textMateRules
   if (!defaults || !customizations || !Array.isArray(rules)) return []
   const items: unknown[] = rules
-  const removed = items.filter((rule) => {
-    if (!isRecord(rule)) return false
-    const settings = isRecord(rule.settings) ? rule.settings : undefined
-    return (
-      rule.name === "Pascal: bold reserved words" ||
-      (/(?:^|\s)bold(?:\s|$)/i.test(String(settings?.fontStyle || "")) &&
-        /keyword\.control\.pascal/i.test(String(rule.scope || "")) &&
-        new RegExp(
-          String.raw`storage\.${PascalKeyword.Type}\.${PascalKeyword.Class}\.pascal`,
-          "i",
-        ).test(String(rule.scope || "")))
-    )
-  })
-  const remaining = items.filter((rule) => !removed.includes(rule))
+  const removed = items.filter(
+    /** Select forced Pascal keyword-bold rules that this integration owns. */ (
+      rule,
+    ) => {
+      if (!isRecord(rule)) return false
+      const settings = isRecord(rule.settings) ? rule.settings : undefined
+      return (
+        rule.name === "Pascal: bold reserved words" ||
+        (/(?:^|\s)bold(?:\s|$)/i.test(String(settings?.fontStyle || "")) &&
+          /keyword\.control\.pascal/i.test(String(rule.scope || "")) &&
+          new RegExp(
+            String.raw`storage\.${PascalKeyword.Type}\.${PascalKeyword.Class}\.pascal`,
+            "i",
+          ).test(String(rule.scope || "")))
+      )
+    },
+  )
+  // Retain unrelated theme rules instead of replacing the complete customization object.
+  const remaining = items.filter(
+    /** Remove disabled menu rules while preserving the remaining order. */ (rule) =>
+      !removed.includes(rule),
+  )
   customizations.textMateRules = remaining
   if (remaining.length === 0) delete defaults["editor.tokenColorCustomizations"]
   return removed
@@ -57,6 +76,11 @@ interface ManifestPatchOptions {
   removeEditorContextMenus?: boolean
   removeForcedKeywordBold?: boolean
 }
+/**
+ * Normalize selected editor contributions in an installed Vallenta manifest, creating
+ * a one-time original backup and preserving its indentation; reject invalid JSON
+ * roots.
+ */
 async function patchVallentaManifest(
   extensionPath: string | undefined,
   options: ManifestPatchOptions = {},
@@ -79,6 +103,7 @@ async function patchVallentaManifest(
     return { changed: false, removed, removedKeywordStyles }
   const backupPath = path.join(extensionPath, BACKUP_FILE)
   try {
+    // Never replace an existing backup with an already patched manifest; restoration must retain the first unmodified source.
     await fs.promises.access(backupPath)
   } catch {
     await fs.promises.writeFile(backupPath, source, "utf8")
@@ -91,6 +116,10 @@ async function patchVallentaManifest(
   )
   return { changed: true, removed, removedKeywordStyles, manifestPath, backupPath }
 }
+/**
+ * Apply the default Vallenta manifest normalization through the compatibility
+ * entrypoint, treating an absent installation as a no-op.
+ */
 async function suppressVallentaEditorContextMenus(extensionPath: string | undefined) {
   return patchVallentaManifest(extensionPath)
 }

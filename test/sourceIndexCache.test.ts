@@ -98,11 +98,11 @@ test("definition links pin Ctrl-hover decoration to the exact source token", () 
   const extensionSource = fs.readFileSync(sourcePath("extension.js"), "utf8")
   assert.match(
     extensionSource,
-    /definitionLink\(originSelectionRange(?:: vscode\.Range)?,[\s\S]*?originSelectionRange,[\s\S]*?targetUri/,
+    /definitionLink\(\s*originSelectionRange(?:: vscode\.Range)?,[\s\S]*?originSelectionRange,[\s\S]*?targetUri/,
   )
   assert.match(
     extensionSource,
-    /locationsForDefinitions\([\s\S]*?document,[\s\S]*?token\.range[\s\S]*?\);/,
+    /locationsForDefinitions\([\s\S]*?document,[\s\S]*?token\.range[\s\S]*?\);?/,
   )
   assert.match(
     extensionSource,

@@ -107,76 +107,80 @@ const NON_TYPE_AFTER_COLON = new Set<string>([
 function maskPascalLines(lines: string[]) {
   let state: PascalLexerState = LexerState.Code
 
-  return lines.map((line) => {
-    const characters = [...line]
-    let index = 0
+  return lines.map(
+    /** Mask non-code characters while retaining lexer state across source lines. */ (
+      line,
+    ) => {
+      const characters = [...line]
+      let index = 0
 
-    while (index < characters.length) {
-      if (state === LexerState.BraceComment) {
-        const original = characters[index]
-        characters[index] = " "
-        if (original === "}") {
-          state = LexerState.Code
-        }
-        index += 1
-        continue
-      }
-
-      if (state === LexerState.ParenComment) {
-        if (line.startsWith("*)", index)) {
+      while (index < characters.length) {
+        if (state === LexerState.BraceComment) {
+          const original = characters[index]
           characters[index] = " "
-          characters[index + 1] = " "
-          index += 2
-          state = LexerState.Code
-        } else {
-          characters[index] = " "
-          index += 1
-        }
-        continue
-      }
-
-      if (state === LexerState.String) {
-        characters[index] = " "
-        if (line[index] === "'") {
-          if (line[index + 1] === "'") {
-            characters[index + 1] = " "
-            index += 2
-          } else {
-            index += 1
+          if (original === "}") {
             state = LexerState.Code
           }
-        } else {
           index += 1
+          continue
         }
-        continue
-      }
 
-      if (line.startsWith("//", index)) {
-        characters.fill(" ", index)
-        break
-      }
-      if (line[index] === "{") {
-        characters[index] = " "
-        state = LexerState.BraceComment
+        if (state === LexerState.ParenComment) {
+          if (line.startsWith("*)", index)) {
+            characters[index] = " "
+            characters[index + 1] = " "
+            index += 2
+            state = LexerState.Code
+          } else {
+            characters[index] = " "
+            index += 1
+          }
+          continue
+        }
+
+        if (state === LexerState.String) {
+          characters[index] = " "
+          if (line[index] === "'") {
+            if (line[index + 1] === "'") {
+              characters[index + 1] = " "
+              index += 2
+            } else {
+              index += 1
+              state = LexerState.Code
+            }
+          } else {
+            index += 1
+          }
+          continue
+        }
+
+        if (line.startsWith("//", index)) {
+          characters.fill(" ", index)
+          break
+        }
+        if (line[index] === "{") {
+          characters[index] = " "
+          state = LexerState.BraceComment
+          index += 1
+          continue
+        }
+        if (line.startsWith("(*", index)) {
+          characters[index] = " "
+          characters[index + 1] = " "
+          state = LexerState.ParenComment
+          index += 2
+          continue
+        }
+        if (line[index] === "'") {
+          characters[index] = " "
+          state = LexerState.String
+        }
         index += 1
-        continue
       }
-      if (line.startsWith("(*", index)) {
-        characters[index] = " "
-        characters[index + 1] = " "
-        state = LexerState.ParenComment
-        index += 2
-        continue
-      }
-      if (line[index] === "'") {
-        characters[index] = " "
-        state = LexerState.String
-      }
-      index += 1
-    }
 
-    return characters.join("")
-  })
+      return characters.join("")
+    },
+  )
 }
 
 /**
@@ -500,7 +504,9 @@ function normalizeTypeNameCapitalization(lines: string[]) {
 function normalizeVariableNameCapitalization(lines: string[]) {
   const codeLines = maskPascalLines(lines)
   const declaredVariables = new Set<string>([PascalKeyword.Result, PascalKeyword.Self])
-  const addNames = (names: string) => {
+  const addNames = /**
+   * Record comma-separated declaration names for case-insensitive variable matching.
+   */ (names: string) => {
     for (const name of names.split(",")) {
       const trimmedName = name.trim()
       if (trimmedName) {
@@ -530,17 +536,22 @@ function normalizeVariableNameCapitalization(lines: string[]) {
     }
   }
 
-  return lines.map((line, lineIndex) => {
-    const characters = [...line]
-    const identifier = /\b[A-Za-z_]\w*\b/g
-    let match
-    while ((match = identifier.exec(codeLines[lineIndex])) !== null) {
-      if (declaredVariables.has(match[0].toLowerCase())) {
-        characters[match.index] = characters[match.index].toUpperCase()
+  return lines.map(
+    /**
+     * Capitalize known variable initials in code spans while preserving comments and
+     * strings.
+     */ (line, lineIndex) => {
+      const characters = [...line]
+      const identifier = /\b[A-Za-z_]\w*\b/g
+      let match
+      while ((match = identifier.exec(codeLines[lineIndex])) !== null) {
+        if (declaredVariables.has(match[0].toLowerCase())) {
+          characters[match.index] = characters[match.index].toUpperCase()
+        }
       }
-    }
-    return characters.join("")
-  })
+      return characters.join("")
+    },
+  )
 }
 
 /**
@@ -552,8 +563,11 @@ function normalizeVariableNameCapitalization(lines: string[]) {
  */
 function normalizeGenericTypeSpacing(lines: string[]) {
   const codeLines = maskPascalLines(lines)
-  return lines.map((line, index) =>
-    normalizeGenericTypeSpacingOnMaskedLine(line, codeLines[index]),
+  return lines.map(
+    /** Normalize generic spacing using the corresponding masked code line. */ (
+      line,
+      index,
+    ) => normalizeGenericTypeSpacingOnMaskedLine(line, codeLines[index]),
   )
 }
 
@@ -607,7 +621,10 @@ function restoreProtectedBlankLines(text: string, protections: BlankLineProtecti
   const newline = text.includes("\r\n") ? "\r\n" : "\n"
   const lines = text.split(/\r\n|\n|\r/)
   for (const protection of protections) {
-    let markerLine = lines.findIndex((line) => line.includes(protection.marker))
+    let markerLine = lines.findIndex(
+      /** Locate the formatter protection marker to recover its blank line. */ (line) =>
+        line.includes(protection.marker),
+    )
     if (markerLine >= 0) {
       const indentation = lines[markerLine].match(/^\s*/)?.[0] || ""
 
@@ -838,7 +855,7 @@ function alignWrappedParameters(
  * Aligns a blank continuation line or closing parenthesis after a wrapped argument.
  * @param {string[]} lines Pascal source lines.
  * @param {number} lineIndex Index of the blank line or closing-parenthesis line.
- * @param {number} [indentSize=2] Indentation added for declarations and calls.
+ * @param {number} [indentSize] Indentation added for declarations and calls; defaults to two spaces.
  * @returns {string[]} New lines with the selected continuation line aligned.
  * @example
  * alignWrappedArgumentLine(["Call(Value,", ")"], 1); // ["Call(Value,", "  )"]

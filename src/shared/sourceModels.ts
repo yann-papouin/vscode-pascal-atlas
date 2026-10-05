@@ -1,4 +1,6 @@
-/** Structured source symbol data transferred to parser workers and persisted in caches. */
+/**
+ * Structured source symbol data transferred to parser workers and persisted in caches.
+ */
 export interface SourceDefinition {
   symbol: string
   unitName: string

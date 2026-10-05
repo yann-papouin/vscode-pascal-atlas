@@ -153,6 +153,10 @@ const MEMBER_SECTION_STARTERS = new Set<string>([
   PascalKeyword.Var,
 ])
 
+/**
+ * Check the masked text after a visibility word for a member declaration or attribute,
+ * so enum values are not mistaken for section headers.
+ */
 function nextClassMemberLooksLikeDeclaration(code: string, offset: number) {
   const tail = code.slice(offset)
   const next = /^\s*([A-Za-z_][A-Za-z0-9_]*|.)/.exec(tail)
@@ -203,18 +207,30 @@ function isPascalVisibilityDirectiveAt(
   return nextClassMemberLooksLikeDeclaration(code, offset + identifier.length)
 }
 
+/**
+ * Detect a member access immediately before an identifier while allowing whitespace
+ * after the dot.
+ */
 function isMemberReference(code: string, offset: number) {
   let cursor = offset - 1
   while (cursor >= 0 && /\s/.test(code[cursor])) cursor -= 1
   return code[cursor] === "."
 }
 
+/**
+ * Recognize ampersand-escaped or dotted identifiers that remain navigable even when
+ * their spelling matches a reserved word.
+ */
 function isEscapedOrQualifiedIdentifier(code: string, offset: number) {
   let cursor = offset - 1
   while (cursor >= 0 && /\s/.test(code[cursor])) cursor -= 1
   return code[cursor] === "." || code[cursor] === "&"
 }
 
+/**
+ * Test a trimmed identifier against the case-insensitive built-in type and
+ * pseudo-variable vocabulary.
+ */
 function isPascalIntrinsicIdentifier(symbol: unknown) {
   return PASCAL_INTRINSIC_IDENTIFIERS.has(
     String(symbol || "")
@@ -223,6 +239,10 @@ function isPascalIntrinsicIdentifier(symbol: unknown) {
   )
 }
 
+/**
+ * Test whether an identifier names a Delphi intrinsic type rather than an ordinary
+ * declared symbol.
+ */
 function isPascalIntrinsicTypeIdentifier(symbol: unknown) {
   return PASCAL_INTRINSIC_TYPE_IDENTIFIERS.has(
     String(symbol || "")
@@ -231,6 +251,9 @@ function isPascalIntrinsicTypeIdentifier(symbol: unknown) {
   )
 }
 
+/**
+ * Check whether the qualifier before a dotted identifier is the implicit System unit.
+ */
 function isSystemQualifiedIdentifier(code: string, offset: number) {
   let cursor = offset - 1
   while (cursor >= 0 && /\s/.test(code[cursor])) cursor -= 1
@@ -242,6 +265,10 @@ function isSystemQualifiedIdentifier(code: string, offset: number) {
   return code.slice(cursor + 1, end).toLowerCase() === "system"
 }
 
+/**
+ * Classify a call-shaped intrinsic type as a cast, accepting System-qualified casts
+ * but excluding escaped names and unrelated member calls.
+ */
 function isPascalIntrinsicTypeCastAt(
   code: string,
   offset: number,
@@ -251,10 +278,15 @@ function isPascalIntrinsicTypeCastAt(
   if (!looksLikeCall || !isPascalIntrinsicTypeIdentifier(identifier)) return false
   let cursor = offset - 1
   while (cursor >= 0 && /\s/.test(code[cursor])) cursor -= 1
+  // An escaped identifier is a user symbol even when its spelling matches an intrinsic type.
   if (code[cursor] === "&") return false
   return code[cursor] !== "." || isSystemQualifiedIdentifier(code, offset)
 }
 
+/**
+ * Suppress navigation only for standalone reserved or intrinsic words and genuine
+ * visibility directives; preserve escaped and qualified symbols.
+ */
 function isPascalNonNavigableIdentifierAt(
   code: string,
   offset: number,
@@ -269,6 +301,10 @@ function isPascalNonNavigableIdentifierAt(
   )
 }
 
+/**
+ * Infer declaration types, intrinsic casts, routine calls, and member accesses from
+ * masked Pascal text when richer symbol metadata is unavailable.
+ */
 function collectPascalSyntacticColoring(code: string) {
   const typeNames = new Set<string>()
   const typeCasts = new Set<number>()

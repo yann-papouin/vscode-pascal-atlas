@@ -1,4 +1,7 @@
-﻿/** Pascal/Delphi vocabulary. Groups are feature-specific; contextual words are not all reserved. */
+﻿/**
+ * Pascal/Delphi vocabulary. Groups are feature-specific; contextual words are not all
+ * reserved.
+ */
 export const PascalKeyword = Object.freeze({
   Absolute: "absolute",
   Abstract: "abstract",
@@ -188,5 +191,11 @@ export const PascalIntrinsic = Object.freeze({
 
 /** Escape alternatives without adding capture groups or changing their order. */
 export function keywordAlternation(words: readonly string[]): string {
-  return words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")
+  return words
+    .map(
+      /**
+       * Escape each keyword before joining it into a regular-expression alternative.
+       */ (word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    )
+    .join("|")
 }

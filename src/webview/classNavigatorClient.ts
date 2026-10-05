@@ -43,11 +43,19 @@ let searchOptions: NavigatorSearchOptions = saved.searchOptions || {
   navigation: "all",
 }
 
+/**
+ * Look up a required navigator DOM element by ID and fail early when the host markup
+ * and browser bundle no longer agree.
+ */
 function requiredElement<T extends HTMLElement>(id: string): T {
   const element = document.querySelector<T>("#" + id)
   if (!element) throw new Error("Missing navigator element: " + id)
   return element
 }
+/**
+ * Send a typed navigator action to the extension host through the VS Code webview
+ * bridge.
+ */
 function post(message: NavigatorClientMessage) {
   vscode.postMessage(message)
 }
@@ -73,8 +81,10 @@ const accessColors: Record<string, string> = {
   private: "var(--vscode-charts-red, #f14c4c)",
   "strict-private": "var(--vscode-charts-orange, #d18616)",
 }
-const accessColor = (access: string) =>
-  accessColors[access] || "var(--vscode-icon-foreground)"
+const accessColor =
+  /** Resolve a visibility color with the theme icon color as the fallback. */ (
+    access: string,
+  ) => accessColors[access] || "var(--vscode-icon-foreground)"
 
 const codiconGlyphs: Record<string, number> = {
   references: 0xeb36,
@@ -102,6 +112,10 @@ const codiconGlyphs: Record<string, number> = {
   symbol: 0xeb63,
 }
 
+/**
+ * Render the node's supported codicon and access/counterpart color, falling back to a
+ * generic symbol for unknown icon names.
+ */
 function configureIcon(
   element: HTMLElement,
   name?: string,
@@ -120,6 +134,10 @@ function configureIcon(
   else element.style.color = ""
 }
 
+/**
+ * Persist expansion, initialization, selection, and search preferences in VS Code
+ * webview storage.
+ */
 function remember() {
   vscode.setState({
     expanded: [...expanded],
@@ -128,6 +146,10 @@ function remember() {
     searchOptions,
   })
 }
+/**
+ * Snapshot selection, expanded/initialized IDs, and scroll position before a temporary
+ * search navigation session.
+ */
 function captureTreeState() {
   return {
     selectedId,
@@ -136,6 +158,10 @@ function captureTreeState() {
     scrollTop: treeHost.scrollTop,
   }
 }
+/**
+ * Restore a saved tree presentation, re-render its expansion/selection, and optionally
+ * return keyboard focus to the selected row.
+ */
 function restoreTreeState(
   state: NavigatorTreeState | undefined,
   focusSelected = false,
@@ -147,19 +173,28 @@ function restoreTreeState(
   for (const id of state.initialized || []) initialized.add(id)
   setSelected(state.selectedId || undefined, false, false)
   renderTree()
-  requestAnimationFrame(() => {
-    treeHost.scrollTop = Number.isFinite(state.scrollTop)
-      ? Math.max(0, state.scrollTop ?? 0)
-      : 0
-    if (focusSelected && selectedId) {
-      document
-        .querySelector<HTMLElement>(
-          '#tree .row[data-id="' + CSS.escape(selectedId) + '"]',
-        )
-        ?.focus()
-    }
-  })
+  requestAnimationFrame(
+    /**
+     * Restore a finite scroll position and optionally focus the selected tree row after
+     * layout.
+     */ () => {
+      treeHost.scrollTop = Number.isFinite(state.scrollTop)
+        ? Math.max(0, state.scrollTop ?? 0)
+        : 0
+      if (focusSelected && selectedId) {
+        document
+          .querySelector<HTMLElement>(
+            '#tree .row[data-id="' + CSS.escape(selectedId) + '"]',
+          )
+          ?.focus()
+      }
+    },
+  )
 }
+/**
+ * Apply provided search filter/scope/navigation values to browser controls while
+ * retaining other current preferences.
+ */
 function applyOptions(options: Partial<NavigatorSearchOptions> | undefined) {
   searchOptions = Object.assign({}, searchOptions, options || {})
   scope.value = searchOptions.scope
@@ -169,6 +204,10 @@ function applyOptions(options: Partial<NavigatorSearchOptions> | undefined) {
   navigation.value = searchOptions.navigation
   remember()
 }
+/**
+ * Read current search controls into the complete options shape expected by host
+ * searches.
+ */
 function readOptions() {
   searchOptions = {
     scope: scope.value,
@@ -180,6 +219,10 @@ function readOptions() {
   remember()
   return searchOptions
 }
+/**
+ * Update tree selection and ARIA state, optionally reveal the row and notify the host
+ * of the selected identity.
+ */
 function setSelected(id: string | null | undefined, scroll: boolean, notify: boolean) {
   const previous = renderedNodes.get(selectedId || "")?.row
   if (previous && selectedId !== id) {
@@ -199,12 +242,23 @@ function setSelected(id: string | null | undefined, scroll: boolean, notify: boo
   if (notify && id) post({ type: WebviewMessageKind.SelectNode, id })
   remember()
 }
+/**
+ * Return keyboard-navigable tree rows while excluding descendants hidden by collapsed
+ * ancestors.
+ */
 function flattenVisibleRows() {
   return [...treeHost.querySelectorAll<HTMLElement>(".row")].filter(
-    (row) => row.offsetParent !== null,
+    /**
+     * Skip rows hidden by collapsed ancestors when choosing keyboard navigation
+     * targets.
+     */ (row) => row.offsetParent !== null,
   )
 }
 
+/**
+ * Choose the VS Code webview context-menu section from the current navigator mode and
+ * node kind.
+ */
 function contextSection(node: NavigatorFlatPresentation) {
   if (
     mode === NavigatorMode.Class &&
@@ -247,6 +301,10 @@ function renderNode(node: NavigatorFlatPresentation) {
   let previousMode: string | undefined
   let previousExpanded: boolean | undefined
   let previousHasChildren: boolean | undefined
+  /**
+   * Update a retained row's twisty, child visibility, and ARIA expansion state only
+   * when its child/expansion flags change.
+   */
   const syncExpansion = () => {
     const hasChildren = node.children.length > 0
     const isExpanded = expanded.has(node.id)
@@ -259,6 +317,10 @@ function renderNode(node: NavigatorFlatPresentation) {
     previousHasChildren = hasChildren
     previousExpanded = isExpanded
   }
+  /**
+   * Rebind a retained row to current presentation data and update only changed labels,
+   * icons, depth, tooltip, context, and expansion state.
+   */
   const update = (next: NavigatorFlatPresentation, depth: number) => {
     node = next
     if (depth !== previousDepth) row.style.paddingLeft = depth * 8 + "px"
@@ -298,6 +360,10 @@ function renderNode(node: NavigatorFlatPresentation) {
     previousDepth = depth
     previousMode = mode
   }
+  /**
+   * Change a row's expansion state, persist it, and report the corresponding
+   * expansion/collapse action to the host.
+   */
   const toggle = (expand?: boolean) => {
     if (!node.children.length) return
     const next = expand === undefined ? !expanded.has(node.id) : expand
@@ -307,62 +373,86 @@ function renderNode(node: NavigatorFlatPresentation) {
     remember()
     post({ type: next ? "expand" : "collapse", id: node.id })
   }
-  twisty.addEventListener("click", (event) => {
-    event.stopPropagation()
-    toggle()
-  })
-  row.addEventListener("click", () => {
-    setSelected(node.id, false, true)
-    if (node.jumpable) post({ type: WebviewMessageKind.Open, id: node.id })
-  })
-  row.addEventListener("contextmenu", () => setSelected(node.id, false, true))
-  row.addEventListener("keydown", (event) => {
-    const visible = flattenVisibleRows()
-    const index = visible.indexOf(row)
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault()
-      const next =
-        visible[
-          Math.max(
-            0,
-            Math.min(visible.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)),
-          )
-        ]
-      if (next) {
-        setSelected(next.dataset.id, true, true)
-        next.focus()
-      }
-    } else if (event.key === "ArrowRight") {
-      event.preventDefault()
-      if (!expanded.has(node.id)) toggle(true)
-    } else if (event.key === "ArrowLeft") {
-      event.preventDefault()
-      if (expanded.has(node.id)) toggle(false)
-      else {
-        const previous = row.parentElement?.parentElement?.previousElementSibling
-        if (previous && "focus" in previous && typeof previous.focus === "function")
-          previous.focus()
-      }
-    } else if (event.key === "Enter") {
-      event.preventDefault()
-      if (node.jumpable) post({ type: WebviewMessageKind.Open, id: node.id })
-      else toggle()
-    } else if (event.key === " " && node.children.length) {
-      event.preventDefault()
+  twisty.addEventListener(
+    "click",
+    /** Toggle expansion without also triggering the containing row navigation. */ (
+      event,
+    ) => {
+      event.stopPropagation()
       toggle()
-    } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-      event.preventDefault()
+    },
+  )
+  row.addEventListener(
+    "click",
+    /** Select the current node and open it when it has a navigation target. */ () => {
       setSelected(node.id, false, true)
-      const rect = row.getBoundingClientRect()
-      row.dispatchEvent(
-        new MouseEvent("contextmenu", {
-          bubbles: true,
-          clientX: rect.left + 20,
-          clientY: rect.bottom,
-        }),
-      )
-    }
-  })
+      if (node.jumpable) post({ type: WebviewMessageKind.Open, id: node.id })
+    },
+  )
+  row.addEventListener(
+    "contextmenu",
+    /** Select the row before VS Code evaluates its context menu actions. */ () =>
+      setSelected(node.id, false, true),
+  )
+  row.addEventListener(
+    "keydown",
+    /**
+     * Navigate visible rows, toggle branches, or open the selected node from the
+     * keyboard.
+     */ (event) => {
+      const visible = flattenVisibleRows()
+      const index = visible.indexOf(row)
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault()
+        const next =
+          visible[
+            Math.max(
+              0,
+              Math.min(
+                visible.length - 1,
+                index + (event.key === "ArrowDown" ? 1 : -1),
+              ),
+            )
+          ]
+        if (next) {
+          setSelected(next.dataset.id, true, true)
+          next.focus()
+        }
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault()
+        if (!expanded.has(node.id)) toggle(true)
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault()
+        if (expanded.has(node.id)) toggle(false)
+        else {
+          const previous = row.parentElement?.parentElement?.previousElementSibling
+          if (previous && "focus" in previous && typeof previous.focus === "function")
+            previous.focus()
+        }
+      } else if (event.key === "Enter") {
+        event.preventDefault()
+        if (node.jumpable) post({ type: WebviewMessageKind.Open, id: node.id })
+        else toggle()
+      } else if (event.key === " " && node.children.length) {
+        event.preventDefault()
+        toggle()
+      } else if (
+        event.key === "ContextMenu" ||
+        (event.shiftKey && event.key === "F10")
+      ) {
+        event.preventDefault()
+        setSelected(node.id, false, true)
+        const rect = row.getBoundingClientRect()
+        row.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            clientX: rect.left + 20,
+            clientY: rect.bottom,
+          }),
+        )
+      }
+    },
+  )
   return { wrapper, row, children, update, syncExpansion }
 }
 
@@ -373,21 +463,25 @@ function reconcileChildren(host: HTMLElement, ids: string[], depth: number) {
     if (child.id === "empty" && ids.length === 0) continue
     if (!wanted.has(child.getAttribute("data-node-id") || "")) child.remove()
   }
-  ids.forEach((id, index) => {
-    const node = nodesById.get(id)
-    if (!node) return
-    let entry = renderedNodes.get(id)
-    if (!entry) {
-      entry = renderNode(node)
-      renderedNodes.set(id, entry)
-    }
-    entry.update(node, depth)
-    // appendChild for every entry would move unchanged rows and put new
-    // declarations at the end. Insert only at their actual model position.
-    const before = host.children[index] || null
-    if (before !== entry.wrapper) host.insertBefore(entry.wrapper, before)
-    reconcileChildren(entry.children, node.children, depth + 1)
-  })
+  ids.forEach(
+    /**
+     * Reuse or create each child row and move it only when its sibling position changes.
+     */ (id, index) => {
+      const node = nodesById.get(id)
+      if (!node) return
+      let entry = renderedNodes.get(id)
+      if (!entry) {
+        entry = renderNode(node)
+        renderedNodes.set(id, entry)
+      }
+      entry.update(node, depth)
+      // appendChild for every entry would move unchanged rows and put new
+      // declarations at the end. Insert only at their actual model position.
+      const before = host.children[index] || null
+      if (before !== entry.wrapper) host.insertBefore(entry.wrapper, before)
+      reconcileChildren(entry.children, node.children, depth + 1)
+    },
+  )
 }
 
 /** Apply changed data without replacing the tree or losing its viewport. */
@@ -395,7 +489,10 @@ function renderTree() {
   const scrollTop = treeHost.scrollTop
   const top = treeHost.getBoundingClientRect().top
   const anchor = flattenVisibleRows().find(
-    (row) => row.getBoundingClientRect().bottom > top,
+    /**
+     * Find the first row intersecting the viewport so edits can preserve its visual
+     * position.
+     */ (row) => row.getBoundingClientRect().bottom > top,
   )
   const anchorTop = anchor?.getBoundingClientRect().top
   const focused = treeHost.contains(document.activeElement)
@@ -439,6 +536,10 @@ function renderTree() {
   } else treeHost.scrollTop = scrollTop
 }
 
+/**
+ * Invalidate older searches, persist requested option changes, and debounce the
+ * current query before sending its correlated host request.
+ */
 function sendSearch(persistOptions = false) {
   clearTimeout(searchTimer)
   const requestId = ++searchRequest
@@ -458,16 +559,25 @@ function sendSearch(persistOptions = false) {
   status.textContent =
     options.scope === "global" ? "Searching the global indexâ€¦" : "Searchingâ€¦"
   searchTimer = setTimeout(
-    () => post({ type: WebviewMessageKind.Search, requestId, query, options }),
+    /** Send the captured query with its request ID after the typing debounce. */ () =>
+      post({ type: WebviewMessageKind.Search, requestId, query, options }),
     35,
   )
 }
+/**
+ * Determine whether live search navigation is allowed for a result under
+ * always/current-file/confirmation-only preferences.
+ */
 function shouldPreview(item: NavigatorSearchResult) {
   return (
     searchOptions.navigation === "all" ||
     (searchOptions.navigation === "current" && item.isCurrentFile)
   )
 }
+/**
+ * Clamp the active result index, update result-row styling/visibility, and send an
+ * eligible live-preview request.
+ */
 function activateResult(index: number, preview: boolean) {
   if (!results.length) {
     activeResult = -1
@@ -476,8 +586,9 @@ function activateResult(index: number, preview: boolean) {
   activeResult = Math.max(0, Math.min(results.length - 1, index))
   resultsHost
     .querySelectorAll(".result")
-    .forEach((row, rowIndex) =>
-      row.classList.toggle("active", rowIndex === activeResult),
+    .forEach(
+      /** Mark only the active search-result row as selected. */ (row, rowIndex) =>
+        row.classList.toggle("active", rowIndex === activeResult),
     )
   const row = resultsHost.children[activeResult]
   row?.scrollIntoView({ block: "nearest" })
@@ -488,12 +599,19 @@ function activateResult(index: number, preview: boolean) {
       preview: true,
     })
 }
+/**
+ * Commit the active search result to host navigation rather than a temporary preview.
+ */
 function confirmResult() {
   const item = results[activeResult]
   if (!item) return
   status.textContent = "Navigating to and selecting itemâ€¦"
   post({ type: WebviewMessageKind.SearchActivate, id: item.id, preview: false })
 }
+/**
+ * Rebuild search-result rows with current icons/details, update status text, and
+ * select/preview the first result when available.
+ */
 function renderResults(items: NavigatorSearchResult[], responseStatus?: string) {
   results = items || []
   resultsHost.replaceChildren()
@@ -518,7 +636,12 @@ function renderResults(items: NavigatorSearchResult[], responseStatus?: string) 
       main.appendChild(detail)
     }
     row.appendChild(main)
-    row.addEventListener("mousedown", () => activateResult(index, true))
+    row.addEventListener(
+      "mousedown",
+      /**
+       * Select and optionally preview the result before a subsequent click confirms it.
+       */ () => activateResult(index, true),
+    )
     row.addEventListener("click", confirmResult)
     resultsHost.appendChild(row)
   }
@@ -526,6 +649,10 @@ function renderResults(items: NavigatorSearchResult[], responseStatus?: string) 
     responseStatus || (results.length ? results.length + " matches" : "No matches")
   activateResult(results.length ? 0 : -1, true)
 }
+/**
+ * Open search after capturing tree state, close conflicting sorting controls, focus
+ * the query, and issue the initial search.
+ */
 function showSearch(options: NavigatorSearchOptions) {
   if (sortOpen) hideSort(false)
   if (!searchOpen) searchStartTreeState = captureTreeState()
@@ -536,6 +663,10 @@ function showSearch(options: NavigatorSearchOptions) {
   queryInput.select()
   sendSearch()
 }
+/**
+ * Cancel pending/obsolete searches, restore the captured tree when appropriate, and
+ * optionally report closure to the host.
+ */
 function hideSearch(notify = true) {
   const restoreState = notify ? searchStartTreeState : undefined
   searchStartTreeState = undefined
@@ -549,6 +680,10 @@ function hideSearch(notify = true) {
   if (restoreState) restoreTreeState(restoreState, true)
   if (notify) post({ type: WebviewMessageKind.SearchClosed, restoreState })
 }
+/**
+ * Normalize legacy source-order settings and apply supported member/type sorting
+ * values to their controls.
+ */
 function applySortSettings(settings: NavigatorSortSettings) {
   const normalizedMemberOrder =
     settings?.memberOrder === "source"
@@ -563,6 +698,9 @@ function applySortSettings(settings: NavigatorSortSettings) {
   if (["declaration", "alphabetical"].includes(settings?.typeOrder))
     typeOrder.value = settings.typeOrder
 }
+/**
+ * Close search if needed, open the sorting panel, and focus the first sorting control.
+ */
 function showSort(settings: NavigatorSortSettings) {
   if (searchOpen) hideSearch()
   sortOpen = true
@@ -570,73 +708,136 @@ function showSort(settings: NavigatorSortSettings) {
   sortHost.hidden = false
   memberOrder.focus()
 }
+/**
+ * Close sorting controls, optionally return focus to the tree, and report the panel
+ * closure to the host.
+ */
 function hideSort(focusTree = true, notify = true) {
   sortOpen = false
   sortHost.hidden = true
   if (focusTree) treeHost.focus()
   if (notify) post({ type: WebviewMessageKind.SortClosed })
 }
+/**
+ * Send the changed sort-setting key/value to the host for persistence and model
+ * refresh.
+ */
 function updateSort(key: string, value: string) {
   post({ type: WebviewMessageKind.SortUpdate, key, value })
 }
 
-queryInput.addEventListener("input", () => sendSearch(false))
-queryInput.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    event.preventDefault()
-    hideSearch()
-  } else if (event.key === "ArrowDown") {
-    event.preventDefault()
-    activateResult(activeResult + 1, true)
-  } else if (event.key === "ArrowUp") {
-    event.preventDefault()
-    activateResult(activeResult - 1, true)
-  } else if (event.key === "Enter") {
-    event.preventDefault()
-    confirmResult()
-  }
-})
-for (const control of [scope, kindTypes, kindFiles, kindRoutines, navigation])
-  control.addEventListener("change", () => sendSearch(true))
-requiredElement<HTMLElement>("close-search").addEventListener("click", () =>
-  hideSearch(),
+queryInput.addEventListener(
+  "input",
+  /** Schedule a new search when the query text changes. */ () => sendSearch(false),
 )
-requiredElement<HTMLElement>("close-sort").addEventListener("click", () => hideSort())
-memberOrder.addEventListener("change", () =>
-  updateSort("memberOrder", memberOrder.value),
-)
-typeOrder.addEventListener("change", () => updateSort("typeOrder", typeOrder.value))
-for (const control of [memberOrder, typeOrder])
-  control.addEventListener("keydown", (event) => {
+queryInput.addEventListener(
+  "keydown",
+  /** Handle search dismissal, result navigation, and confirmation keys. */ (event) => {
     if (event.key === "Escape") {
       event.preventDefault()
-      hideSort()
+      hideSearch()
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault()
+      activateResult(activeResult + 1, true)
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault()
+      activateResult(activeResult - 1, true)
+    } else if (event.key === "Enter") {
+      event.preventDefault()
+      confirmResult()
     }
-  })
-treeHost.addEventListener("focusin", () => document.body.classList.add("tree-focus"))
-treeHost.addEventListener("focusout", () =>
-  document.body.classList.remove("tree-focus"),
+  },
+)
+for (const control of [scope, kindTypes, kindFiles, kindRoutines, navigation])
+  control.addEventListener(
+    "change",
+    /** Persist search-filter changes and rerun the current query. */ () =>
+      sendSearch(true),
+  )
+requiredElement<HTMLElement>("close-search").addEventListener(
+  "click",
+  /** Close search and restore its captured tree state. */ () => hideSearch(),
+)
+requiredElement<HTMLElement>("close-sort").addEventListener(
+  "click",
+  /** Close sorting controls and return focus to the tree. */ () => hideSort(),
+)
+memberOrder.addEventListener(
+  "change",
+  /** Persist the selected member-order preference. */ () =>
+    updateSort("memberOrder", memberOrder.value),
+)
+typeOrder.addEventListener(
+  "change",
+  /** Persist the selected top-level type-order preference. */ () =>
+    updateSort("typeOrder", typeOrder.value),
+)
+for (const control of [memberOrder, typeOrder])
+  control.addEventListener(
+    "keydown",
+    /** Close sorting controls and return focus to the tree when Escape is pressed. */ (
+      event,
+    ) => {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        hideSort()
+      }
+    },
+  )
+treeHost.addEventListener(
+  "focusin",
+  /** Use active-selection styling while the tree owns keyboard focus. */ () =>
+    document.body.classList.add("tree-focus"),
+)
+treeHost.addEventListener(
+  "focusout",
+  /** Use inactive-selection styling when focus leaves the tree. */ () =>
+    document.body.classList.remove("tree-focus"),
 )
 
 let reportedFocus = false
+/**
+ * Report browser focus changes so host context keys and navigator keyboard commands
+ * stay synchronized.
+ */
 function reportWebviewFocus(focused: boolean) {
   focused = Boolean(focused)
   if (reportedFocus === focused) return
   reportedFocus = focused
   post({ type: WebviewMessageKind.FocusChanged, focused })
 }
-document.addEventListener("focusin", () => reportWebviewFocus(true))
-window.addEventListener("focus", () => reportWebviewFocus(true))
-window.addEventListener("blur", () => reportWebviewFocus(false))
-document.addEventListener("focusout", () =>
-  setTimeout(() => {
-    if (!document.hasFocus()) reportWebviewFocus(false)
-  }, 0),
+document.addEventListener(
+  "focusin",
+  /** Notify the host when focus enters the webview document. */ () =>
+    reportWebviewFocus(true),
+)
+window.addEventListener(
+  "focus",
+  /** Notify the host when the webview window gains focus. */ () =>
+    reportWebviewFocus(true),
+)
+window.addEventListener(
+  "blur",
+  /** Notify the host when the webview window loses focus. */ () =>
+    reportWebviewFocus(false),
+)
+document.addEventListener(
+  "focusout",
+  /** Defer the focus check until the browser has completed its focus transition. */ () =>
+    setTimeout(
+      /** Clear host focus state only if focus left the entire webview document. */ () => {
+        if (!document.hasFocus()) reportWebviewFocus(false)
+      },
+      0,
+    ),
 )
 
 window.addEventListener(
   WebviewEvent.Message,
-  (event: MessageEvent<NavigatorHostMessage>) => {
+  /**
+   * Apply host model patches, selections, and panel updates to the browser
+   * presentation.
+   */ (event: MessageEvent<NavigatorHostMessage>) => {
     const data = event.data
     if (!data) return
     if (

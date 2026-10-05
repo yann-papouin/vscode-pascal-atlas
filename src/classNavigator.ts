@@ -140,6 +140,10 @@ interface SearchSession {
   highlight?: { nodeId: string; focusOffset: number }
 }
 
+/**
+ * Narrow a node to a complete routine target with stable identity, display label, and
+ * a child collection.
+ */
 function isNavigatorRoutine(node: NavigatorTarget): node is NavigatorNode {
   return (
     node.kind === "routine" &&
@@ -158,11 +162,19 @@ interface SearchResult extends NavigatorSearchResult {
   definition?: SourceDefinition
 }
 
+/**
+ * Find the containing source line's newline offset, falling back to document end for
+ * the last line.
+ */
 function lineEndOffset(text: string, offset: number) {
   const end = text.indexOf("\n", Math.max(0, offset))
   return end < 0 ? text.length : end
 }
 
+/**
+ * Recognize Pascal source and DPK/DPROJ documents that can provide a Delphi navigator
+ * structure.
+ */
 function isClassNavigatorDocument(
   document:
     | { languageId: string; fileName?: string; uri?: { fsPath?: string } }
@@ -173,11 +185,19 @@ function isClassNavigatorDocument(
   return /\.(?:dpk|dproj)$/i.test(document.fileName || document.uri?.fsPath || "")
 }
 
+/**
+ * Find the next semicolon-terminated source section boundary, falling back to the
+ * available code length.
+ */
 function sectionEndOffset(code: string, offset: number) {
   const end = code.indexOf(";", Math.max(0, offset))
   return end < 0 ? code.length : end + 1
 }
 
+/**
+ * Build package requires/contains section targets at their original source ranges,
+ * honoring independent package/file-entry visibility.
+ */
 function dpkProjectReferenceNodes(
   code: string,
   settings: NavigatorOptions,
@@ -225,6 +245,10 @@ function dpkProjectReferenceNodes(
   return entries
 }
 
+/**
+ * Create navigable initialization/finalization section nodes for unit sources using
+ * their original boundaries.
+ */
 function unitLifecycleNodes(code: string, settings: NavigatorOptions): NavigatorNode[] {
   if (!new RegExp(String.raw`^\s*${PascalKeyword.Unit}\b`, "im").test(code)) return []
   const initialization = new RegExp(
@@ -271,6 +295,10 @@ function unitLifecycleNodes(code: string, settings: NavigatorOptions): Navigator
   return entries
 }
 
+/**
+ * Find the complete DCCReference XML span for a matched opening tag, handling
+ * self-closing references and missing closing tags.
+ */
 function xmlElementRange(text: string, match: RegExpMatchArray): [number, number] {
   const start = match.index ?? 0
   if (/\/\s*>$/.test(match[0])) return [start, start + match[0].length]
@@ -283,6 +311,10 @@ function xmlElementRange(text: string, match: RegExpMatchArray): [number, number
   ]
 }
 
+/**
+ * Prefer an existing reference, compile element, or item group for reference
+ * insertion; otherwise use the document start.
+ */
 function dprojInsertionOffset(text: string) {
   const firstReference = /<DCCReference\b/i.exec(text)
   if (firstReference) return firstReference.index
@@ -292,6 +324,10 @@ function dprojInsertionOffset(text: string) {
   return itemGroup ? itemGroup.index + itemGroup[0].length : 0
 }
 
+/**
+ * Build project/package/file reference navigator sections from DPROJ XML without
+ * invoking Pascal routine parsing.
+ */
 function buildDprojNavigatorModel(
   text: string,
   filePath = "",
@@ -305,12 +341,22 @@ function buildDprojNavigatorModel(
     ...text.matchAll(
       /<DCCReference\b[^>]*\bInclude\s*=\s*["']([^"']+)["'][^>]*\/?\s*>/gi,
     ),
-  ].map((match) => ({ match, include: match[1], range: xmlElementRange(text, match) }))
-  const packageReferences = references.filter((reference) =>
-    /\.(?:dcp|bpl|dpl)$/i.test(reference.include),
+  ].map(
+    /** Pair each referenced path with its complete XML source span. */ (match) => ({
+      match,
+      include: match[1],
+      range: xmlElementRange(text, match),
+    }),
   )
-  const fileReferences = references.filter((reference) =>
-    /\.(?:pas|pp|dpr|dpk|inc)$/i.test(reference.include),
+  const packageReferences = references.filter(
+    /** Select compiled-package references for the package-includes section. */ (
+      reference,
+    ) => /\.(?:dcp|bpl|dpl)$/i.test(reference.include),
+  )
+  const fileReferences = references.filter(
+    /**
+     * Select Pascal source and include-file references for the file-includes section.
+     */ (reference) => /\.(?:pas|pp|dpr|dpk|inc)$/i.test(reference.include),
   )
   const usePackages = [
     ...text.matchAll(/<DCC_UsePackage\b[^>]*>[\s\S]*?<\/DCC_UsePackage\s*>/gi),
@@ -332,8 +378,17 @@ function buildDprojNavigatorModel(
       offset: target,
       ranges:
         packageReferences.length > 0
-          ? packageReferences.map((reference) => reference.range)
-          : usePackages.map((match) => [match.index, match.index + match[0].length]),
+          ? packageReferences.map(
+              /** Collect all compiled-package reference spans for highlighting. */ (
+                reference,
+              ) => reference.range,
+            )
+          : usePackages.map(
+              /**
+               * Collect the complete spans of package-list elements when no
+               * compiled-package references exist.
+               */ (match) => [match.index, match.index + match[0].length],
+            ),
       targetKind:
         packageReferences.length > 0 ? "DCCReference (.dcp)" : "DCC_UsePackage",
       children: [],
@@ -345,7 +400,10 @@ function buildDprojNavigatorModel(
       kind: "project-file-section",
       label: "File Includes",
       offset: fileReferences[0]?.range[0] ?? insertionOffset,
-      ranges: fileReferences.map((reference) => reference.range),
+      ranges: fileReferences.map(
+        /** Collect all source-reference spans for highlighting. */ (reference) =>
+          reference.range,
+      ),
       targetKind: "DCCReference (.pas/.dpr/.dpk)",
       children: [],
     })
@@ -367,6 +425,10 @@ function buildDprojNavigatorModel(
   }
 }
 
+/**
+ * Read the declaration keyword immediately before a routine name, defaulting to
+ * procedure when no supported heading is found.
+ */
 function routineKeywordAt(text: string, offset: number) {
   const lineStart = Math.max(0, text.lastIndexOf("\n", Math.max(0, offset - 1)) + 1)
   const prefix = text.slice(lineStart, offset)
@@ -380,6 +442,10 @@ function routineKeywordAt(text: string, offset: number) {
   )
 }
 
+/**
+ * Distinguish global, instance, class, and static routines using their owner, heading
+ * modifiers, and declaration directives.
+ */
 function routineFlavorAt(code: string, offset: number, owner: string | undefined) {
   if (!owner) return "global"
   const range = routineDeclarationRange(code, offset)
@@ -404,6 +470,10 @@ function routineFlavorAt(code: string, offset: number, owner: string | undefined
   return isClassRoutine ? PascalKeyword.Class : "instance"
 }
 
+/**
+ * Resolve a member's visibility from parsed class layout or surrounding section
+ * headers with Delphi type-kind defaults.
+ */
 function memberAccessAt(
   code: string,
   typeOffset: number,
@@ -414,7 +484,9 @@ function memberAccessAt(
   if (layout) {
     return (
       layout.sections.find(
-        (section) =>
+        /** Find the lexical visibility section that contains the member offset. */ (
+          section,
+        ) =>
           memberOffset >= section.bodyStart && memberOffset < (section.end ?? Infinity),
       )?.access ||
       (typeKind === PascalKeyword.Class
@@ -438,6 +510,10 @@ function memberAccessAt(
   return access
 }
 
+/**
+ * Identify constructors, destructors, operators, and managed-record lifecycle names
+ * for specialized presentation.
+ */
 function specialRoutineKind(name: string | undefined, routineKind: string) {
   const key = String(name || "").toLowerCase()
   if (routineKind === PascalKeyword.Constructor) return PascalKeyword.Constructor
@@ -448,6 +524,10 @@ function specialRoutineKind(name: string | undefined, routineKind: string) {
   return undefined
 }
 
+/**
+ * Map member visibility to theme color IDs, using the ordinary foreground when no
+ * specific access color applies.
+ */
 function accessColorId(access: string | undefined) {
   return (
     {
@@ -461,6 +541,10 @@ function accessColorId(access: string | undefined) {
   )
 }
 
+/**
+ * Choose a routine codicon from lifecycle/operator and instance/class/static/global
+ * flavor metadata.
+ */
 function routineIconName(node: NavigatorTarget | undefined) {
   if (
     inList(node?.specialRoutineKind, [
@@ -478,16 +562,28 @@ function routineIconName(node: NavigatorTarget | undefined) {
   return "symbol-method"
 }
 
+/**
+ * Choose a target's body offset before its declaration/general offset for
+ * implementation-oriented navigation.
+ */
 function nodeSourceOffset(node: NavigatorTarget) {
   return node?.implementationOffset ?? node?.declarationOffset ?? node?.offset
 }
 
+/**
+ * Compare members by configured visibility/lifecycle or declaration/body source order,
+ * using unavailable offsets as a final-position fallback.
+ */
 function compareTypeMembers(
   left: NavigatorTarget | NavigatorTarget,
   right: NavigatorTarget | NavigatorTarget,
   memberOrder = "visibility",
 ) {
   if (memberOrder === "visibility") {
+    /**
+     * Keep constructors before ordinary methods and destructors after constructors in
+     * visibility-oriented member sorting.
+     */
     const lifecycleRank = (node: NavigatorTarget) =>
       node?.specialRoutineKind === PascalKeyword.Constructor
         ? 0
@@ -501,6 +597,10 @@ function compareTypeMembers(
       (MEMBER_ACCESS_ORDER.get(right.access || "") ?? 99)
     if (accessDifference !== 0) return accessDifference
   }
+  /**
+   * Select the declaration or implementation-oriented source offset required by the
+   * current member ordering.
+   */
   const offset = (node: NavigatorTarget) =>
     memberOrder === "declaration"
       ? (node?.declarationOffset ?? node?.offset)
@@ -511,6 +611,10 @@ function compareTypeMembers(
   )
 }
 
+/**
+ * Compare top-level types by configured alphabetical display labels or their original
+ * source positions.
+ */
 function compareTypeNodes(
   left: NavigatorTarget,
   right: NavigatorTarget,
@@ -530,6 +634,10 @@ function compareTypeNodes(
   )
 }
 
+/**
+ * Parse uses-unit nodes and section ranges, distinguishing interface and
+ * implementation clauses while retaining original qualified unit spans.
+ */
 function parseUsesNodes(text: string, code: string) {
   const uses: NavigatorNode[] = []
   const ranges: Array<[number, number]> = []
@@ -584,13 +692,22 @@ function parseUsesNodes(text: string, code: string) {
   return { uses, firstOffset, ranges, sections }
 }
 
+/**
+ * Choose one structural type definition per name from source-ordered candidates and
+ * known block boundaries.
+ */
 function deduplicateTypes(
   types: SourceDefinition[],
   structureEnds: Map<number, number> = new Map(),
 ) {
   const result: SourceDefinition[] = []
   const byName = new Map<string, SourceDefinition>()
-  for (const type of [...types].sort((left, right) => left.offset! - right.offset!)) {
+  for (const type of [...types].sort(
+    /**
+     * Process type candidates in source order so a real declaration can replace its
+     * earlier forward declaration.
+     */ (left, right) => left.offset! - right.offset!,
+  )) {
     if (!STRUCTURE_KINDS.has(type.structureKind || "")) continue
     const key = type.symbol.toLowerCase()
     const existing = byName.get(key)
@@ -613,6 +730,10 @@ function deduplicateTypes(
   return result
 }
 
+/**
+ * Recognize forward or ancestor-only structure declarations so they do not consume a
+ * later unrelated body.
+ */
 function isBodylessStructureDeclaration(code: string, afterKindOffset: number) {
   let cursor = afterKindOffset
   while (/\s/.test(code[cursor] || "")) cursor += 1
@@ -633,6 +754,10 @@ function isBodylessStructureDeclaration(code: string, afterKindOffset: number) {
   return code[cursor] === ";"
 }
 
+/**
+ * Locate a named structure's closing end while skipping forward and class-of
+ * declarations.
+ */
 function findStructureEnd(code: string, bodyStart: number) {
   let depth = 1
   const tokenPattern = new RegExp(
@@ -652,6 +777,10 @@ function findStructureEnd(code: string, bodyStart: number) {
   return -1
 }
 
+/**
+ * Precompute complete structural declaration boundaries for member ownership and
+ * nested-type placement.
+ */
 function structureEndOffsets(code: string) {
   const result = new Map<number, number>()
   const pattern = new RegExp(
@@ -671,6 +800,10 @@ function structureEndOffsets(code: string) {
   return result
 }
 
+/**
+ * Recover routine heading identities and spans when richer source-unit parsing cannot
+ * supply them.
+ */
 function fallbackRoutineDefinitions(text: string, code: string) {
   const definitions = []
   const pattern = new RegExp(
@@ -678,9 +811,11 @@ function fallbackRoutineDefinitions(text: string, code: string) {
     "gim",
   )
   for (const match of code.matchAll(pattern)) {
-    const parts = match[1]
-      .split(".")
-      .map((item: string) => item.replace(/\s*<.*>\s*$/, "").trim())
+    const parts = match[1].split(".").map(
+      /**
+       * Strip generic arguments and whitespace from qualified fallback routine names.
+       */ (item: string) => item.replace(/\s*<.*>\s*$/, "").trim(),
+    )
     const symbol = parts.at(-1) || ""
     const owner = parts.length > 1 ? parts.at(-2) : undefined
     const offset = match.index + match[0].lastIndexOf(symbol)
@@ -696,6 +831,10 @@ function fallbackRoutineDefinitions(text: string, code: string) {
   return definitions
 }
 
+/**
+ * Attach tree ancestry while removing recursive/incomplete-source links that would
+ * create an invalid provider graph.
+ */
 function attachParents(
   nodes: NavigatorNode[],
   parent?: NavigatorNode,
@@ -758,20 +897,37 @@ function assignNavigatorNodeIds(
   }
 }
 
+/**
+ * Compile a case-insensitive prefix or star-wildcard predicate from a nonempty search
+ * query, escaping literal characters safely.
+ */
 function navigatorSearchPattern(query: string) {
   const needle = String(query || "")
     .trim()
     .toLocaleLowerCase()
   if (!needle) return undefined
-  if (!needle.includes("*")) return (value: string) => value.startsWith(needle)
+  if (!needle.includes("*"))
+    return /** Match a navigator search term at the start of the candidate value. */ (
+      value: string,
+    ) => value.startsWith(needle)
   const source = needle
     .split("*")
-    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .map(
+      /** Escape regex metacharacters in each literal segment between wildcard stars. */ (
+        part,
+      ) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    )
     .join(".*")
   const pattern = new RegExp(`^${source}`, "i")
-  return (value: string) => pattern.test(value)
+  return /** Match a navigator search candidate against the compiled regular expression. */ (
+    value: string,
+  ) => pattern.test(value)
 }
 
+/**
+ * Traverse current navigator nodes and collect entries accepted by the normalized
+ * prefix/wildcard search.
+ */
 function findNavigatorEntries(
   nodes: NavigatorTarget[],
   query: string,
@@ -779,6 +935,9 @@ function findNavigatorEntries(
   const matches: NavigatorTarget[] = []
   const accepts = navigatorSearchPattern(query)
   if (!accepts) return matches
+  /**
+   * Search types and routines recursively while descending through all grouping nodes.
+   */
   const visit = (entries: NavigatorTarget[] = []) => {
     for (const node of entries || []) {
       if (
@@ -794,10 +953,15 @@ function findNavigatorEntries(
   return matches
 }
 
+/** Return the first current navigator entry matching a prefix/wildcard query. */
 function findNavigatorEntry(nodes: NavigatorTarget[], query: string) {
   return findNavigatorEntries(nodes, query)[0]
 }
 
+/**
+ * Normalize partial search preferences to supported scope, kind filters, and
+ * live-navigation modes.
+ */
 function normalizeNavigatorSearchOptions(
   value: Partial<NavigatorSearchOptions> | undefined = {},
 ): NavigatorSearchOptions {
@@ -812,6 +976,10 @@ function normalizeNavigatorSearchOptions(
   }
 }
 
+/**
+ * Build a search-result identity from node kind, case-folded file path, source offset,
+ * and symbol name.
+ */
 function navigatorSearchResultId(
   kind: string,
   filePath: string,
@@ -827,6 +995,10 @@ function navigatorSearchResultId(
   ].join(":")
 }
 
+/**
+ * Produce matching current-file/type/routine search results from the live model under
+ * the requested kind filters.
+ */
 function navigatorSearchResultsForModel(
   model: Pick<NavigatorModel, "roots"> | undefined,
   filePath: string,
@@ -851,6 +1023,10 @@ function navigatorSearchResultsForModel(
       isCurrentFile: true,
     })
   }
+  /**
+   * Collect accepted types and routines, including nested entries, as current-file
+   * search results.
+   */
   const visit = (nodes: NavigatorTarget[] = []) => {
     for (const node of nodes || []) {
       const acceptedKind =
@@ -893,6 +1069,10 @@ function navigatorSearchResultsForModel(
   return results
 }
 
+/**
+ * Produce global source-index search results with deterministic deduplication and
+ * current-file metadata.
+ */
 function navigatorSearchResultsForIndex(
   sourceIndex: Pick<SourceIndex, "definitions"> & { files?: Set<string> },
   query: string,
@@ -905,6 +1085,7 @@ function navigatorSearchResultsForIndex(
   const currentKey = path.resolve(currentFilePath || ".").toLocaleLowerCase()
   const results: SearchResult[] = []
   const seen = new Set()
+  /** Append one distinct search result after checking its stable identity. */
   const add = (result: SearchResult) => {
     if (!result.filePath) return
     const key = `${result.kind}:${path.resolve(result.filePath).toLocaleLowerCase()}:${result.offset || 0}:${result.label.toLocaleLowerCase()}`
@@ -989,7 +1170,10 @@ function navigatorSearchResultsForIndex(
   }
   return results
     .sort(
-      (left, right) =>
+      /**
+       * Order search results by label, then file path, then source offset for
+       * deterministic presentation.
+       */ (left, right) =>
         left.label.localeCompare(right.label, undefined, { sensitivity: "base" }) ||
         left.filePath.localeCompare(right.filePath, undefined, {
           sensitivity: "base",
@@ -999,6 +1183,10 @@ function navigatorSearchResultsForIndex(
     .slice(0, 500)
 }
 
+/**
+ * Rebind a type/routine search result to its current model target using identity and
+ * source metadata.
+ */
 function navigatorNodeForSearchResult(
   model: Pick<NavigatorModel, "typeNodes" | "routineNodes"> | undefined,
   result: NavigatorTarget,
@@ -1011,40 +1199,61 @@ function navigatorNodeForSearchResult(
       : model.routineNodes || []
   const name = String(result.name || result.label || "").toLocaleLowerCase()
   const owner = String(result.owner || "").toLocaleLowerCase()
-  const matching = candidates.filter((node) => {
-    if (String(node.name || node.label || "").toLocaleLowerCase() !== name) return false
-    if (!owner) return true
-    return (
-      String(
-        node.owner || node.parent?.name || node.parent?.label || "",
-      ).toLocaleLowerCase() === owner
-    )
-  })
+  const matching = candidates.filter(
+    /** Match the result's name and, when available, its owning type. */ (node) => {
+      if (String(node.name || node.label || "").toLocaleLowerCase() !== name)
+        return false
+      if (!owner) return true
+      return (
+        String(
+          node.owner || node.parent?.name || node.parent?.label || "",
+        ).toLocaleLowerCase() === owner
+      )
+    },
+  )
   const pool =
     matching.length > 0
       ? matching
       : candidates.filter(
-          (node) => String(node.name || node.label || "").toLocaleLowerCase() === name,
+          /** Fall back to name-only candidates when owner matching finds no target. */ (
+            node,
+          ) => String(node.name || node.label || "").toLocaleLowerCase() === name,
         )
   const targetOffset = isInteger(result.offset) ? result.offset : 0
-  return pool.sort((left: NavigatorTarget, right: NavigatorTarget) => {
-    const leftOffset =
-      left.kind === "routine"
-        ? (left.implementationOffset ?? left.declarationOffset ?? 0)
-        : (left.offset ?? left.declarationOffset ?? 0)
-    const rightOffset =
-      right.kind === "routine"
-        ? (right.implementationOffset ?? right.declarationOffset ?? 0)
-        : (right.offset ?? right.declarationOffset ?? 0)
-    return Math.abs(leftOffset - targetOffset) - Math.abs(rightOffset - targetOffset)
-  })[0]
+  return pool.sort(
+    /**
+     * Prefer the candidate whose current source offset is nearest the result's recorded
+     * offset.
+     */ (left: NavigatorTarget, right: NavigatorTarget) => {
+      const leftOffset =
+        left.kind === "routine"
+          ? (left.implementationOffset ?? left.declarationOffset ?? 0)
+          : (left.offset ?? left.declarationOffset ?? 0)
+      const rightOffset =
+        right.kind === "routine"
+          ? (right.implementationOffset ?? right.declarationOffset ?? 0)
+          : (right.offset ?? right.declarationOffset ?? 0)
+      return Math.abs(leftOffset - targetOffset) - Math.abs(rightOffset - targetOffset)
+    },
+  )[0]
 }
 
+/**
+ * Attach declaration and implementation spans to routine nodes for cursor-follow and
+ * source highlighting.
+ */
 function addRoutineRanges(text: string, routineNodes: NavigatorNode[]) {
   const implementations = routineNodes
-    .filter((node: NavigatorTarget) => isInteger(node.implementationOffset))
+    .filter(
+      /**
+       * Select routines with known implementation positions before inferring missing
+       * body ends.
+       */ (node: NavigatorTarget) => isInteger(node.implementationOffset),
+    )
     .sort(
-      (left: NavigatorTarget, right: NavigatorTarget) =>
+      /**
+       * Order bodies by implementation offset to bound each routine by the next one.
+       */ (left: NavigatorTarget, right: NavigatorTarget) =>
         left.implementationOffset! - right.implementationOffset!,
     )
   for (let index = 0; index < implementations.length; index += 1) {
@@ -1061,7 +1270,10 @@ function addRoutineRanges(text: string, routineNodes: NavigatorNode[]) {
   }
 }
 
-/** Store full headings separately from the existing line ranges used for editor highlighting. */
+/**
+ * Store full headings separately from the existing line ranges used for editor
+ * highlighting.
+ */
 function addDeclarationHeaders(text: string, code: string, nodes: NavigatorTarget[]) {
   for (const node of nodes) {
     if (!isInteger(node.declarationOffset)) continue
@@ -1087,6 +1299,10 @@ function addDeclarationHeaders(text: string, code: string, nodes: NavigatorTarge
   }
 }
 
+/**
+ * Collect source-ordered routine headers with generic/qualified owner identity and
+ * complete heading boundaries.
+ */
 function routineHeaders(code: string, startOffset: number): RoutineHeader[] {
   const result = []
   const pattern = new RegExp(
@@ -1098,7 +1314,11 @@ function routineHeaders(code: string, startOffset: number): RoutineHeader[] {
     const parts = match[1]
       .replace(/<[^>]*>/g, "")
       .split(".")
-      .map((item) => item.trim())
+      .map(
+        /** Trim each qualified header segment after removing generic arguments. */ (
+          item,
+        ) => item.trim(),
+      )
     const name = parts.at(-1) || ""
     let segmentStart = 0
     let angles = 0
@@ -1132,6 +1352,10 @@ function routineHeaders(code: string, startOffset: number): RoutineHeader[] {
   return result
 }
 
+/**
+ * Balance executable routine blocks through their final terminator, preserving
+ * completion metadata for incomplete source.
+ */
 function routineBodyEnd(code: string, beginOffset: number) {
   const tokens = new RegExp(
     String.raw`\b(${PascalKeyword.Begin}|${PascalKeyword.Case}|${PascalKeyword.Try}|${PascalKeyword.Asm}|${PascalKeyword.End})\b`,
@@ -1163,6 +1387,10 @@ function routineBodyEnd(code: string, beginOffset: number) {
   return { end: code.length, complete: false }
 }
 
+/**
+ * Recognize external/forward routine directives before interpreting following headers
+ * as nested local routines.
+ */
 function bodylessRoutineEnd(
   code: string,
   header: RoutineHeader,
@@ -1189,6 +1417,10 @@ function bodylessRoutineEnd(
   return terminator + 1
 }
 
+/**
+ * Parse one implementation routine and its local declarations/body recursively,
+ * returning the next unconsumed header and completeness state.
+ */
 function parseRoutineTree(
   code: string,
   headers: RoutineHeader[],
@@ -1275,23 +1507,31 @@ function parseRoutineTree(
   return { header, children, ...body, next: childIndex }
 }
 
+/**
+ * Build top-level implementation routines while excluding type-member declarations
+ * that have no executable bodies.
+ */
 function implementationRoutineForest(code: string) {
   const implementation = /\bimplementation\b/i.exec(code)
   if (!implementation) return []
   // Helper classes and records may be declared in the implementation section.
   // Their body-less method declarations must not be interpreted as nested local
   // functions; Josh.DB.pas previously turned hundreds of methods into one graph.
-  const structureRanges = [...structureEndOffsets(code)].map(([start, end]) => [
-    start,
-    readClassLayout(code, start, code)?.endOffset ?? end,
-  ])
+  const structureRanges = [...structureEndOffsets(code)].map(
+    /**
+     * Use parsed class bounds when available to exclude method declarations from
+     * implementation parsing.
+     */ ([start, end]) => [start, readClassLayout(code, start, code)?.endOffset ?? end],
+  )
   const headers = routineHeaders(
     code,
     implementation.index + implementation[0].length,
   ).filter(
-    (header) =>
+    /** Keep routine headers outside lexical type declarations. */ (header) =>
       !structureRanges.some(
-        ([start, end]) => header.start >= start && header.start < end,
+        /**
+         * Check whether a candidate header starts inside a structure's source range.
+         */ ([start, end]) => header.start >= start && header.start < end,
       ),
   )
   const forest = []
@@ -1303,6 +1543,10 @@ function implementationRoutineForest(code: string) {
   return forest
 }
 
+/**
+ * Reparent local routines under their enclosing implementation and attach
+ * body/declaration ranges without duplicating their rows.
+ */
 function nestLocalRoutines(
   code: string,
   routineNodes: NavigatorNode[],
@@ -1316,6 +1560,10 @@ function nestLocalRoutines(
     if (isInteger(node.declarationOffset)) byOffset.set(node.declarationOffset, node)
   }
   const nested = new Set()
+  /**
+   * Connect a parsed implementation routine to its navigation node and recursively
+   * attach local routine descendants.
+   */
   const attach = (routine: RoutineBody, parentNode: NavigatorNode | undefined) => {
     const node = byOffset.get(routine.header?.nameOffset)
     if (!node) return
@@ -1331,7 +1579,10 @@ function nestLocalRoutines(
     }
     for (const child of routine.children) attach(child, node)
     node.children.sort(
-      (left, right) =>
+      /**
+       * Order local routines by implementation position, using declaration offsets as
+       * a fallback.
+       */ (left, right) =>
         (left.implementationOffset ?? left.declarationOffset ?? 0) -
         (right.implementationOffset ?? right.declarationOffset ?? 0),
     )
@@ -1339,11 +1590,17 @@ function nestLocalRoutines(
   for (const routine of forest) attach(routine, undefined)
   if (globalRoot)
     globalRoot.children = globalRoot.children.filter(
-      (node: unknown) => !nested.has(node),
+      /**
+       * Remove local routines from the global group after attaching them beneath their
+       * enclosing routines.
+       */ (node: unknown) => !nested.has(node),
     )
 }
 
-/** Reconcile class declarations and bodies without the source index's name-only fallback. */
+/**
+ * Reconcile class declarations and bodies without the source index's name-only
+ * fallback.
+ */
 function reconcileClassRoutineCounterparts(
   text: string,
   code: string,
@@ -1355,17 +1612,34 @@ function reconcileClassRoutineCounterparts(
   hiddenOwners: Set<string>,
 ) {
   const byOwner = new Map(
-    types.map((type) => [(type.qualifiedName || type.name || "").toLowerCase(), type]),
+    types.map(
+      /** Index visible types by case-insensitive qualified owner name. */ (type) => [
+        (type.qualifiedName || type.name || "").toLowerCase(),
+        type,
+      ],
+    ),
   )
-  const implementations = forest.filter((routine) => routine.header?.owner)
+  const implementations = forest.filter(
+    /**
+     * Select qualified implementation headings that need class-owner reconciliation.
+     */ (routine) => routine.header?.owner,
+  )
   const ownedOffsets = new Set(
-    implementations.map((routine) => routine.header.nameOffset),
+    implementations.map(
+      /**
+       * Record owner-qualified header offsets to prevent them from remaining matched to
+       * globals.
+       */ (routine) => routine.header.nameOffset,
+    ),
   )
   const declarations = new Map<NavigatorNode, RoutineDeclarationIndex<NavigatorNode>>()
   for (const type of types) {
     if (type.typeKind !== PascalKeyword.Class) continue
     const methods = type.children.filter(
-      (node: NavigatorTarget) => node.kind === "routine",
+      /**
+       * Collect this class's routine declarations for overload-aware counterpart
+       * matching.
+       */ (node: NavigatorTarget) => node.kind === "routine",
     )
     for (const node of methods) {
       // Clear potentially incorrect name/ordinal matches supplied by the index.
@@ -1393,7 +1667,9 @@ function reconcileClassRoutineCounterparts(
     let type = byOwner.get(owner)
     if (!type) {
       const candidates = types.filter(
-        (candidate) => (candidate.name || "").toLowerCase() === owner,
+        /** Try a unique leaf-name type match when the qualified owner lookup fails. */ (
+          candidate,
+        ) => (candidate.name || "").toLowerCase() === owner,
       )
       if (candidates.length === 1) type = candidates[0]
     }
@@ -1473,7 +1749,9 @@ function reconcileGlobalRoutineCounterparts(
   const implementation = /\bimplementation\b/i.exec(code)
   if (!implementation) return
   const declarations = globals.filter(
-    (node) => node.declarationOffset! < implementation.index,
+    /** Select interface-level globals for declaration-to-body reconciliation. */ (
+      node,
+    ) => node.declarationOffset! < implementation.index,
   )
   for (const node of declarations) {
     node.implementationOffset = undefined
@@ -1485,8 +1763,16 @@ function reconcileGlobalRoutineCounterparts(
   const index = indexRoutineDeclarations(declarations)
   const privateByOffset = new Map<number, NavigatorNode>(
     globals
-      .filter((node) => node.declarationOffset! >= implementation.index)
-      .map((node) => [node.declarationOffset ?? 0, node]),
+      .filter(
+        /**
+         * Select implementation-local globals for lookup by their declaration offsets.
+         */ (node) => node.declarationOffset! >= implementation.index,
+      )
+      .map(
+        /**
+         * Index private global nodes by header offset so existing rows can be reused.
+         */ (node) => [node.declarationOffset ?? 0, node],
+      ),
   )
   for (const body of forest) {
     const header = body.header
@@ -1525,11 +1811,18 @@ function reconcileGlobalRoutineCounterparts(
     node.implementationEndOffset = body.end
   }
   globals.sort(
-    (left: NavigatorTarget, right: NavigatorTarget) =>
-      left.declarationOffset! - right.declarationOffset!,
+    /** Restore globals to declaration source order after reconciling their bodies. */ (
+      left: NavigatorTarget,
+      right: NavigatorTarget,
+    ) => left.declarationOffset! - right.declarationOffset!,
   )
 }
 
+/**
+ * Build the current source/project tree, types, properties, uses/lifecycle sections,
+ * routine counterparts, ranges, and stable identities under the supplied display
+ * settings.
+ */
 function buildClassNavigatorModel(
   text: string,
   filePath = "",
@@ -1580,10 +1873,15 @@ function buildClassNavigatorModel(
   if (settings.showUses && parsedUses.uses.length > 0) {
     const usesChildren =
       parsedUses.sections.length > 1
-        ? parsedUses.sections.map((section, index) => ({
-            ...section,
-            label: `uses${index + 1}`,
-          }))
+        ? parsedUses.sections.map(
+            /**
+             * Give separate uses clauses numbered labels while retaining their source
+             * sections.
+             */ (section, index) => ({
+              ...section,
+              label: `uses${index + 1}`,
+            }),
+          )
         : []
     roots.push({
       id: "root:uses",
@@ -1605,34 +1903,67 @@ function buildClassNavigatorModel(
       SourceDefinition,
       "kind" | "owner" | "symbol" | "offset" | "signature" | "implementationOffset"
     > & { attributeStart?: number }
-  > = [...classLayouts.values()].flatMap((layout) =>
-    layout.members
-      .filter((member) => member.kind === "routine")
-      .map((member) => ({
-        kind: "routine",
-        owner: layout.name,
-        symbol: member.name,
-        offset: member.nameOffset ?? member.start,
-        signature: compactRoutineHeading(text.slice(member.start, member.headerEnd)),
-        implementationOffset: undefined,
-        attributeStart: member.attributeStart,
-      })),
+  > = [...classLayouts.values()].flatMap(
+    /**
+     * Recover direct routine declarations from lexical class layouts and flatten them
+     * into the member candidates.
+     */ (layout) =>
+      layout.members
+        .filter(
+          /** Select routine members from the lexical class layout. */ (member) =>
+            member.kind === "routine",
+        )
+        .map(
+          /**
+           * Convert a lexical routine into the signature, owner, and offsets used to build
+           * its navigator node.
+           */ (member) => ({
+            kind: "routine",
+            owner: layout.name,
+            symbol: member.name,
+            offset: member.nameOffset ?? member.start,
+            signature: compactRoutineHeading(
+              text.slice(member.start, member.headerEnd),
+            ),
+            implementationOffset: undefined,
+            attributeStart: member.attributeStart,
+          }),
+        ),
   )
   const members = [
     ...new Map(
       [
-        ...sourceMembers.filter((item) => item.kind === "routine"),
+        ...sourceMembers.filter(
+          /**
+           * Select routine symbols from the general source index before merging lexical
+           * recoveries.
+           */ (item) => item.kind === "routine",
+        ),
         ...layoutMembers,
-      ].map((member) => [member.offset, member]),
+      ].map(
+        /** Key routine candidates by source offset to avoid duplicate declarations. */ (
+          member,
+        ) => [member.offset, member],
+      ),
     ).values(),
   ]
   const properties = sourceMembers.filter(
-    (item) => item.kind === PascalKeyword.Property,
+    /** Select property symbols for each type's leading properties group. */ (item) =>
+      item.kind === PascalKeyword.Property,
   )
-  const memberDeclarationOffsets = new Set(members.map((item) => item.offset))
+  const memberDeclarationOffsets = new Set(
+    members.map(
+      /**
+       * Record member declaration positions so those symbols cannot also appear as
+       * globals.
+       */ (item) => item.offset,
+    ),
+  )
   const definitions = source?.definitions || fallbackRoutineDefinitions(text, code)
   const globals = definitions.filter(
-    (item) =>
+    /** Select unowned routine definitions that are not already type members. */ (
+      item,
+    ) =>
       item.kind === "routine" &&
       !item.owner &&
       !memberDeclarationOffsets.has(item.offset),
@@ -1640,7 +1971,10 @@ function buildClassNavigatorModel(
   const uniqueGlobals = []
   const seenGlobalOffsets = new Set()
   for (const definition of globals.sort(
-    (left, right) => left.offset! - right.offset!,
+    /**
+     * Process global routine candidates in source order before deduplicating their
+     * offsets.
+     */ (left, right) => left.offset! - right.offset!,
   )) {
     const key = `${definition.offset}:${definition.symbol.toLowerCase()}`
     if (seenGlobalOffsets.has(key)) continue
@@ -1686,63 +2020,92 @@ function buildClassNavigatorModel(
     const layout = classLayouts.get(type.offset)
     const typeMembers = members
       .filter(
-        (member) =>
+        /**
+         * Keep member declarations with this type's name and a position inside its
+         * lexical bounds.
+         */ (member) =>
           member.owner?.toLowerCase() === type.symbol.toLowerCase() &&
           member.offset >= type.offset &&
           member.offset < (structureEnds.get(type.offset) ?? text.length),
       )
-      .sort((left, right) => left.offset! - right.offset!)
-      .map((member) => {
-        const routineKind = routineKeywordAt(text, member.offset)
-        const node: NavigatorNode = {
-          id: `type:${type.symbol.toLowerCase()}:routine:${member.offset}:${member.symbol.toLowerCase()}`,
-          kind: "routine",
-          label: member.symbol,
-          name: member.symbol,
+      .sort(
+        /**
+         * Order matched members by declaration position before creating their routine
+         * metadata.
+         */ (left, right) => left.offset! - right.offset!,
+      )
+      .map(
+        /**
+         * Build the routine node's identity, heading, visibility, flavor, and
+         * counterpart offsets.
+         */ (member) => {
+          const routineKind = routineKeywordAt(text, member.offset)
+          const node: NavigatorNode = {
+            id: `type:${type.symbol.toLowerCase()}:routine:${member.offset}:${member.symbol.toLowerCase()}`,
+            kind: "routine",
+            label: member.symbol,
+            name: member.symbol,
+            owner: type.symbol,
+            routineKind,
+            routineFlavor: routineFlavorAt(code, member.offset, type.symbol),
+            specialRoutineKind: specialRoutineKind(member.symbol, routineKind),
+            access: memberAccessAt(
+              code,
+              type.offset,
+              member.offset,
+              type.structureKind || "",
+              layout,
+            ),
+            declarationOffset: member.offset,
+            declarationAttributesStartOffset:
+              "attributeStart" in member ? member.attributeStart : undefined,
+            implementationOffset: member.implementationOffset,
+            signature: member.signature,
+            children: [],
+          }
+          routineNodes.push(node)
+          return node
+        },
+      )
+      .sort(
+        /** Apply the configured routine ordering to the type's newly built members. */ (
+          left,
+          right,
+        ) => compareTypeMembers(left, right, settings.memberOrder),
+      )
+    const typeProperties = properties
+      .filter(
+        /** Select properties declared under this type name. */ (property) =>
+          property.owner?.toLowerCase() === type.symbol.toLowerCase(),
+      )
+      .sort(
+        /** Keep properties in their declaration source order. */ (left, right) =>
+          left.offset! - right.offset!,
+      )
+      .map(
+        /**
+         * Create a navigable property row with its type, visibility, and original source
+         * range.
+         */ (property) => ({
+          id: `type:${type.symbol.toLowerCase()}:property:${property.offset}:${property.symbol.toLowerCase()}`,
+          kind: PascalKeyword.Property,
+          label: property.symbol,
+          name: property.symbol,
           owner: type.symbol,
-          routineKind,
-          routineFlavor: routineFlavorAt(code, member.offset, type.symbol),
-          specialRoutineKind: specialRoutineKind(member.symbol, routineKind),
           access: memberAccessAt(
             code,
             type.offset,
-            member.offset,
+            property.offset,
             type.structureKind || "",
             layout,
           ),
-          declarationOffset: member.offset,
-          declarationAttributesStartOffset:
-            "attributeStart" in member ? member.attributeStart : undefined,
-          implementationOffset: member.implementationOffset,
-          signature: member.signature,
+          offset: property.offset,
+          rangeOffset: lineStartOffset(text, property.offset),
+          declarationEndOffset: lineEndOffset(text, property.offset),
+          typeName: property.typeName,
           children: [],
-        }
-        routineNodes.push(node)
-        return node
-      })
-      .sort((left, right) => compareTypeMembers(left, right, settings.memberOrder))
-    const typeProperties = properties
-      .filter((property) => property.owner?.toLowerCase() === type.symbol.toLowerCase())
-      .sort((left, right) => left.offset! - right.offset!)
-      .map((property) => ({
-        id: `type:${type.symbol.toLowerCase()}:property:${property.offset}:${property.symbol.toLowerCase()}`,
-        kind: PascalKeyword.Property,
-        label: property.symbol,
-        name: property.symbol,
-        owner: type.symbol,
-        access: memberAccessAt(
-          code,
-          type.offset,
-          property.offset,
-          type.structureKind || "",
-          layout,
-        ),
-        offset: property.offset,
-        rangeOffset: lineStartOffset(text, property.offset),
-        declarationEndOffset: lineEndOffset(text, property.offset),
-        typeName: property.typeName,
-        children: [],
-      }))
+        }),
+      )
     const typeChildren =
       settings.showProperties && typeProperties.length > 0
         ? [
@@ -1777,18 +2140,26 @@ function buildClassNavigatorModel(
   // flattening them into unit-level siblings.
   const rootTypeNodes = []
   const sortedTypeNodes = [...allTypeNodes].sort(
-    (left, right) => left.offset! - right.offset!,
+    /** Process type nodes in source order before reconstructing lexical ownership. */ (
+      left,
+      right,
+    ) => left.offset! - right.offset!,
   )
   for (const node of sortedTypeNodes) {
     const parent = sortedTypeNodes
       .filter(
-        (candidate) =>
+        /** Find types whose source bounds fully contain the current nested type. */ (
+          candidate,
+        ) =>
           candidate !== node &&
           candidate.offset! < node.offset! &&
           candidate.declarationEndOffset! >= node.declarationEndOffset!,
       )
       .sort(
-        (left, right) =>
+        /** Choose the smallest containing type span as the nearest lexical parent. */ (
+          left,
+          right,
+        ) =>
           left.declarationEndOffset! -
           left.offset! -
           (right.declarationEndOffset! - right.offset!),
@@ -1813,11 +2184,27 @@ function buildClassNavigatorModel(
   }
   const implementationForest = implementationRoutineForest(code)
   addDeclarationHeaders(text, code, routineNodes)
-  const visibleTypeOffsets = new Set(allTypeNodes.map((type) => type.offset))
+  const visibleTypeOffsets = new Set(
+    allTypeNodes.map(
+      /**
+       * Record visible type offsets before excluding owners hidden by display
+       * settings.
+       */ (type) => type.offset,
+    ),
+  )
   const hiddenOwners = new Set(
     typeDefinitions
-      .filter((type) => !visibleTypeOffsets.has(type.offset))
-      .map((type) => type.symbol.toLowerCase()),
+      .filter(
+        /** Find indexed type definitions omitted from the visible navigator tree. */ (
+          type,
+        ) => !visibleTypeOffsets.has(type.offset),
+      )
+      .map(
+        /**
+         * Normalize hidden owner names so their bodies do not create visible orphan
+         * classes.
+         */ (type) => type.symbol.toLowerCase(),
+      ),
   )
   reconcileClassRoutineCounterparts(
     text,
@@ -1839,7 +2226,11 @@ function buildClassNavigatorModel(
   if (
     settings.showGlobalRoutines &&
     uniqueGlobals.length &&
-    !roots.some((node) => node.kind === "global-group")
+    !roots.some(
+      /**
+       * Check whether the global group already exists before adding recovered routines.
+       */ (node) => node.kind === "global-group",
+    )
   ) {
     roots.push({
       id: "root:global",
@@ -1851,20 +2242,44 @@ function buildClassNavigatorModel(
   for (const type of allTypeNodes) {
     // Nested types and the properties group retain their leading positions.
     const methods = type.children
-      .filter((node) => node.kind === "routine")
-      .sort((left, right) => compareTypeMembers(left, right, settings.memberOrder))
+      .filter(
+        /**
+         * Select routine children for member ordering without moving leading nested
+         * types or property groups.
+         */ (node) => node.kind === "routine",
+      )
+      .sort(
+        /** Order routine children using the configured visibility or source policy. */ (
+          left,
+          right,
+        ) => compareTypeMembers(left, right, settings.memberOrder),
+      )
     type.children = [
-      ...type.children.filter((node) => node.kind !== "routine"),
+      ...type.children.filter(
+        /**
+         * Retain nested types and property groups before the newly ordered routines.
+         */ (node) => node.kind !== "routine",
+      ),
       ...methods,
     ]
   }
-  rootTypeNodes.sort((left, right) => compareTypeNodes(left, right, settings.typeOrder))
+  rootTypeNodes.sort(
+    /** Order top-level types according to the selected type sort policy. */ (
+      left,
+      right,
+    ) => compareTypeNodes(left, right, settings.typeOrder),
+  )
   roots.push(...rootTypeNodes)
 
   // Unit lifecycle sections are deliberately last and are not global routines.
   roots.push(...unitLifecycleNodes(code, settings))
 
-  const globalRoot = roots.find((node) => node.kind === "global-group")
+  const globalRoot = roots.find(
+    /**
+     * Find the global group whose local routines must be reparented beneath their
+     * bodies.
+     */ (node) => node.kind === "global-group",
+  )
   nestLocalRoutines(code, routineNodes, globalRoot, implementationForest)
   addDeclarationHeaders(text, code, routineNodes)
   if (globalRoot && globalRoot.children.length === 0) {
@@ -1874,6 +2289,10 @@ function buildClassNavigatorModel(
   attachParents(roots, undefined)
   assignNavigatorNodeIds(roots, filePath)
   const nodes: NavigatorNode[] = []
+  /**
+   * Flatten current navigator entries for identity/range lookup while retaining their
+   * tree ancestry.
+   */
   const collectNodes = (entries: NavigatorNode[]) => {
     for (const entry of entries || []) {
       nodes.push(entry)
@@ -1882,24 +2301,54 @@ function buildClassNavigatorModel(
   }
   collectNodes(roots)
   const implementationNodes = routineNodes
-    .filter((node) => isInteger(node.implementationOffset))
-    .sort((left, right) => left.implementationOffset! - right.implementationOffset!)
+    .filter(
+      /** Select routines with implementation offsets for cursor lookup. */ (node) =>
+        isInteger(node.implementationOffset),
+    )
+    .sort(
+      /** Order implemented routines by their body offsets for binary search. */ (
+        left,
+        right,
+      ) => left.implementationOffset! - right.implementationOffset!,
+    )
   const declarationNodes = routineNodes
-    .filter((node) => isInteger(node.declarationOffset))
-    .sort((left, right) => left.declarationOffset! - right.declarationOffset!)
+    .filter(
+      /** Select routines with declaration offsets for cursor lookup. */ (node) =>
+        isInteger(node.declarationOffset),
+    )
+    .sort(
+      /** Order declared routines by their heading offsets for binary search. */ (
+        left,
+        right,
+      ) => left.declarationOffset! - right.declarationOffset!,
+    )
   const propertyNodes = nodes
-    .filter((node) => node.kind === PascalKeyword.Property && isInteger(node.offset))
-    .sort((left, right) => left.offset! - right.offset!)
-  const typeNodes = allTypeNodes.sort((left, right) => left.offset! - right.offset!)
-  const sectionNodes = roots.flatMap((node) => {
-    if (node.kind === "uses-group")
-      return node.children?.length ? node.children : [node]
-    return new RegExp(
-      String.raw`^(?:project-(?:${PascalKeyword.Package}|${NavigatorItemKind.File})|${PascalKeyword.Unit}-(?:${PascalKeyword.Initialization}|${PascalKeyword.Finalization}))-section$`,
-    ).test(node.kind)
-      ? [node]
-      : []
-  })
+    .filter(
+      /** Select properties with real source offsets for cursor lookup. */ (node) =>
+        node.kind === PascalKeyword.Property && isInteger(node.offset),
+    )
+    .sort(
+      /** Order property rows by source position for binary search. */ (left, right) =>
+        left.offset! - right.offset!,
+    )
+  const typeNodes = allTypeNodes.sort(
+    /** Order type rows by source position for binary search. */ (left, right) =>
+      left.offset! - right.offset!,
+  )
+  const sectionNodes = roots.flatMap(
+    /**
+     * Flatten navigable uses, project-includes, and lifecycle sections into the section
+     * lookup index.
+     */ (node) => {
+      if (node.kind === "uses-group")
+        return node.children?.length ? node.children : [node]
+      return new RegExp(
+        String.raw`^(?:project-(?:${PascalKeyword.Package}|${NavigatorItemKind.File})|${PascalKeyword.Unit}-(?:${PascalKeyword.Initialization}|${PascalKeyword.Finalization}))-section$`,
+      ).test(node.kind)
+        ? [node]
+        : []
+    },
+  )
   return {
     filePath,
     roots,
@@ -1915,6 +2364,10 @@ function buildClassNavigatorModel(
   }
 }
 
+/**
+ * Find the latest source-ordered node containing the offset; optionally fall back
+ * through enclosing routines after a local body ends.
+ */
 function findLatestContainingNode(
   nodes: NavigatorTarget[],
   offset: number,
@@ -1944,6 +2397,10 @@ function findLatestContainingNode(
   return undefined
 }
 
+/**
+ * Resolve the most specific current section, declaration, routine body, property, or
+ * type target at a source offset.
+ */
 function activeNodeAt(
   model:
     | (Partial<NavigatorModel> & { projectSectionNodes?: NavigatorTarget[] })
@@ -1952,8 +2409,15 @@ function activeNodeAt(
 ) {
   if (!model) return undefined
   const projectSection = (model.sectionNodes || model.projectSectionNodes || []).find(
-    (node) =>
-      node.ranges?.some((range: number[]) => offset >= range[0] && offset < range[1]),
+    /**
+     * Find a project or uses section whose recorded span contains the requested
+     * offset.
+     */ (node) =>
+      node.ranges?.some(
+        /** Check whether the offset falls within one of the section's source ranges. */ (
+          range: number[],
+        ) => offset >= range[0] && offset < range[1],
+      ),
   )
   if (projectSection) return projectSection
   const implementation = findLatestContainingNode(
@@ -1989,6 +2453,10 @@ function activeNodeAt(
   )
 }
 
+/**
+ * Return source spans for real targets; a supplied focus offset selects the containing
+ * span, or the first span when none contains it.
+ */
 function nodeSourceRanges(
   text: string,
   node: NavigatorTarget | undefined,
@@ -2040,18 +2508,33 @@ function nodeSourceRanges(
     }
   }
   const normalized = ranges
-    .map(([start, end]): [number, number] => [
-      Math.max(0, Math.min(text.length, start)),
-      Math.max(0, Math.min(text.length, end)),
-    ])
-    .filter(([start, end]) => end >= start)
+    .map(
+      /** Clamp each highlight span to the available document text. */ ([start, end]): [
+        number,
+        number,
+      ] => [
+        Math.max(0, Math.min(text.length, start)),
+        Math.max(0, Math.min(text.length, end)),
+      ],
+    )
+    .filter(
+      /** Discard spans whose end precedes their start. */ ([start, end]) =>
+        end >= start,
+    )
   if (!isInteger(focusOffset)) return normalized
   const focused = normalized.find(
-    ([start, end]) => focusOffset >= start && focusOffset < end,
+    /**
+     * Prefer the span containing the focus offset when a target has declaration and
+     * implementation ranges.
+     */ ([start, end]) => focusOffset >= start && focusOffset < end,
   )
   return focused ? [focused] : normalized.slice(0, 1)
 }
 
+/**
+ * Refine a routine highlight to an expanded AI step containing the focus offset
+ * without entering collapsed descendants.
+ */
 function highlightNodeForExpandedSteps(
   text: string,
   node: NavigatorTarget | undefined,
@@ -2075,8 +2558,16 @@ function highlightNodeForExpandedSteps(
   )
     return node
   const steps = (node.children || [])
-    .filter((child) => child.kind === "ai-step" && isInteger(child.startLine))
-    .sort((left, right) => left.startLine! - right.startLine!)
+    .filter(
+      /** Select source-backed AI steps beneath the expanded routine. */ (child) =>
+        child.kind === "ai-step" && isInteger(child.startLine),
+    )
+    .sort(
+      /**
+       * Order routine steps by their first source line before locating the highlighted
+       * one.
+       */ (left, right) => left.startLine! - right.startLine!,
+    )
   if (steps.length === 0) return node
   for (const step of steps) {
     const range = nodeSourceRanges(text, step)[0]
@@ -2090,6 +2581,10 @@ function highlightNodeForExpandedSteps(
   return focusOffset < offsetAtLine(text, steps[0].startLine!) ? steps[0] : node
 }
 
+/**
+ * Follow expanded AI substep ranges to the most specific visible step containing the
+ * focus line.
+ */
 function highlightExpandedAiStepAt(
   text: string,
   step: NavigatorTarget,
@@ -2098,8 +2593,15 @@ function highlightExpandedAiStepAt(
 ): NavigatorTarget {
   if (!step?.children?.length || !expandedNodeIds?.has(step.id || "")) return step
   const children = step.children
-    .filter((child) => child.kind === "ai-step" && isInteger(child.startLine))
-    .sort((left, right) => left.startLine! - right.startLine!)
+    .filter(
+      /** Select source-backed child steps beneath the expanded AI step. */ (child) =>
+        child.kind === "ai-step" && isInteger(child.startLine),
+    )
+    .sort(
+      /**
+       * Order child steps by their source lines before following expanded descendants.
+       */ (left, right) => left.startLine! - right.startLine!,
+    )
   for (const child of children) {
     const range = nodeSourceRanges(text, child)[0]
     if (range && focusOffset >= range[0] && focusOffset < range[1]) {
@@ -2127,6 +2629,10 @@ function activeFollowNodeAt(
   )
 }
 
+/**
+ * Plan source reveal placement; smart mode centers fitting blocks and places oversized
+ * block starts at the configured viewport percentage.
+ */
 function navigationRevealPlan(
   startLine: number,
   endLine: number,
@@ -2180,6 +2686,10 @@ function navigationRevealPlan(
   }
 }
 
+/**
+ * Choose the viewport center plus the configured line bias, clamped to the visible
+ * source-line bounds.
+ */
 function viewportFollowLine(startLine: number, endLine: number, offsetLines = 1) {
   const first = Math.max(0, Number.isFinite(startLine) ? Math.floor(startLine) : 0)
   const last = Math.max(first, Number.isFinite(endLine) ? Math.floor(endLine) : first)
@@ -2193,10 +2703,18 @@ function viewportFollowLine(startLine: number, endLine: number, offsetLines = 1)
 // GLM 5.2 accepts `minimal`, but some OpenAI-compatible gateways sometimes
 // complete that fast path without emitting a normal response body. Keep the
 // fast default and pay for the more reliable effort only after a bad response.
+/**
+ * Raise the unreliable minimal reasoning mode to low for a retry while retaining other
+ * requested effort values.
+ */
 function aiRetryReasoningEffort(reasoningEffort: string) {
   return reasoningEffort === "minimal" ? "low" : reasoningEffort
 }
 
+/**
+ * Build a complete placeholder model containing a loading/error row while a current
+ * analysis is unavailable.
+ */
 function pendingNavigatorModel(
   filePath: string,
   label = "Analyzing current file in the background…",
@@ -2241,6 +2759,10 @@ class ClassNavigatorProvider {
   nodeDocumentUris: WeakMap<NavigatorTarget, string>
   isNodeExpanded: ((node: NavigatorTarget, documentUri?: string) => boolean) | undefined
 
+  /**
+   * Initialize live model/AI caches, change events, worker bookkeeping, and validated
+   * persisted routine/chunk labels.
+   */
   constructor(
     vscode: NavigatorApi,
     output?: OutputChannel,
@@ -2280,11 +2802,19 @@ class ClassNavigatorProvider {
     this.isNodeExpanded = undefined
   }
 
+  /**
+   * Return the active supported source/project document or undefined for unrelated
+   * editors.
+   */
   activeDocument() {
     const document = this.vscode.window?.activeTextEditor?.document
     return isClassNavigatorDocument(document) ? document : undefined
   }
 
+  /**
+   * Read normalized class-navigator display, sorting, and background-parsing
+   * preferences.
+   */
   configuration() {
     const config = this.vscode.workspace?.getConfiguration(
       NavigatorConfigurationSection,
@@ -2308,6 +2838,10 @@ class ClassNavigatorProvider {
     }
   }
 
+  /**
+   * Read document-scoped AI provider/planning/cache settings with supported fallback
+   * values.
+   */
   aiConfiguration(document = this.activeDocument()): AiSettings {
     const config = this.vscode.workspace?.getConfiguration(
       ConfigurationSection,
@@ -2346,6 +2880,7 @@ class ClassNavigatorProvider {
     }
   }
 
+  /** Walk the selected node and its ancestors to the nearest complete routine node. */
   routineForNode(node: NavigatorTarget | undefined): NavigatorNode | undefined {
     for (let current = node; current; current = current.parent) {
       if (isNavigatorRoutine(current)) return current
@@ -2353,6 +2888,10 @@ class ClassNavigatorProvider {
     return undefined
   }
 
+  /**
+   * Build a source/settings-keyed AI analysis request and reuse fully cached
+   * fixed-plan labels without requesting the provider again.
+   */
   aiRequestFor(
     node: NavigatorNode | undefined,
     document = this.activeDocument(),
@@ -2394,6 +2933,10 @@ class ClassNavigatorProvider {
     return { document, routine, text, key, settings, analysis, reusedChunkCache }
   }
 
+  /**
+   * Check whether a compatible request already has reusable cached or current-session
+   * step data.
+   */
   hasAiSteps(request: AiRequest) {
     const cached = request?.key ? this.aiCache.get(request.key) : undefined
     return Boolean(
@@ -2402,11 +2945,19 @@ class ClassNavigatorProvider {
     )
   }
 
+  /**
+   * Invalidate the model cache and notify the view after AI presentation settings or
+   * data change.
+   */
   invalidateAiPresentation() {
     this.cache = undefined
     this.changed.fire(undefined)
   }
 
+  /**
+   * Rebind a request to the current active routine and replace its
+   * loading/partial/final AI children without reparsing unrelated rows.
+   */
   refreshAiRoutine(request: AiRequest) {
     const document = this.activeDocument()
     if (
@@ -2418,11 +2969,15 @@ class ClassNavigatorProvider {
     const model = this.model()
     const identity = this.nodeIdentity(request.routine)
     const routine = (model?.routineNodes || []).find(
-      (candidate) => this.nodeIdentity(candidate) === identity,
+      /** Find the current routine with the same semantic identity as the request. */ (
+        candidate,
+      ) => this.nodeIdentity(candidate) === identity,
     )
     if (!routine) return false
     routine.children = (routine.children || []).filter(
-      (child) => child.kind !== "ai-step" && child.kind !== "ai-step-loading",
+      /** Remove previous AI and loading rows while retaining local routine children. */ (
+        child,
+      ) => child.kind !== "ai-step" && child.kind !== "ai-step-loading",
     )
     const pending = this.aiPending.get(request.key)
     if (pending) {
@@ -2462,6 +3017,10 @@ class ClassNavigatorProvider {
     return true
   }
 
+  /**
+   * Mark a source/settings-keyed routine request pending and refresh its loading
+   * presentation.
+   */
   beginAiGeneration(request: AiRequest, options: { refresh?: boolean } = {}) {
     this.aiPending.set(request.key, {
       startedAt: Date.now(),
@@ -2472,6 +3031,10 @@ class ClassNavigatorProvider {
     if (options.refresh !== false) this.refreshAiRoutine(request)
   }
 
+  /**
+   * Publish normalized partial steps for a pending routine request while keeping its
+   * current generation identity.
+   */
   updateAiGeneration(request: AiRequest, steps: AiStep[]) {
     const pending = request?.key ? this.aiPending.get(request.key) : undefined
     if (!pending || !steps?.length) return
@@ -2479,10 +3042,19 @@ class ClassNavigatorProvider {
     this.refreshAiRoutine(request)
   }
 
+  /**
+   * Persist bounded routine-step and content-hash label caches for later compatible
+   * document analyses.
+   */
   async persistAiCache() {
     if (!this.context?.workspaceState) return
     const entries = [...this.aiCache.entries()]
-      .sort((left, right) => (right[1]?.generatedAt || 0) - (left[1]?.generatedAt || 0))
+      .sort(
+        /**
+         * Keep the newest routine-cache entries first when enforcing the persistence
+         * limit.
+         */ (left, right) => (right[1]?.generatedAt || 0) - (left[1]?.generatedAt || 0),
+      )
       .slice(0, 2000)
     await this.context.workspaceState.update(
       AI_STEP_CACHE_STATE_KEY,
@@ -2495,6 +3067,10 @@ class ClassNavigatorProvider {
     )
   }
 
+  /**
+   * Adopt a completed request's normalized steps, update session/persisted caches,
+   * clear pending state, and refresh the routine presentation.
+   */
   async completeAiGeneration(
     request: AiRequest,
     steps: AiStep[],
@@ -2520,12 +3096,20 @@ class ClassNavigatorProvider {
     if (options.refresh !== false) this.refreshAiRoutine(request)
   }
 
+  /**
+   * Clear pending state for a failed/cancelled request and optionally refresh its
+   * routine row.
+   */
   failAiGeneration(request: AiRequest, options: { refresh?: boolean } = {}) {
     if (!request?.key) return
     this.aiPending.delete(request.key)
     if (options.refresh !== false) this.refreshAiRoutine(request)
   }
 
+  /**
+   * Attach only source/settings-compatible pending or cached steps to parsed routines,
+   * avoiding whole-routine hashing when no relevant AI data exists.
+   */
   applyAiSteps(model: NavigatorModel, document: NavigatorDocument): void {
     const settings = this.aiConfiguration(document)
     if (!settings.enabled) return
@@ -2557,11 +3141,15 @@ class ClassNavigatorProvider {
         pendingByRoutine.get(pending.routineIdentity)!.push({ key, pending })
       }
     }
+    // Hashing every routine in a large unit is expensive; skip the entire AI attachment pass when the document has no relevant step data.
     if (cachedByRoutine.size === 0 && pendingByRoutine.size === 0) return
     for (const routine of model.routineNodes || []) {
       const identity = this.nodeIdentity(routine)
       const pendingEntry = (pendingByRoutine.get(identity) || []).find(
-        (entry) =>
+        /**
+         * Find a pending request whose source and planning settings still match this
+         * routine.
+         */ (entry) =>
           routineAnalysisKey(
             documentUri,
             text,
@@ -2571,7 +3159,10 @@ class ClassNavigatorProvider {
       )
       const cachedEntry = (cachedByRoutine.get(identity) || [])
         .filter(
-          (entry) =>
+          /**
+           * Retain cached analyses whose recorded settings and source hash still match
+           * the routine.
+           */ (entry) =>
             routineAnalysisKey(
               documentUri,
               text,
@@ -2580,12 +3171,17 @@ class ClassNavigatorProvider {
             ) === entry.key,
         )
         .sort(
-          (left, right) =>
-            (right.cached.generatedAt || 0) - (left.cached.generatedAt || 0),
+          /** Prefer the most recently generated compatible cache entry. */ (
+            left,
+            right,
+          ) => (right.cached.generatedAt || 0) - (left.cached.generatedAt || 0),
         )[0]
       if (!pendingEntry && !cachedEntry) continue
       routine.children = (routine.children || []).filter(
-        (child) => child.kind !== "ai-step" && child.kind !== "ai-step-loading",
+        /**
+         * Clear stale AI and loading rows before attaching the compatible request's
+         * presentation.
+         */ (child) => child.kind !== "ai-step" && child.kind !== "ai-step-loading",
       )
       if (pendingEntry) {
         if (pendingEntry.pending.partialSteps?.length) {
@@ -2620,16 +3216,25 @@ class ClassNavigatorProvider {
     }
   }
 
+  /**
+   * Key a navigation model by document URI/version and display settings so stale
+   * source/configuration results are distinguishable.
+   */
   modelKey(document: NavigatorDocument) {
     return `${document.uri.toString()}@${document.version}@${JSON.stringify(this.configuration())}`
   }
 
+  /** Terminate superseded large-file parsing and clear its tracked worker identity. */
   cancelModelWorker() {
     if (this.modelWorker) void this.modelWorker.terminate()
     this.modelWorker = undefined
     this.modelWorkerKey = undefined
   }
 
+  /**
+   * Start background parsing and adopt only validated replies that still match the
+   * active document's model key.
+   */
   buildLargeModel(
     document: NavigatorDocument,
     text: string,
@@ -2641,67 +3246,87 @@ class ClassNavigatorProvider {
     const worker = new Worker(path.join(__dirname, NavigatorResource.Worker))
     this.modelWorker = worker
     this.modelWorkerKey = key
-    const finish = () => {
+    const finish = /**
+     * Release and terminate the completed model worker without clearing a newer worker
+     * owner.
+     */ () => {
       if (this.modelWorker === worker) {
         this.modelWorker = undefined
         this.modelWorkerKey = undefined
       }
       void worker.terminate()
     }
-    worker.once("message", (value: unknown) => {
-      const message = isNavigatorWorkerResponse(value)
-        ? value
-        : { error: "Invalid class navigator worker response." }
-      const current = this.modelWorker === worker
-      finish()
-      const activeDocument = this.activeDocument()
-      if (!current || !activeDocument || this.modelKey(activeDocument) !== key) return
-      if (message.error !== undefined) {
-        this.output?.appendLine(`Large-file class navigator failed: ${message.error}`)
+    worker.once(
+      "message",
+      /**
+       * Validate a worker reply and adopt its result or failure only while the active
+       * source key still matches.
+       */ (value: unknown) => {
+        const message = isNavigatorWorkerResponse(value)
+          ? value
+          : { error: "Invalid class navigator worker response." }
+        // A terminated or superseded worker can reply late; adopt its model only while it still owns the current document/configuration request.
+        const current = this.modelWorker === worker
+        finish()
+        const activeDocument = this.activeDocument()
+        if (!current || !activeDocument || this.modelKey(activeDocument) !== key) return
+        if (message.error !== undefined) {
+          this.output?.appendLine(`Large-file class navigator failed: ${message.error}`)
+          this.cache = {
+            key,
+            documentUri: document.uri.toString(),
+            stale: Boolean(this.cache?.retainedModel),
+            model:
+              this.cache?.retainedModel ||
+              pendingNavigatorModel(
+                document.fileName,
+                "Class navigator analysis failed. Click refresh to retry.",
+                "navigator-error",
+              ),
+          }
+        } else {
+          this.applyAiSteps(message.model, activeDocument)
+          this.cache = {
+            key,
+            documentUri: document.uri.toString(),
+            model: message.model,
+          }
+          this.output?.appendLine(
+            `Large-file class navigator ready: ${path.basename(document.fileName)} ` +
+              `(${text.length} characters, ${message.elapsedMs} ms in worker).`,
+          )
+        }
+        this.changed.fire(undefined)
+        this.onModelReady?.()
+      },
+    )
+    worker.once(
+      "error",
+      /**
+       * Replace a failed worker result with retained rows or an error placeholder and
+       * notify waiting consumers.
+       */ (error) => {
+        const current = this.modelWorker === worker
+        finish()
+        if (!current || this.cache?.key !== key) return
+        this.output?.appendLine(
+          `Large-file class navigator worker failed: ${error.stack || error.message}`,
+        )
         this.cache = {
           key,
           documentUri: document.uri.toString(),
-          stale: Boolean(this.cache?.retainedModel),
+          stale: Boolean(this.cache.retainedModel),
           model:
-            this.cache?.retainedModel ||
+            this.cache.retainedModel ||
             pendingNavigatorModel(
               document.fileName,
               "Class navigator analysis failed. Click refresh to retry.",
               "navigator-error",
             ),
         }
-      } else {
-        this.applyAiSteps(message.model, activeDocument)
-        this.cache = { key, documentUri: document.uri.toString(), model: message.model }
-        this.output?.appendLine(
-          `Large-file class navigator ready: ${path.basename(document.fileName)} ` +
-            `(${text.length} characters, ${message.elapsedMs} ms in worker).`,
-        )
-      }
-      this.changed.fire(undefined)
-      this.onModelReady?.()
-    })
-    worker.once("error", (error) => {
-      const current = this.modelWorker === worker
-      finish()
-      if (!current || this.cache?.key !== key) return
-      this.output?.appendLine(
-        `Large-file class navigator worker failed: ${error.stack || error.message}`,
-      )
-      this.cache = {
-        key,
-        documentUri: document.uri.toString(),
-        stale: Boolean(this.cache.retainedModel),
-        model:
-          this.cache.retainedModel ||
-          pendingNavigatorModel(
-            document.fileName,
-            "Class navigator analysis failed. Click refresh to retry.",
-            "navigator-error",
-          ),
-      }
-      this.changed.fire(undefined)
-    })
+        this.changed.fire(undefined)
+      },
+    )
     worker.postMessage({ text, filePath: document.fileName, options })
   }
 
@@ -2726,8 +3351,11 @@ class ClassNavigatorProvider {
       // Replacing an existing tree here would discard its rows on every edit.
       const retainedModel =
         this.cache?.documentUri === document.uri.toString() &&
-        !this.cache.model.roots.some((node) =>
-          /^navigator-(?:loading|error)$/.test(node.kind),
+        !this.cache.model.roots.some(
+          /**
+           * Detect placeholder-only roots that should not be retained as useful source
+           * results.
+           */ (node) => /^navigator-(?:loading|error)$/.test(node.kind),
         )
           ? this.cache.model
           : undefined
@@ -2760,27 +3388,44 @@ class ClassNavigatorProvider {
     this.changed.fire(undefined)
   }
 
+  /**
+   * Wait for a current asynchronous model when needed rather than returning stale
+   * source offsets to a navigation/edit action.
+   */
   async readyModel(
     document = this.activeDocument(),
   ): Promise<NavigatorModel | undefined> {
     if (!document) return undefined
     let model = this.model()
     if (!this.cache?.pending) return this.cache?.stale ? undefined : model
-    return new Promise((resolve) => {
-      const disposable = this.onDidChangeTreeData(() => {
-        if (this.activeDocument()?.uri.toString() !== document.uri.toString()) {
-          disposable.dispose()
-          resolve(undefined)
-          return
-        }
-        model = this.model()
-        if (this.cache?.pending) return
-        disposable.dispose()
-        resolve(this.cache?.stale ? undefined : model)
-      })
-    })
+    return new Promise(
+      /** Wait for provider changes that finish the current document's pending model. */ (
+        resolve,
+      ) => {
+        const disposable = this.onDidChangeTreeData(
+          /**
+           * Resolve the waiting caller when parsing finishes, or return undefined if the
+           * active document changes.
+           */ () => {
+            if (this.activeDocument()?.uri.toString() !== document.uri.toString()) {
+              disposable.dispose()
+              resolve(undefined)
+              return
+            }
+            model = this.model()
+            if (this.cache?.pending) return
+            disposable.dispose()
+            resolve(this.cache?.stale ? undefined : model)
+          },
+        )
+      },
+    )
   }
 
+  /**
+   * Derive a stable semantic identity for rebinding a target after source edits or
+   * model replacement.
+   */
   nodeIdentity(node: NavigatorTarget) {
     return [
       node.kind,
@@ -2792,6 +3437,10 @@ class ClassNavigatorProvider {
       .toLowerCase()
   }
 
+  /**
+   * Update the remembered active target/document identity used by editor-follow
+   * presentation.
+   */
   setActiveNode(node: NavigatorTarget | undefined) {
     const document = this.activeDocument()
     if (!document || !node) return false
@@ -2811,15 +3460,24 @@ class ClassNavigatorProvider {
     return true
   }
 
+  /** Expose a navigation target's stored parent to the tree API. */
   getParent(node: NavigatorTarget) {
     return node.parent
   }
 
+  /**
+   * Return root or child targets from the current navigation model, including
+   * pending-state presentation.
+   */
   getChildren(node?: NavigatorTarget) {
     if (node) return node.children || []
     return this.model()?.roots || []
   }
 
+  /**
+   * Render a navigation target with its label, icon/access color, context, tooltip,
+   * counterpart warning, and open action.
+   */
   getTreeItem(node: NavigatorTarget) {
     const vscode = this.vscode
     if (
@@ -2954,17 +3612,20 @@ class ClassNavigatorProvider {
     return item
   }
 
+  /** Return the document URI previously associated with a rendered navigator node. */
   documentUriForNode(node: NavigatorTarget) {
     return node && typeof node === "object"
       ? this.nodeDocumentUris.get(node)
       : undefined
   }
 
+  /** Terminate the provider's outstanding background parse when it is retired. */
   dispose() {
     this.cancelModelWorker()
   }
 }
 
+/** Choose a node icon appropriate to its group, source/type kind, or routine flavor. */
 function navigatorIconName(node: NavigatorTarget) {
   if (node.kind === "project") return "project"
   if (node.kind === PascalKeyword.Package) return PascalKeyword.Package
@@ -3012,6 +3673,10 @@ function missingCounterpartMessage(node: NavigatorTarget) {
   return ""
 }
 
+/**
+ * Build a target tooltip from routine/type/source metadata and any missing-counterpart
+ * warning.
+ */
 function navigatorNodeTooltip(node: NavigatorTarget) {
   const tooltip =
     node.signature ||
@@ -3025,6 +3690,10 @@ function navigatorNodeTooltip(node: NavigatorTarget) {
   return missing ? `${tooltip}\n${missing}`.trim() : tooltip
 }
 
+/**
+ * Project a live source target to browser presentation fields and recursively
+ * serialized children, excluding source-only mutable state.
+ */
 function serializeNavigatorNode(
   node: NavigatorTarget,
   options: { projectDefaultExpansion?: string } = {},
@@ -3043,12 +3712,16 @@ function serializeNavigatorNode(
       node.kind === "project" ||
       (node.kind === PascalKeyword.Package &&
         options.projectDefaultExpansion === "all"),
-    children: (node.children || []).map((child) =>
-      serializeNavigatorNode(child, options),
+    children: (node.children || []).map(
+      /**
+       * Serialize child presentation fields using the same expansion policy as the
+       * parent.
+       */ (child) => serializeNavigatorNode(child, options),
     ),
   }
 }
 
+/** Collect stable ancestor IDs needed to expand and reveal a selected browser row. */
 function navigatorNodePath(node: NavigatorTarget | undefined): string[] {
   const result = []
   for (let current = node?.parent; current; current = current.parent)
@@ -3056,6 +3729,7 @@ function navigatorNodePath(node: NavigatorTarget | undefined): string[] {
   return result
 }
 
+/** Find a current tree target by stable ID, descending through roots and children. */
 function navigatorNodeById(
   model: Pick<NavigatorModel, "roots"> | undefined,
   id: string,
@@ -3070,6 +3744,10 @@ function navigatorNodeById(
   return undefined
 }
 
+/**
+ * Register the combined class/project navigator, editor-follow/highlight/search
+ * workflows, counterpart actions, and explicit cancellable AI generation commands.
+ */
 function registerClassNavigator(
   context: VSCode.ExtensionContext,
   output: OutputChannel,
@@ -3097,18 +3775,30 @@ function registerClassNavigator(
   )
     navigatorMode = NavigatorMode.Class
   const combinedChanged = new vscode.EventEmitter()
+  /**
+   * Select the class or project provider currently supplying the combined navigator
+   * mode.
+   */
   const activeProvider = () =>
     navigatorMode === "project" && projectProvider ? projectProvider : provider
   const tree = new ClassNavigatorWebview(vscode, NavigatorViewId, {
-    getRoots: () => activeProvider().getChildren(),
-    serializeNode: (node) =>
-      serializeNavigatorNode(node, {
-        projectDefaultExpansion: vscode.workspace
-          .getConfiguration(ConfigurationSection)
-          .get(SettingKey.ProjectNavigatorDefaultExpansion, "firstLevel"),
-      }),
+    getRoots: /**
+     * Read root nodes from the provider for the currently selected navigator mode.
+     */ () => activeProvider().getChildren(),
+    serializeNode:
+      /** Serialize a navigator node using the configured project expansion policy. */ (
+        node,
+      ) =>
+        serializeNavigatorNode(node, {
+          projectDefaultExpansion: vscode.workspace
+            .getConfiguration(ConfigurationSection)
+            .get(SettingKey.ProjectNavigatorDefaultExpansion, "firstLevel"),
+        }),
     nodePath: navigatorNodePath,
-    capabilities: () => ({
+    capabilities: /**
+     * Report enabled navigator features and the current AI generation state to the
+     * browser.
+     */ () => ({
       aiSteps: vscode.workspace
         .getConfiguration(ConfigurationSection)
         .get(SettingKey.ClassNavigatorAiStepsEnabled, true),
@@ -3117,18 +3807,30 @@ function registerClassNavigator(
         .getConfiguration(ConfigurationSection)
         .get(SettingKey.ProjectNavigatorContextMenusEnabled, true),
     }),
-    onOpen: (node) =>
+    onOpen: /**
+     * Open project files directly or reveal class members through source navigation.
+     */ (node) =>
       navigatorMode === "project" && node.kind === NavigatorItemKind.File
         ? vscode.commands.executeCommand(
             "vscode.open",
             vscode.Uri.file(node.filePath || ""),
           )
         : openNode(node),
-    onSearch: (message) => performNavigatorSearch(message),
-    onSearchOptions: (options) => saveNavigatorSearchOptions(options),
-    onSearchActivate: (message) => activateNavigatorSearchResult(message),
-    onSearchClosed: (restoreState) => closeNavigatorSearch(true, restoreState),
-    onSortUpdate: async (message) => {
+    onSearch: /** Run the search requested by the navigator browser. */ (message) =>
+      performNavigatorSearch(message),
+    onSearchOptions: /** Persist search options selected in the navigator browser. */ (
+      options,
+    ) => saveNavigatorSearchOptions(options),
+    onSearchActivate:
+      /** Reveal the navigator search result selected in the browser. */ (message) =>
+        activateNavigatorSearchResult(message),
+    onSearchClosed:
+      /** Close navigator search and optionally restore its saved tree state. */ (
+        restoreState,
+      ) => closeNavigatorSearch(true, restoreState),
+    onSortUpdate: /** Persist only supported navigator sort keys and values. */ async (
+      message,
+    ) => {
       const allowed: Record<string, string[]> = {
         memberOrder: ["visibility", "declaration", PascalKeyword.Implementation],
         typeOrder: ["declaration", "alphabetical"],
@@ -3138,7 +3840,9 @@ function registerClassNavigator(
         .getConfiguration(NavigatorConfigurationSection)
         .update(message.key, message.value, true)
     },
-    onFocusChanged: (focused) =>
+    onFocusChanged: /**
+     * Update the command context when focus enters or leaves the navigator browser.
+     */ (focused) =>
       vscode.commands.executeCommand(
         "setContext",
         NavigatorContextKey.WebviewFocused,
@@ -3179,6 +3883,10 @@ function registerClassNavigator(
       }
     | undefined
   let activeAiCancellation: VSCode.CancellationTokenSource | undefined
+  /**
+   * Publish AI generation state so commands and cancellation controls reflect current
+   * work.
+   */
   const setAiGeneratingContext = (value: boolean) => {
     void tree.updateCapabilities()
     return vscode.commands.executeCommand(
@@ -3187,18 +3895,30 @@ function registerClassNavigator(
       Boolean(value),
     )
   }
+  /**
+   * Start one cancellable AI operation; return undefined while another generation is
+   * active.
+   */
   const beginAiOperation = () => {
     if (activeAiCancellation) return undefined
     activeAiCancellation = new vscode.CancellationTokenSource()
     void setAiGeneratingContext(true)
     return activeAiCancellation
   }
+  /**
+   * Release a generation token only if it still owns the active operation and clear
+   * its command context.
+   */
   const finishAiOperation = (source: VSCode.CancellationTokenSource) => {
     if (activeAiCancellation !== source) return
     activeAiCancellation = undefined
     source.dispose()
     void setAiGeneratingContext(false)
   }
+  /**
+   * Request cancellation of active AI work and report stopping status until completion
+   * clears the context.
+   */
   const stopAiGeneration = () => {
     if (!activeAiCancellation) {
       void vscode.window.showInformationMessage(
@@ -3221,8 +3941,17 @@ function registerClassNavigator(
       savedExpandedRoutines && typeof savedExpandedRoutines === "object"
         ? savedExpandedRoutines
         : {},
-    ).map(([uri, ids]) => [uri, new Set(Array.isArray(ids) ? ids : [])]),
+    ).map(
+      /** Restore document-specific expansion ID lists as mutable sets. */ ([
+        uri,
+        ids,
+      ]) => [uri, new Set(Array.isArray(ids) ? ids : [])],
+    ),
   )
+  /**
+   * Read the retained expanded routine/step identities for a document or the current
+   * navigation context.
+   */
   const expandedRoutineIds = (documentUri?: string): Set<string> => {
     const uri = documentUri || provider.activeDocument()?.uri.toString()
     if (!uri) return new Set()
@@ -3230,28 +3959,47 @@ function registerClassNavigator(
       expandedRoutineIdsByDocument.set(uri, new Set())
     return expandedRoutineIdsByDocument.get(uri)!
   }
+  /**
+   * Persist document-keyed expansion state after user tree expansion/collapse changes.
+   */
   const persistExpandedRoutines = () => {
     void context.workspaceState.update(
       EXPANDED_ROUTINES_STATE_KEY,
       Object.fromEntries(
-        [...expandedRoutineIdsByDocument].map(([uri, ids]) => [uri, [...ids]]),
+        [...expandedRoutineIdsByDocument].map(
+          /**
+           * Serialize each document's expanded ID set for workspace-state persistence.
+           */ ([uri, ids]) => [uri, [...ids]],
+        ),
       ),
     )
   }
   // Returning the saved state through TreeItem.collapsibleState lets VS Code
   // reconstruct the previous shape without reveal(), selection changes, or
   // opening a navigator view that the user deliberately collapsed.
-  provider.isNodeExpanded = (node, documentUri) =>
-    Boolean(
-      node?.children?.length && expandedRoutineIds(documentUri).has(node.id || ""),
-    )
+  provider.isNodeExpanded =
+    /** Test whether a routine with children is expanded in the saved document state. */ (
+      node,
+      documentUri,
+    ) =>
+      Boolean(
+        node?.children?.length && expandedRoutineIds(documentUri).has(node.id || ""),
+      )
 
+  /**
+   * Remove the current source-navigation range highlight and release its remembered
+   * target.
+   */
   const clearNavigationHighlight = () => {
     const editor = activeNavigationHighlight?.editor
     if (editor && !editor.document.isClosed)
       editor.setDecorations(navigationRangeDecoration, [])
     activeNavigationHighlight = undefined
   }
+  /**
+   * Apply source ranges for a selected target/focus position in a live editor and
+   * remember the highlight for later rebinding.
+   */
   const showNavigationHighlight = (
     editor: VSCode.TextEditor,
     node: NavigatorTarget | undefined,
@@ -3279,13 +4027,18 @@ function registerClassNavigator(
       return
     const offsetRanges = nodeSourceRanges(text, highlightNode, focusOffset)
     if (offsetRanges.length === 0) return
-    const lineRanges = offsetRanges.map(([startOffset, endOffset]) => {
-      const startLine = editor.document.positionAt(startOffset).line
-      const endLine = editor.document.positionAt(
-        Math.max(startOffset, Math.min(text.length, endOffset) - 1),
-      ).line
-      return { startLine, endLine: Math.max(startLine, endLine) }
-    })
+    const lineRanges = offsetRanges.map(
+      /**
+       * Convert source offsets to inclusive line spans and gutter decorations for the
+       * selected target.
+       */ ([startOffset, endOffset]) => {
+        const startLine = editor.document.positionAt(startOffset).line
+        const endLine = editor.document.positionAt(
+          Math.max(startOffset, Math.min(text.length, endOffset) - 1),
+        ).line
+        return { startLine, endLine: Math.max(startLine, endLine) }
+      },
+    )
     const decorations = []
     for (const lineRange of lineRanges) {
       for (let line = lineRange.startLine; line <= lineRange.endLine; line += 1) {
@@ -3302,6 +4055,10 @@ function registerClassNavigator(
       lineRanges,
     }
   }
+  /**
+   * Re-evaluate the highlighted routine/step after its browser expansion state
+   * changes.
+   */
   const refreshHighlightForRoutineExpansion = (
     routine: NavigatorTarget | undefined,
   ) => {
@@ -3321,6 +4078,10 @@ function registerClassNavigator(
     if (provider.routineForNode(activeNode)?.id !== routine.id) return
     showNavigationHighlight(editor, activeNode, highlight.focusOffset)
   }
+  /**
+   * Clear a selected source highlight when the user caret moves outside its current
+   * target spans.
+   */
   const clearNavigationHighlightOutsideCursor = (editor: VSCode.TextEditor) => {
     const highlight = activeNavigationHighlight
     if (!highlight) return
@@ -3331,27 +4092,43 @@ function registerClassNavigator(
     const line = editor.selection.active.line
     if (
       !highlight.lineRanges.some(
-        (range) => line >= range.startLine && line <= range.endLine,
+        /** Check whether the caret still lies inside a highlighted source-line span. */ (
+          range,
+        ) => line >= range.startLine && line <= range.endLine,
       )
     ) {
       clearNavigationHighlight()
     }
   }
+  /**
+   * Clear a retained source highlight when its ranges no longer intersect the visible
+   * viewport.
+   */
   const clearNavigationHighlightOutsideViewport = (
     event: VSCode.TextEditorVisibleRangesChangeEvent,
   ) => {
     const highlight = activeNavigationHighlight
     if (!highlight) return
     if (highlight.editor !== event.textEditor) return
-    const intersects = event.visibleRanges.some((visible) =>
-      highlight.lineRanges.some(
-        (range) =>
-          visible.end.line >= range.startLine && visible.start.line <= range.endLine,
-      ),
+    const intersects = event.visibleRanges.some(
+      /** Check whether any visible editor range overlaps the retained highlight. */ (
+        visible,
+      ) =>
+        highlight.lineRanges.some(
+          /**
+           * Test inclusive line overlap between one viewport range and one highlighted
+           * span.
+           */ (range) =>
+            visible.end.line >= range.startLine && visible.start.line <= range.endLine,
+        ),
     )
     if (!intersects) clearNavigationHighlight()
   }
 
+  /**
+   * Refresh combined navigator description/capabilities/messages for the current mode
+   * and model state.
+   */
   const updatePresentation = () => {
     if (navigatorMode === "project") {
       tree.description = "Project / Package"
@@ -3366,6 +4143,10 @@ function registerClassNavigator(
       ? undefined
       : "Open a Pascal/Delphi, DPK, or DPROJ file to view its structure."
   }
+  /**
+   * Read whether editor cursor/viewport tracking is enabled for the active navigator
+   * context.
+   */
   const followEnabled = () => {
     const config = vscode.workspace.getConfiguration(ConfigurationSection)
     return (
@@ -3374,14 +4155,26 @@ function registerClassNavigator(
       (config?.get(SettingKey.ClassNavigatorFollowCursor, true) ?? true)
     )
   }
+  /**
+   * Read whether collapsed navigator presentation should pause automatic editor-follow
+   * work.
+   */
   const pauseWhileCollapsed = () =>
     vscode.workspace
       .getConfiguration(ConfigurationSection)
       .get(SettingKey.ClassNavigatorPauseWhenCollapsed, true)
+  /**
+   * Require class mode, enabled following, and current view/layout conditions before
+   * moving the navigator selection.
+   */
   const navigatorCanTrack = () =>
     navigatorMode === NavigatorMode.Class &&
     followEnabled() &&
     (!pauseWhileCollapsed() || navigatorVisible)
+  /**
+   * Reveal the current editor-follow target without taking keyboard focus from the
+   * editor.
+   */
   const revealFollowNode = (node: NavigatorTarget | undefined) => {
     if (!node) return
     if (pauseWhileCollapsed() && !navigatorVisible) return
@@ -3391,19 +4184,31 @@ function registerClassNavigator(
     // to the user's expansion state. Selecting it must never expand the node:
     // a collapsed routine stays selected as a routine, and a collapsed parent
     // step stays selected instead of exposing its generated substeps.
-    void tree
-      .reveal(node, { select: true, focus: false, expand: false })
-      .catch(() => undefined)
+    void tree.reveal(node, { select: true, focus: false, expand: false }).catch(
+      /**
+       * Ignore reveal rejection when a target disappears or the view becomes
+       * unavailable.
+       */ () => undefined,
+    )
   }
+  /**
+   * Convert the configured visual viewport follow point to an original document
+   * offset.
+   */
   const visibleCenterOffset = (
     editor: VSCode.TextEditor,
     visibleRanges: readonly VSCode.Range[],
   ) => {
     if (!visibleRanges?.length) return undefined
-    const range = visibleRanges.reduce((largest, candidate) =>
-      candidate.end.line - candidate.start.line > largest.end.line - largest.start.line
-        ? candidate
-        : largest,
+    const range = visibleRanges.reduce(
+      /** Select the tallest visible editor range to determine the viewport center. */ (
+        largest,
+        candidate,
+      ) =>
+        candidate.end.line - candidate.start.line >
+        largest.end.line - largest.start.line
+          ? candidate
+          : largest,
     )
     const configuredOffset = vscode.workspace
       .getConfiguration(ConfigurationSection, editor.document.uri)
@@ -3414,6 +4219,10 @@ function registerClassNavigator(
     )
     return editor.document.offsetAt(new vscode.Position(line, 0))
   }
+  /**
+   * Apply cursor/viewport following only when navigation locks, held selections, and
+   * document identity allow it.
+   */
   const applyFollow = (
     reason = "cursor",
     event?:
@@ -3464,6 +4273,10 @@ function registerClassNavigator(
     revealFollowNode(node)
     showNavigationHighlight(editor, node, offset)
   }
+  /**
+   * Debounce the requested follow reason and re-evaluate the current editor/model
+   * before updating selection.
+   */
   const scheduleFollow = (
     reason = "cursor",
     event?:
@@ -3485,7 +4298,7 @@ function registerClassNavigator(
       return
     }
     followTimer = setTimeout(
-      () => {
+      /** Clear the pending timer and apply the latest requested follow reason. */ () => {
         followTimer = undefined
         applyFollow(reason, event)
       },
@@ -3496,7 +4309,10 @@ function registerClassNavigator(
   const refresh = (followReason = "cursor", immediate = false, delayMs = 80) => {
     if (refreshTimer) clearTimeout(refreshTimer)
     refreshTimer = undefined
-    const applyRefresh = () => {
+    const applyRefresh = /**
+     * Apply a scheduled refresh while respecting project mode and collapsed-view
+     * suspension.
+     */ () => {
       refreshTimer = undefined
       updatePresentation()
       if (navigatorMode === "project") {
@@ -3515,6 +4331,10 @@ function registerClassNavigator(
     }
     refreshTimer = setTimeout(applyRefresh, delayMs)
   }
+  /**
+   * Apply the versioned initial navigator view layout without repeating migrations
+   * after it has been initialized.
+   */
   const initializeDefaultLayout = async () => {
     if (
       layoutPending ||
@@ -3572,6 +4392,10 @@ function registerClassNavigator(
       layoutPending = false
     }
   }
+  /**
+   * Defer initial navigator layout work until VS Code view initialization can accept
+   * it.
+   */
   const scheduleDefaultLayout = () => {
     if (
       layoutTimer ||
@@ -3579,12 +4403,21 @@ function registerClassNavigator(
         EXPLORER_LAYOUT_VERSION
     )
       return
-    layoutTimer = setTimeout(() => {
-      layoutTimer = undefined
-      void initializeDefaultLayout()
-    }, 700)
+    layoutTimer = setTimeout(
+      /**
+       * Clear the layout timer and attempt the one-time default-layout initialization.
+       */ () => {
+        layoutTimer = undefined
+        void initializeDefaultLayout()
+      },
+      700,
+    )
   }
 
+  /**
+   * Switch class/project mode, persist its preference, update view
+   * context/presentation, and refresh appropriate follow behavior.
+   */
   const setNavigatorMode = async (mode: string) => {
     const configuration = vscode.workspace.getConfiguration(ConfigurationSection)
     const next =
@@ -3665,7 +4498,10 @@ function registerClassNavigator(
       )
       const endPosition = document.positionAt(inclusiveEndOffset)
       const largestVisibleRange = editor.visibleRanges.reduce<VSCode.Range | undefined>(
-        (largest, range) => {
+        /**
+         * Select the largest visible editor range when deciding how to reveal a source
+         * node.
+         */ (largest, range) => {
           const lineCount = range.end.line - range.start.line + 1
           const largestCount = largest ? largest.end.line - largest.start.line + 1 : 0
           return lineCount > largestCount ? range : largest
@@ -3714,6 +4550,7 @@ function registerClassNavigator(
   let navigatorSearchActivation = 0
   let navigatorSearchResults = new Map<string, SearchResult>()
 
+  /** Normalize and persist search preferences used by subsequent navigator requests. */
   const saveNavigatorSearchOptions = (
     options: Partial<NavigatorSearchOptions> | undefined,
   ) => {
@@ -3721,6 +4558,10 @@ function registerClassNavigator(
     void context.workspaceState.update(SEARCH_OPTIONS_STATE_KEY, navigatorSearchOptions)
   }
 
+  /**
+   * Restore the original document, selection, viewport, navigation lock, and tree
+   * state after a temporary search preview.
+   */
   const restoreNavigatorSearchSession = async (
     session: SearchSession,
     restoreState: NavigatorTreeState | undefined,
@@ -3769,6 +4610,10 @@ function registerClassNavigator(
     }
   }
 
+  /**
+   * End the current search session, invalidate pending activation/results, and
+   * optionally restore its pre-search state.
+   */
   const closeNavigatorSearch = (restore = false, restoreState?: NavigatorTreeState) => {
     const session = navigatorSearchSession
     navigatorSearchRequest += 1
@@ -3780,6 +4625,10 @@ function registerClassNavigator(
       void restoreNavigatorSearchSession(session, restoreState, activation)
   }
 
+  /**
+   * Project source search metadata to the presentation fields required by browser
+   * result rows.
+   */
   const serializeSearchResult = (result: SearchResult) => ({
     id: result.id,
     kind: result.kind,
@@ -3792,6 +4641,10 @@ function registerClassNavigator(
     isCurrentFile: result.isCurrentFile,
   })
 
+  /**
+   * Search the current model or global source index, reject superseded requests, and
+   * publish correlated result/status metadata.
+   */
   const performNavigatorSearch = async (message: {
     options?: Partial<NavigatorSearchOptions>
     query: string
@@ -3811,7 +4664,13 @@ function registerClassNavigator(
       )
       if (options.scope === "global") {
         if (!projectSourceIndexPromise) {
-          navigatorSearchResults = new Map(results.map((result) => [result.id, result]))
+          navigatorSearchResults = new Map(
+            results.map(
+              /**
+               * Index search results by ID while the global source index is unavailable.
+               */ (result) => [result.id, result],
+            ),
+          )
           await tree.postSearchResults(
             message.requestId,
             results.map(serializeSearchResult),
@@ -3827,7 +4686,11 @@ function registerClassNavigator(
           message.query,
           options,
           session.filePath,
-        ).filter((result) => !result.isCurrentFile)
+        ).filter(
+          /** Exclude the current file's entries from the additional global results. */ (
+            result,
+          ) => !result.isCurrentFile,
+        )
         if (options.files) {
           const accepts = navigatorSearchPattern(message.query)
           const workspaceFiles = await vscode.workspace.findFiles(
@@ -3867,13 +4730,24 @@ function registerClassNavigator(
         }
         results = [
           ...new Map(
-            [...results, ...globalResults].map((result) => [result.id, result]),
+            [...results, ...globalResults].map(
+              /**
+               * Deduplicate current-file and global search results by their shared
+               * result IDs.
+               */ (result) => [result.id, result],
+            ),
           ).values(),
         ].slice(0, 500)
       }
       if (generation !== navigatorSearchRequest || navigatorSearchSession !== session)
         return
-      navigatorSearchResults = new Map(results.map((result) => [result.id, result]))
+      navigatorSearchResults = new Map(
+        results.map(
+          /**
+           * Index the final published search results by ID for preview and activation.
+           */ (result) => [result.id, result],
+        ),
+      )
       const status = results.length >= 500 ? "Showing the first 500 matches" : undefined
       await tree.postSearchResults(
         message.requestId,
@@ -3894,6 +4768,10 @@ function registerClassNavigator(
     }
   }
 
+  /**
+   * Rebind a search result to current source/model state and navigate as a temporary
+   * preview or committed selection.
+   */
   const activateNavigatorSearchResult = async (message: {
     id: string
     preview: boolean
@@ -3964,6 +4842,10 @@ function registerClassNavigator(
     }
   }
 
+  /**
+   * Capture editor/tree state and open the search panel for a supported current
+   * document.
+   */
   const showNavigatorSearch = async () => {
     await setNavigatorMode(NavigatorMode.Class)
     if (navigatorSearchSession) {
@@ -4007,6 +4889,10 @@ function registerClassNavigator(
     tree.showSearch(navigatorSearchOptions)
   }
 
+  /**
+   * Require the available VS Code language-model API and choose the configured
+   * provider/model, reporting missing or unmatched model selections.
+   */
   const selectAiChatModel = async (settings: AiSettings) => {
     if (!vscode.lm?.selectChatModels || !vscode.LanguageModelChatMessage?.User) {
       throw new Error(
@@ -4021,7 +4907,10 @@ function registerClassNavigator(
     }
     const chatModel = settings.modelId
       ? models.find(
-          (candidate) =>
+          /**
+           * Match the configured model ID against either a model's identifier or
+           * display name.
+           */ (candidate) =>
             candidate.id === settings.modelId || candidate.name === settings.modelId,
         )
       : models[0]
@@ -4033,6 +4922,10 @@ function registerClassNavigator(
     return chatModel
   }
 
+  /**
+   * Send one explicit bounded AI request, normalize streamed response fragments, and
+   * enforce cancellation/deadline behavior.
+   */
   const sendAiStepRequest = async (
     request: AiRequest,
     chatModel: VSCode.LanguageModelChat,
@@ -4057,13 +4950,22 @@ function registerClassNavigator(
     )
     const requestCancellation = new vscode.CancellationTokenSource()
     let timedOut = false
-    const outerCancellation = token.onCancellationRequested(() =>
-      requestCancellation.cancel(),
+    const outerCancellation = token.onCancellationRequested(
+      /**
+       * Forward operation cancellation to this language-model request's cancellation
+       * token.
+       */ () => requestCancellation.cancel(),
     )
-    const timeout = setTimeout(() => {
-      timedOut = true
-      requestCancellation.cancel()
-    }, timeoutSeconds * 1000)
+    const timeout = setTimeout(
+      /**
+       * Mark the request as timed out and cancel it when its configured deadline
+       * expires.
+       */ () => {
+        timedOut = true
+        requestCancellation.cancel()
+      },
+      timeoutSeconds * 1000,
+    )
     let responseText = ""
     let reportedLabels = 0
     try {
@@ -4110,6 +5012,10 @@ function registerClassNavigator(
     }
   }
 
+  /**
+   * Request routine labels with the supported retry/repair strategy while preserving
+   * existing valid fixed-plan labels.
+   */
   const requestAiStepResponse = async (
     request: AiRequest,
     chatModel: VSCode.LanguageModelChat,
@@ -4200,6 +5106,10 @@ function registerClassNavigator(
     return retry.steps
   }
 
+  /**
+   * Apply normal/detailed generation granularity overrides to the shared AI planning
+   * preferences.
+   */
   const aiSettingsForMode = (
     document: NavigatorDocument,
     generationMode = "normal",
@@ -4229,6 +5139,10 @@ function registerClassNavigator(
     }
   }
 
+  /**
+   * Generate or reuse one routine's AI steps under explicit user action, managing
+   * request identity, streaming updates, cancellation, cache reuse, and errors.
+   */
   const generateAiSteps = async (
     requestedNode: NavigatorTarget | undefined,
     generationMode = "normal",
@@ -4312,16 +5226,22 @@ function registerClassNavigator(
           title: `Generating ${detailed ? "detailed " : ""}steps for ${request.routine.label}`,
           cancellable: true,
         },
-        async (_progress, progressToken) => {
-          const cancellation = progressToken.onCancellationRequested(() =>
-            operation.cancel(),
+        /**
+         * Generate routine steps under cancellable progress and release the
+         * cancellation subscription.
+         */ async (_progress, progressToken) => {
+          const cancellation = progressToken.onCancellationRequested(
+            /** Cancel the active routine-step operation from the progress UI. */ () =>
+              operation.cancel(),
           )
           try {
             const steps = await requestAiStepResponse(
               {
                 ...request,
-                onPartial: (partialSteps) =>
-                  provider.updateAiGeneration(request, partialSteps),
+                onPartial:
+                  /** Publish streamed routine steps as partial navigator results. */ (
+                    partialSteps,
+                  ) => provider.updateAiGeneration(request, partialSteps),
               },
               chatModel,
               operation.token,
@@ -4370,6 +5290,10 @@ function registerClassNavigator(
     }
   }
 
+  /**
+   * Generate steps concurrently for implemented routines in the selected class,
+   * retaining successful results if other requests fail or cancel.
+   */
   const generateClassAiSteps = async (
     requestedNode: NavigatorTarget,
     generationMode = "normal",
@@ -4398,6 +5322,10 @@ function registerClassNavigator(
     const text = document.getText()
     const startingVersion = document.version
     const descendants: NavigatorNode[] = []
+    /**
+     * Collect routine descendants of the selected type, including nested routine
+     * children.
+     */
     const visit = (node: NavigatorTarget) => {
       for (const child of node?.children || []) {
         if (child.kind === "routine") descendants.push(child)
@@ -4408,8 +5336,16 @@ function registerClassNavigator(
     const routines = [
       ...new Map(
         descendants
-          .filter((node) => isInteger(node.implementationOffset))
-          .map((node) => [node.id, node]),
+          .filter(
+            /**
+             * Keep descendants with an implementation that can be sent for analysis.
+             */ (node) => isInteger(node.implementationOffset),
+          )
+          .map(
+            /** Deduplicate implemented routine targets by stable navigator ID. */ (
+              node,
+            ) => [node.id, node],
+          ),
       ).values(),
     ]
     if (!routines.length) {
@@ -4453,14 +5389,21 @@ function registerClassNavigator(
           title: `Generating ${generationMode === "detailed" ? "detailed " : ""}steps for all routines in ${requestedNode.label} (${requests.length})`,
           cancellable: true,
         },
-        async (progress, progressToken) => {
-          const cancellation = progressToken.onCancellationRequested(() =>
-            operation.cancel(),
+        /**
+         * Generate class routine steps concurrently under one cancellable progress
+         * operation.
+         */ async (progress, progressToken) => {
+          const cancellation = progressToken.onCancellationRequested(
+            /** Cancel all active class-step requests from the progress UI. */ () =>
+              operation.cancel(),
           )
           try {
             let nextIndex = 0
             let finished = 0
-            const runWorker = async () => {
+            const runWorker = /**
+             * Claim and generate pending routines until cancelled or the source
+             * document changes.
+             */ async () => {
               while (!operation.token.isCancellationRequested) {
                 const index = nextIndex
                 nextIndex += 1
@@ -4477,7 +5420,10 @@ function registerClassNavigator(
                   const steps = await requestAiStepResponse(
                     {
                       ...request,
-                      onPartial: (partialSteps) =>
+                      onPartial: /**
+                       * Publish streamed steps for the routine currently owned by this
+                       * generation worker.
+                       */ (partialSteps) =>
                         provider.updateAiGeneration(request, partialSteps),
                     },
                     chatModel,
@@ -4522,7 +5468,15 @@ function registerClassNavigator(
               generationMode === "detailed" ? 1 : 3,
               requests.length,
             )
-            await Promise.all(Array.from({ length: concurrency }, () => runWorker()))
+            await Promise.all(
+              Array.from(
+                { length: concurrency },
+                /**
+                 * Start one routine-processing loop for each allowed concurrent request
+                 * slot.
+                 */ () => runWorker(),
+              ),
+            )
             if (settings.cacheEnabled && counts.generated > 0)
               await provider.persistAiCache()
             output?.appendLine(
@@ -4573,9 +5527,10 @@ function registerClassNavigator(
     )
   }
 
-  provider.onModelReady = () => {
-    if (navigatorMode === NavigatorMode.Class) scheduleFollow("cursor")
-  }
+  provider.onModelReady =
+    /** Follow the editor cursor when the class navigator mode is active. */ () => {
+      if (navigatorMode === NavigatorMode.Class) scheduleFollow("cursor")
+    }
 
   void vscode.commands.executeCommand(
     "setContext",
@@ -4584,15 +5539,25 @@ function registerClassNavigator(
   )
   void setAiGeneratingContext(false)
   tree.setMode(navigatorMode)
-  const combinedChangeSubscription = combinedChanged.event(() => tree.refresh())
-  const classChangeSubscription = provider.onDidChangeTreeData((element) => {
-    if (navigatorMode === NavigatorMode.Class) combinedChanged.fire(element)
-  })
-  const projectChangeSubscription = projectProvider?.onDidChangeTreeData((element) => {
-    if (navigatorMode !== "project") return
-    updatePresentation()
-    combinedChanged.fire(element)
-  })
+  const combinedChangeSubscription = combinedChanged.event(
+    /** Refresh the browser tree when the combined provider signals a data change. */ () =>
+      tree.refresh(),
+  )
+  const classChangeSubscription = provider.onDidChangeTreeData(
+    /** Forward class-tree changes only while class mode is selected. */ (element) => {
+      if (navigatorMode === NavigatorMode.Class) combinedChanged.fire(element)
+    },
+  )
+  const projectChangeSubscription = projectProvider?.onDidChangeTreeData(
+    /**
+     * Refresh project presentation and forward its data changes only while project mode
+     * is selected.
+     */ (element) => {
+      if (navigatorMode !== "project") return
+      updatePresentation()
+      combinedChanged.fire(element)
+    },
+  )
 
   context.subscriptions.push(
     ...(webviewRegistration ? [webviewRegistration] : []),
@@ -4604,41 +5569,64 @@ function registerClassNavigator(
     classChangeSubscription,
     ...(projectChangeSubscription ? [projectChangeSubscription] : []),
     navigationRangeDecoration,
-    ...WEBVIEW_CONTEXT_COMMANDS.map(([name, command]) =>
-      vscode.commands.registerCommand(
-        `${NavigatorCommandId.ContextPrefix}${name}`,
-        () => {
-          const target = tree.selection[0]
-          if (target) return vscode.commands.executeCommand(command, target)
-          return undefined
-        },
-      ),
+    ...WEBVIEW_CONTEXT_COMMANDS.map(
+      /**
+       * Register browser context actions as adapters to the existing project build/run
+       * commands.
+       */ ([name, command]) =>
+        vscode.commands.registerCommand(
+          `${NavigatorCommandId.ContextPrefix}${name}`,
+          /**
+           * Invoke the existing project action with the currently selected navigator
+           * target.
+           */ () => {
+            const target = tree.selection[0]
+            if (target) return vscode.commands.executeCommand(command, target)
+            return undefined
+          },
+        ),
     ),
-    tree.onDidExpandElement((event) => {
-      if (navigatorMode !== NavigatorMode.Class) return
-      if (!event.element?.children?.length) return
-      const documentUri =
-        provider.documentUriForNode(event.element) ||
-        provider.activeDocument()?.uri.toString()
-      expandedRoutineIds(documentUri).add(event.element.id || "")
-      persistExpandedRoutines()
-      refreshHighlightForRoutineExpansion(provider.routineForNode(event.element))
-    }),
-    tree.onDidCollapseElement((event) => {
-      if (navigatorMode !== NavigatorMode.Class) return
-      if (!event.element?.children?.length) return
-      const documentUri =
-        provider.documentUriForNode(event.element) ||
-        provider.activeDocument()?.uri.toString()
-      expandedRoutineIds(documentUri).delete(event.element.id || "")
-      persistExpandedRoutines()
-      refreshHighlightForRoutineExpansion(provider.routineForNode(event.element))
-    }),
-    vscode.commands.registerCommand(CommandId.ClassNavigatorRefresh, () => {
-      activeProvider().refresh?.({ force: true })
-      updatePresentation()
-      scheduleFollow("cursor")
-    }),
+    tree.onDidExpandElement(
+      /**
+       * Persist newly expanded node IDs and refine the routine highlight to its newly
+       * visible steps.
+       */ (event) => {
+        if (navigatorMode !== NavigatorMode.Class) return
+        if (!event.element?.children?.length) return
+        const documentUri =
+          provider.documentUriForNode(event.element) ||
+          provider.activeDocument()?.uri.toString()
+        expandedRoutineIds(documentUri).add(event.element.id || "")
+        persistExpandedRoutines()
+        refreshHighlightForRoutineExpansion(provider.routineForNode(event.element))
+      },
+    ),
+    tree.onDidCollapseElement(
+      /**
+       * Persist collapsed node IDs and recompute the highlight for the remaining visible
+       * routine or step.
+       */ (event) => {
+        if (navigatorMode !== NavigatorMode.Class) return
+        if (!event.element?.children?.length) return
+        const documentUri =
+          provider.documentUriForNode(event.element) ||
+          provider.activeDocument()?.uri.toString()
+        expandedRoutineIds(documentUri).delete(event.element.id || "")
+        persistExpandedRoutines()
+        refreshHighlightForRoutineExpansion(provider.routineForNode(event.element))
+      },
+    ),
+    vscode.commands.registerCommand(
+      CommandId.ClassNavigatorRefresh,
+      /**
+       * Force-refresh the active provider and resynchronize its presentation and
+       * cursor-follow state.
+       */ () => {
+        activeProvider().refresh?.({ force: true })
+        updatePresentation()
+        scheduleFollow("cursor")
+      },
+    ),
     vscode.commands.registerCommand(
       CommandId.CreateImplementation,
       createImplementationCommand<
@@ -4647,8 +5635,13 @@ function registerClassNavigator(
         VSCode.Selection,
         VSCode.Uri
       >(vscode, {
-        readyModel: () => provider.readyModel(vscode.window.activeTextEditor?.document),
-        onCreated: () => {
+        readyModel:
+          /** Return the ready navigation model for the active source document. */ () =>
+            provider.readyModel(vscode.window.activeTextEditor?.document),
+        onCreated: /**
+         * Reset navigation holds and immediately refresh after a counterpart is
+         * created.
+         */ () => {
           // This explicit editor operation commits immediately through the same
           // data-diff path as ordinary edits, without opening or rebuilding the view.
           lastDocumentEditAt = 0
@@ -4658,48 +5651,75 @@ function registerClassNavigator(
         },
       }),
     ),
-    vscode.commands.registerCommand(CommandId.ClassNavigatorSelectSort, () => {
-      if (navigatorMode !== NavigatorMode.Class) return
-      if (tree.sortPanelOpen) return tree.hideSort()
-      const config = vscode.workspace.getConfiguration(NavigatorConfigurationSection)
-      const memberOrder =
-        config?.get<string>("memberOrder", "visibility") ?? "visibility"
-      tree.showSort({
-        memberOrder:
-          memberOrder === "source" ? PascalKeyword.Implementation : memberOrder,
-        typeOrder: config?.get("typeOrder", "declaration") ?? "declaration",
-      })
-    }),
+    vscode.commands.registerCommand(
+      CommandId.ClassNavigatorSelectSort,
+      /**
+       * Toggle the class sort panel, translating the legacy source order to
+       * implementation order.
+       */ () => {
+        if (navigatorMode !== NavigatorMode.Class) return
+        if (tree.sortPanelOpen) return tree.hideSort()
+        const config = vscode.workspace.getConfiguration(NavigatorConfigurationSection)
+        const memberOrder =
+          config?.get<string>("memberOrder", "visibility") ?? "visibility"
+        tree.showSort({
+          memberOrder:
+            memberOrder === "source" ? PascalKeyword.Implementation : memberOrder,
+          typeOrder: config?.get("typeOrder", "declaration") ?? "declaration",
+        })
+      },
+    ),
     vscode.commands.registerCommand(CommandId.ClassNavigatorFind, showNavigatorSearch),
-    vscode.commands.registerCommand(CommandId.NavigatorShowProjects, () =>
-      setNavigatorMode("project"),
+    vscode.commands.registerCommand(
+      CommandId.NavigatorShowProjects,
+      /** Switch the combined navigator to project/package mode. */ () =>
+        setNavigatorMode("project"),
     ),
-    vscode.commands.registerCommand(CommandId.NavigatorShowClasses, () =>
-      setNavigatorMode(NavigatorMode.Class),
+    vscode.commands.registerCommand(
+      CommandId.NavigatorShowClasses,
+      /** Switch the combined navigator to class/source mode. */ () =>
+        setNavigatorMode(NavigatorMode.Class),
     ),
-    vscode.commands.registerCommand(CommandId.NavigatorToggleMode, () =>
-      setNavigatorMode(navigatorMode === "project" ? NavigatorMode.Class : "project"),
+    vscode.commands.registerCommand(
+      CommandId.NavigatorToggleMode,
+      /** Toggle between project/package and class/source navigation modes. */ () =>
+        setNavigatorMode(navigatorMode === "project" ? NavigatorMode.Class : "project"),
     ),
-    vscode.commands.registerCommand(CommandId.ClassNavigatorShow, async () => {
-      await setNavigatorMode(NavigatorMode.Class)
-      const firstNode = provider.model()?.roots?.[0]
-      if (!firstNode) {
-        void vscode.window.showInformationMessage(
-          "Open a Pascal/Delphi source file first.",
-        )
-        return
-      }
-      await tree.reveal(firstNode, { select: false, focus: true, expand: false })
-    }),
-    vscode.commands.registerCommand(CommandId.ClassNavigatorGenerateAiSteps, (node) => {
-      const target = node?.kind ? node : tree.selection[0]
-      return target?.kind === PascalKeyword.Type
-        ? generateClassAiSteps(target, "normal")
-        : generateAiSteps(target, "normal")
-    }),
+    vscode.commands.registerCommand(
+      CommandId.ClassNavigatorShow,
+      /**
+       * Open class mode and reveal its first root, reporting when no supported source
+       * file is available.
+       */ async () => {
+        await setNavigatorMode(NavigatorMode.Class)
+        const firstNode = provider.model()?.roots?.[0]
+        if (!firstNode) {
+          void vscode.window.showInformationMessage(
+            "Open a Pascal/Delphi source file first.",
+          )
+          return
+        }
+        await tree.reveal(firstNode, { select: false, focus: true, expand: false })
+      },
+    ),
+    vscode.commands.registerCommand(
+      CommandId.ClassNavigatorGenerateAiSteps,
+      /**
+       * Generate normal AI steps for the requested or selected routine, or all routines
+       * in a selected type.
+       */ (node) => {
+        const target = node?.kind ? node : tree.selection[0]
+        return target?.kind === PascalKeyword.Type
+          ? generateClassAiSteps(target, "normal")
+          : generateAiSteps(target, "normal")
+      },
+    ),
     vscode.commands.registerCommand(
       CommandId.ClassNavigatorGenerateDetailedAiSteps,
-      (node) => {
+      /**
+       * Generate detailed AI steps for the requested or selected routine, or all
+       * routines in a selected type.
+       */ (node) => {
         const target = node?.kind ? node : tree.selection[0]
         return target?.kind === PascalKeyword.Type
           ? generateClassAiSteps(target, "detailed")
@@ -4711,94 +5731,133 @@ function registerClassNavigator(
       stopAiGeneration,
     ),
     vscode.commands.registerCommand(NavigatorCommandId.Open, openNode),
-    vscode.window.onDidChangeActiveTextEditor(() => {
-      clearNavigationHighlight()
-      navigationLock = undefined
-      navigationHoldUntil = 0
-      lastDocumentEditAt = 0
-      refresh("cursor", true)
-    }),
-    vscode.window.onDidChangeTextEditorSelection((event) => {
-      if (event.textEditor !== vscode.window.activeTextEditor) return
-      clearNavigationHighlightOutsideCursor(event.textEditor)
-      if (event.kind === vscode.TextEditorSelectionChangeKind.Mouse) {
+    vscode.window.onDidChangeActiveTextEditor(
+      /**
+       * Clear editor-specific navigation holds and highlights, then refresh for the new
+       * active editor.
+       */ () => {
+        clearNavigationHighlight()
         navigationLock = undefined
         navigationHoldUntil = 0
-        scheduleFollow("mouse", event)
-      } else if (event.kind === vscode.TextEditorSelectionChangeKind.Keyboard) {
-        // Keyboard selection events also fire for each typed character. The
-        // pending document refresh will follow the caret once typing settles.
-        if (
-          lastDocumentEditUri === event.textEditor.document.uri.toString() &&
-          Date.now() - lastDocumentEditAt < DOCUMENT_EDIT_DELAY_MS
-        )
-          return
-        scheduleFollow("cursor", event)
-      }
-    }),
-    vscode.window.onDidChangeTextEditorVisibleRanges((event) => {
-      clearNavigationHighlightOutsideViewport(event)
-      if (event.textEditor === vscode.window.activeTextEditor)
-        scheduleFollow("scroll", event)
-    }),
-    tree.onDidChangeVisibility((event) => {
-      navigatorVisible = event.visible
-      if (!event.visible) {
-        if (followTimer) clearTimeout(followTimer)
-        followTimer = undefined
-        return
-      }
-      activeProvider().refresh?.()
-      updatePresentation()
-      scheduleFollow("cursor")
-    }),
-    vscode.workspace.onDidChangeTextDocument((event) => {
-      if (event.contentChanges.length === 0) return
-      if (activeNavigationHighlight?.documentUri === event.document.uri.toString()) {
-        clearNavigationHighlight()
-      }
-      if (
-        navigatorMode === NavigatorMode.Class &&
-        event.document === provider.activeDocument()
-      ) {
-        // Keep the existing tree stable while a user is actively typing. The
-        // trailing refresh still picks up new declarations as soon as editing pauses.
-        lastDocumentEditAt = Date.now()
-        lastDocumentEditUri = event.document.uri.toString()
-        refresh("cursor", false, DOCUMENT_EDIT_DELAY_MS)
-      }
-    }),
-    vscode.workspace.onDidSaveTextDocument((document) => {
-      if (
-        navigatorMode === NavigatorMode.Class &&
-        document === provider.activeDocument()
-      ) {
         lastDocumentEditAt = 0
         refresh("cursor", true)
-      }
-    }),
-    vscode.workspace.onDidChangeConfiguration((event) => {
-      if (
-        event.affectsConfiguration(
-          "pascalAtlas.classNavigator.highlightRange.enabled",
-        ) ||
-        event.affectsConfiguration("pascalAtlas.classNavigator.aiSteps.highlightRange")
-      ) {
-        clearNavigationHighlight()
-      }
-      if (event.affectsConfiguration(NavigatorConfigurationSection)) {
-        const config = vscode.workspace.getConfiguration(NavigatorConfigurationSection)
-        const memberOrder =
-          config?.get<string>("memberOrder", "visibility") ?? "visibility"
-        void tree.updateSortSettings({
-          memberOrder:
-            memberOrder === "source" ? PascalKeyword.Implementation : memberOrder,
-          typeOrder: config?.get("typeOrder", "declaration") ?? "declaration",
-        })
-        refresh()
-      } else if (event.affectsConfiguration("pascalAtlas.enabled")) refresh()
-    }),
+      },
+    ),
+    vscode.window.onDidChangeTextEditorSelection(
+      /**
+       * Track active-editor cursor changes while honoring typing debounce and mouse
+       * navigation overrides.
+       */ (event) => {
+        if (event.textEditor !== vscode.window.activeTextEditor) return
+        clearNavigationHighlightOutsideCursor(event.textEditor)
+        if (event.kind === vscode.TextEditorSelectionChangeKind.Mouse) {
+          navigationLock = undefined
+          navigationHoldUntil = 0
+          scheduleFollow("mouse", event)
+        } else if (event.kind === vscode.TextEditorSelectionChangeKind.Keyboard) {
+          // Keyboard selection events also fire for each typed character. The
+          // pending document refresh will follow the caret once typing settles.
+          if (
+            lastDocumentEditUri === event.textEditor.document.uri.toString() &&
+            Date.now() - lastDocumentEditAt < DOCUMENT_EDIT_DELAY_MS
+          )
+            return
+          scheduleFollow("cursor", event)
+        }
+      },
+    ),
+    vscode.window.onDidChangeTextEditorVisibleRanges(
+      /**
+       * Clear offscreen highlights and follow the active editor's new viewport center.
+       */ (event) => {
+        clearNavigationHighlightOutsideViewport(event)
+        if (event.textEditor === vscode.window.activeTextEditor)
+          scheduleFollow("scroll", event)
+      },
+    ),
+    tree.onDidChangeVisibility(
+      /**
+       * Pause pending follow work when the view is hidden and refresh tracking when it
+       * becomes visible.
+       */ (event) => {
+        navigatorVisible = event.visible
+        if (!event.visible) {
+          if (followTimer) clearTimeout(followTimer)
+          followTimer = undefined
+          return
+        }
+        activeProvider().refresh?.()
+        updatePresentation()
+        scheduleFollow("cursor")
+      },
+    ),
+    vscode.workspace.onDidChangeTextDocument(
+      /**
+       * Clear stale highlights and debounce active-document tree refreshes while the
+       * user is typing.
+       */ (event) => {
+        if (event.contentChanges.length === 0) return
+        if (activeNavigationHighlight?.documentUri === event.document.uri.toString()) {
+          clearNavigationHighlight()
+        }
+        if (
+          navigatorMode === NavigatorMode.Class &&
+          event.document === provider.activeDocument()
+        ) {
+          // Keep the existing tree stable while a user is actively typing. The
+          // trailing refresh still picks up new declarations as soon as editing pauses.
+          lastDocumentEditAt = Date.now()
+          lastDocumentEditUri = event.document.uri.toString()
+          refresh("cursor", false, DOCUMENT_EDIT_DELAY_MS)
+        }
+      },
+    ),
+    vscode.workspace.onDidSaveTextDocument(
+      /** Immediately refresh the active class document after a save. */ (document) => {
+        if (
+          navigatorMode === NavigatorMode.Class &&
+          document === provider.activeDocument()
+        ) {
+          lastDocumentEditAt = 0
+          refresh("cursor", true)
+        }
+      },
+    ),
+    vscode.workspace.onDidChangeConfiguration(
+      /**
+       * Update highlight, AI presentation, and tree settings when relevant configuration
+       * changes.
+       */ (event) => {
+        if (
+          event.affectsConfiguration(
+            "pascalAtlas.classNavigator.highlightRange.enabled",
+          ) ||
+          event.affectsConfiguration(
+            "pascalAtlas.classNavigator.aiSteps.highlightRange",
+          )
+        ) {
+          clearNavigationHighlight()
+        }
+        if (event.affectsConfiguration(NavigatorConfigurationSection)) {
+          const config = vscode.workspace.getConfiguration(
+            NavigatorConfigurationSection,
+          )
+          const memberOrder =
+            config?.get<string>("memberOrder", "visibility") ?? "visibility"
+          void tree.updateSortSettings({
+            memberOrder:
+              memberOrder === "source" ? PascalKeyword.Implementation : memberOrder,
+            typeOrder: config?.get("typeOrder", "declaration") ?? "declaration",
+          })
+          refresh()
+        } else if (event.affectsConfiguration("pascalAtlas.enabled")) refresh()
+      },
+    ),
     {
+      /**
+       * Cancel active AI work, clear navigator focus and source highlights, and stop
+       * pending refresh, follow, and layout timers on shutdown.
+       */
       dispose() {
         activeAiCancellation?.cancel()
         activeAiCancellation?.dispose()

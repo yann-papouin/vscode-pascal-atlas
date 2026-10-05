@@ -169,30 +169,53 @@ export type ControlCenterClientMessage =
         | typeof WebviewMessageKind.OpenSettings
         | typeof WebviewMessageKind.OpenNativeSettings
     }
+/**
+ * Narrow a webview payload to a non-null object record, excluding arrays before
+ * reading message fields.
+ */
 export function isMessageRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
+/**
+ * Validate saved or transmitted navigator search scope, navigation mode, and
+ * kind-filter switches.
+ */
 export function isSearchOptions(value: unknown): value is NavigatorSearchOptions {
   return (
     isMessageRecord(value) &&
     typeof value.scope === "string" &&
     typeof value.navigation === "string" &&
-    ["types", "files", "routines"].every((key) => typeof value[key] === "boolean")
+    ["types", "files", "routines"].every(
+      /** Require each search-category option to be a boolean. */ (key) =>
+        typeof value[key] === "boolean",
+    )
   )
 }
+/**
+ * Validate optional tree selection, expansion IDs, initialization IDs, and scroll
+ * position before restoring browser state.
+ */
 export function isTreeState(value: unknown): value is NavigatorTreeState {
   return (
     isMessageRecord(value) &&
     (value.selectedId == null || typeof value.selectedId === "string") &&
     ["expanded", "initialized"].every(
-      (key) =>
+      /** Validate optional expanded and initialized node-id arrays. */ (key) =>
         value[key] === undefined ||
         (Array.isArray(value[key]) &&
-          value[key].every((id: unknown) => typeof id === "string")),
+          value[key].every(
+            /** Require each restored tree-state node identifier to be text. */ (
+              id: unknown,
+            ) => typeof id === "string",
+          )),
     ) &&
     (value.scrollTop === undefined || typeof value.scrollTop === "number")
   )
 }
+/**
+ * Validate each browser-to-host navigator message by its discriminator and required
+ * payload fields.
+ */
 export function isNavigatorClientMessage(
   value: unknown,
 ): value is NavigatorClientMessage {
@@ -226,6 +249,10 @@ export function isNavigatorClientMessage(
       return false
   }
 }
+/**
+ * Validate setting updates and command/open-settings messages before the host changes
+ * configuration or dispatches actions.
+ */
 export function isControlCenterClientMessage(
   value: unknown,
 ): value is ControlCenterClientMessage {
@@ -243,33 +270,57 @@ export function isControlCenterClientMessage(
     (value.value === null ||
       ["string", "number", "boolean"].includes(typeof value.value) ||
       (Array.isArray(value.value) &&
-        value.value.every((item: unknown) => typeof item === "string")))
+        value.value.every(
+          /** Require each posted string-list item to be text. */ (item: unknown) =>
+            typeof item === "string",
+        )))
   )
 }
 
+/**
+ * Accept the scalar, nullable, or string-array setting values supported by the
+ * settings webview protocol.
+ */
 export function isSettingValue(value: unknown): value is SettingValue {
   return (
     value === null ||
     typeof value === "string" ||
     typeof value === "number" ||
     typeof value === "boolean" ||
-    (Array.isArray(value) && value.every((item: unknown) => typeof item === "string"))
+    (Array.isArray(value) &&
+      value.every(
+        /** Require each posted path-list item to be text. */ (item: unknown) =>
+          typeof item === "string",
+      ))
   )
 }
+/**
+ * Validate bootstrap or state-update settings and numeric project/path counters before
+ * applying them in the browser.
+ */
 export function isControlCenterState(value: unknown): value is ControlCenterState {
   return (
     isMessageRecord(value) &&
     (value.type === undefined || value.type === WebviewMessageKind.State) &&
     isMessageRecord(value.values) &&
     Object.values(value.values).every(
-      (item) => item === undefined || isSettingValue(item),
+      /**
+       * Accept absent setting values and validate supplied values against the setting
+       * protocol.
+       */ (item) => item === undefined || isSettingValue(item),
     ) &&
     isMessageRecord(value.status) &&
     ["workspaces", "projects", "paths"].every(
-      (key) => isMessageRecord(value.status) && typeof value.status[key] === "number",
+      /** Require numeric workspace, project, and path counts in the status payload. */ (
+        key,
+      ) => isMessageRecord(value.status) && typeof value.status[key] === "number",
     )
   )
 }
+/**
+ * Validate persisted tree state and any search options before using VS Code webview
+ * storage.
+ */
 export function isNavigatorSavedState(value: unknown): value is NavigatorSavedState {
   return (
     isTreeState(value) &&

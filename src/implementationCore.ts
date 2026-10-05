@@ -30,6 +30,10 @@ import { ConfigurationSection, LanguageId, SettingKey } from "./shared/identifie
 import { PascalKeyword, CompilerDirective } from "./shared/pascal"
 import { maskPascalNonCode } from "./binarySymbols"
 
+/**
+ * Normalize a Pascal owner/type identity to its lowercase leaf name without generic
+ * arguments for hierarchy/member lookups.
+ */
 function typeKey(typeName: string | undefined) {
   const withoutGenerics = String(typeName || "")
     .replace(/<.*$/, "")
@@ -37,6 +41,10 @@ function typeKey(typeName: string | undefined) {
   return withoutGenerics.toLowerCase().split(".").at(-1) || ""
 }
 
+/**
+ * Build a case-insensitive file/offset key, optionally using the implementation
+ * location for deduplication.
+ */
 function definitionIdentity(definition: NavigatorTarget, useImplementation = false) {
   const offset =
     useImplementation && isInteger(definition.implementationOffset)
@@ -45,6 +53,10 @@ function definitionIdentity(definition: NavigatorTarget, useImplementation = fal
   return `${String(definition.filePath || "").toLowerCase()}:${offset}`
 }
 
+/**
+ * Find transitive descendant type definitions by expanding known ancestor identities
+ * and deduplicating source locations.
+ */
 function descendantTypeDefinitions(
   index: Pick<SourceIndex, "types"> | undefined,
   targetTypeName: string,
@@ -62,8 +74,10 @@ function descendantTypeDefinitions(
         const key = typeKey(definition.symbol)
         if (!key || known.has(key)) continue
         if (
-          !(definition.baseTypes || []).some((baseType: string) =>
-            known.has(typeKey(baseType)),
+          !(definition.baseTypes || []).some(
+            /** Recognize a type whose base list includes an already known ancestor. */ (
+              baseType: string,
+            ) => known.has(typeKey(baseType)),
           )
         )
           continue
@@ -80,6 +94,10 @@ function descendantTypeDefinitions(
   return result
 }
 
+/**
+ * Collect body-backed member definitions from an owner and its descendants, retaining
+ * each implementation location once.
+ */
 function memberImplementationDefinitions(
   index: Pick<SourceIndex, "types" | "members"> | undefined,
   ownerTypeName: string,
@@ -90,7 +108,10 @@ function memberImplementationDefinitions(
   if (!owner || !member) return []
   const owners = [
     owner,
-    ...descendantTypeDefinitions(index, owner).map((item) => typeKey(item.symbol)),
+    ...descendantTypeDefinitions(index, owner).map(
+      /** Normalize descendant names for member-index lookups. */ (item) =>
+        typeKey(item.symbol),
+    ),
   ]
   const result = []
   const seen = new Set()
@@ -106,6 +127,7 @@ function memberImplementationDefinitions(
   return result
 }
 
+/** Collect distinct implementation locations for a named unowned global routine. */
 function routineImplementationDefinitions(
   index: Pick<SourceIndex, "definitions"> | undefined,
   routineName: string,
@@ -129,6 +151,10 @@ function routineImplementationDefinitions(
   return result
 }
 
+/**
+ * Read the leaf owner of the latest qualified routine heading preceding the source
+ * offset.
+ */
 function enclosingRoutineOwner(text: string, offset: number) {
   const code = maskPascalNonCode(text).slice(0, Math.max(0, offset))
   const pattern = new RegExp(
@@ -137,15 +163,21 @@ function enclosingRoutineOwner(text: string, offset: number) {
   )
   let owner
   for (const match of code.matchAll(pattern)) {
-    const parts = match[1]
-      .split(".")
-      .map((item: string) => item.replace(/\s*<.*>\s*$/, "").trim())
+    const parts = match[1].split(".").map(
+      /**
+       * Remove generic arguments and whitespace from qualified name segments before
+       * locating the owner.
+       */ (item: string) => item.replace(/\s*<.*>\s*$/, "").trim(),
+    )
     if (parts.length > 1) owner = parts.at(-2)
   }
   return owner
 }
 
-/** Locate the header semicolon without stopping inside parameters or generic constraints. */
+/**
+ * Locate the header semicolon without stopping inside parameters or generic
+ * constraints.
+ */
 function routineHeaderEnd(code: string, start: number) {
   let parentheses = 0
   let brackets = 0
@@ -164,7 +196,9 @@ function routineHeaderEnd(code: string, start: number) {
   return -1
 }
 
-/** Split a Pascal header at separators outside nested parameter and type expressions. */
+/**
+ * Split a Pascal header at separators outside nested parameter and type expressions.
+ */
 function splitRoutineHeaderText(text: string, separator: string) {
   const parts = []
   let start = 0
@@ -193,7 +227,10 @@ function splitRoutineHeaderText(text: string, separator: string) {
   return parts
 }
 
-/** Match overloads by parameter modes/types and result type, ignoring names and defaults. */
+/**
+ * Serialize the routine name, kind, class modifier, parameters, result, and generic
+ * arity for exact counterpart matching.
+ */
 function routineCounterpartKey(signature: string | undefined, name = "") {
   const code = maskPascalNonCode(signature || "")
     .trim()
@@ -257,7 +294,9 @@ function routineCounterpartKey(signature: string | undefined, name = "") {
   return JSON.stringify(identity)
 }
 
-/** Read complete directive statements, including their source positions for insertion. */
+/**
+ * Read complete directive statements, including their source positions for insertion.
+ */
 function routineDirectiveStatements(code: string, headerEnd: unknown) {
   const result: RoutineDirective[] = []
   if (!isInteger(headerEnd) || headerEnd < 0) return result
@@ -277,16 +316,27 @@ function routineDirectiveStatements(code: string, headerEnd: unknown) {
   return result
 }
 
-/** Read declaration directives only; a later method's abstract directive must not leak back. */
+/**
+ * Read declaration directives only; a later method's abstract directive must not leak
+ * back.
+ */
 function methodDeclarationDirectives(code: string, node: NavigatorTarget) {
   return new Set(
     routineDirectiveStatements(
       code,
       routineHeaderEnd(code, node.declarationOffset ?? 0),
-    ).map((item) => item.name),
+    ).map(
+      /** Collect the names of directives attached to this declaration only. */ (
+        item,
+      ) => item.name,
+    ),
   )
 }
 
+/**
+ * Advance an offset past whitespace without treating comments or tokens as part of
+ * this already masked scan.
+ */
 function skipSpace(code: string, offset: number) {
   while (/\s/.test(code[offset] || "")) offset += 1
   return offset
@@ -503,7 +553,11 @@ function structureLayout(
           )?.[1] || ""
         )
           .split(",")
-          .map((name) => name.trim())
+          .map(
+            /** Trim individual names in a comma-separated member declaration. */ (
+              name,
+            ) => name.trim(),
+          )
           .filter(Boolean)
     for (const name of names) {
       members.push({
@@ -528,7 +582,12 @@ function structureLayout(
                     "gi",
                   ),
                 ),
-            ].map((match) => match[1].toLowerCase())
+            ].map(
+              /**
+               * Normalize read/write accessor names for case-insensitive contract
+               * checks.
+               */ (match) => match[1].toLowerCase(),
+            )
           : [],
       })
     }
@@ -537,7 +596,10 @@ function structureLayout(
   return undefined
 }
 
-/** Read a real class definition, rejecting synthetic Navigator owners and forward-only types. */
+/**
+ * Read the lexical layout at a named class declaration, including forward and
+ * shorthand declarations; return undefined for other offsets.
+ */
 function readClassLayout(text: string, offset: number, preparedCode?: string) {
   const code = preparedCode || maskPascalNonCode(text)
   const name = /^[A-Za-z_][A-Za-z0-9_]*/.exec(code.slice(offset))
@@ -556,7 +618,7 @@ function readClassLayout(text: string, offset: number, preparedCode?: string) {
   return layout && { ...layout, offset, name: name[0] }
 }
 
-/** Index complete declarations once, preserving all overloads for ambiguity checks. */
+/** Index declarations by normalized signature and name without discarding overloads. */
 function indexRoutineDeclarations<T extends NavigatorTarget>(
   nodes: T[],
 ): RoutineDeclarationIndex<T> {
@@ -573,7 +635,10 @@ function indexRoutineDeclarations<T extends NavigatorTarget>(
   return { bySignature, byName }
 }
 
-/** Match a body exactly, or resolve a legal abbreviated heading without guessing an overload. */
+/**
+ * Match a body exactly, or resolve a legal abbreviated heading without guessing an
+ * overload.
+ */
 function findRoutineCounterpart<T extends NavigatorTarget>(
   index: RoutineDeclarationIndex<T>,
   signature: string,
@@ -581,7 +646,9 @@ function findRoutineCounterpart<T extends NavigatorTarget>(
 ): T | undefined {
   const key = routineCounterpartKey(signature, name)
   if (!index || !key) return undefined
-  const available = (node: NavigatorTarget) => !isInteger(node.implementationOffset)
+  const available = /**
+   * Accept routine declarations that do not already have an implementation offset.
+   */ (node: NavigatorTarget) => !isInteger(node.implementationOffset)
   const exact = index.bySignature.get(key)?.find(available)
   if (exact) return exact
   if ((signature || "").includes("(")) return undefined
@@ -605,6 +672,7 @@ function findRoutineCounterpart<T extends NavigatorTarget>(
     : undefined
 }
 
+/** Return the original UTF-16 offset immediately after the preceding newline. */
 function lineStart(text: string, offset: number) {
   return text.lastIndexOf("\n", Math.max(0, offset - 1)) + 1
 }
@@ -639,16 +707,36 @@ function routineDeclarationRange(code: string, nameOffset: number) {
   return { start, end: complete ? end : undefined }
 }
 
-/** Constraints belong to declarations; implementation owner names use only type parameter names. */
+/**
+ * Constraints belong to declarations; implementation owner names use only type
+ * parameter names.
+ */
 function genericParameterNames(contents: string) {
-  return splitRoutineHeaderText(contents, ";").flatMap((group) =>
-    splitRoutineHeaderText(group, ":")[0]
-      .split(",")
-      .map((name: string) => name.trim())
-      .filter((name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)),
+  return splitRoutineHeaderText(contents, ";").flatMap(
+    /**
+     * Extract parameter names from each generic constraint group and combine them in
+     * declaration order.
+     */ (group) =>
+      splitRoutineHeaderText(group, ":")[0]
+        .split(",")
+        .map(
+          /**
+           * Trim each generic parameter name before validating its identifier syntax.
+           */ (name: string) => name.trim(),
+        )
+        .filter(
+          /**
+           * Retain only valid parameter identifiers when rendering generic implementation
+           * names.
+           */ (name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name),
+        ),
   )
 }
 
+/**
+ * Find the balanced closing delimiter for an opening position, returning -1 when the
+ * source never closes it.
+ */
 function closingBracket(code: string, start: number, open: string, close: string) {
   let depth = 0
   for (let index = start; index < code.length; index += 1) {
@@ -658,6 +746,10 @@ function closingBracket(code: string, start: number, open: string, close: string
   return -1
 }
 
+/**
+ * Render declared generic parameter names after a routine/type name, returning an
+ * empty suffix for nongeneric names and undefined for malformed brackets.
+ */
 function genericSuffix(code: string, afterName: number) {
   const start = afterName + (code.slice(afterName).match(/^\s*/)?.[0].length || 0)
   if (code[start] !== "<") return ""
@@ -667,7 +759,10 @@ function genericSuffix(code: string, afterName: number) {
   return names.length ? `<${names.join(", ")}>` : undefined
 }
 
-/** Build a defining heading without defaults, declaration directives or generic constraints. */
+/**
+ * Build a defining heading without defaults, declaration directives or generic
+ * constraints.
+ */
 function implementationHeading(text: string, code: string, target: NavigatorTarget) {
   const heading = code.slice(
     target.declarationStartOffset,
@@ -689,8 +784,11 @@ function implementationHeading(text: string, code: string, target: NavigatorTarg
   if (rest.startsWith("(")) {
     const end = closingBracket(rest, 0, "(", ")")
     if (end < 0) return undefined
-    const parameters = splitRoutineHeaderText(rest.slice(1, end), ";").map((group) =>
-      splitRoutineHeaderText(group, "=")[0].trim(),
+    const parameters = splitRoutineHeaderText(rest.slice(1, end), ";").map(
+      /**
+       * Remove default expressions from each parameter group before rendering the
+       * implementation heading.
+       */ (group) => splitRoutineHeaderText(group, "=")[0].trim(),
     )
     rest = `(${parameters.join("; ")})${rest.slice(end + 1)}`
   }
@@ -709,13 +807,20 @@ function implementationHeading(text: string, code: string, target: NavigatorTarg
   return `${prefix[0]}${qualified}${rest}`.replace(/\s+/g, " ").trim()
 }
 
-/** Comment spans keep trailing notes and attached documentation with their original routine. */
+/**
+ * Source spans for comments and compiler directives used to protect insertion
+ * boundaries.
+ */
 interface CommentSpan {
   start: number
   end: number
   directive: boolean
 }
 
+/**
+ * Locate comments and compiler directives while skipping string literals that merely
+ * contain comment/directive-looking text.
+ */
 function commentSpans(text: string): CommentSpan[] {
   const spans = []
   const tokens = /'(?:''|[^'])*'|\/\/[^\r\n]*|\{[^}]*\}|\(\*[\s\S]*?\*\)/g
@@ -730,6 +835,10 @@ function commentSpans(text: string): CommentSpan[] {
   return spans
 }
 
+/**
+ * Choose a safe insertion boundary before a routine, retaining adjacent documentation
+ * comments with the existing body and stopping at directives or blank separators.
+ */
 function beforeImplementation(
   text: string,
   routine: { header: { start: number } },
@@ -749,6 +858,10 @@ function beforeImplementation(
   return offset
 }
 
+/**
+ * Choose a safe boundary after a complete routine terminator and its same-line
+ * trailing comments.
+ */
 function afterImplementation(
   text: string,
   routine: { terminatorEndOffset?: number },
@@ -765,6 +878,10 @@ function afterImplementation(
   return offset
 }
 
+/**
+ * Count conditional-compilation nesting before an offset so counterpart edits can
+ * reject unsafe directive-guarded insertion points.
+ */
 function conditionalDepthAt(text: string, offset: number) {
   let depth = 0
   for (const comment of commentSpans(text)) {
@@ -826,7 +943,9 @@ function planRoutineImplementation(
   ).exec(code.slice(sectionStart))
   const sectionEnd = lifecycle ? sectionStart + lifecycle.index : finalEnd.index
   const target = (model?.routineNodes || []).find(
-    (node) =>
+    /**
+     * Find the declaration heading containing the caret, including multiline headers.
+     */ (node) =>
       isInteger(node.declarationStartOffset) &&
       caretOffset >= node.declarationStartOffset &&
       caretOffset <=
@@ -863,7 +982,10 @@ function planRoutineImplementation(
   const bodies = model.implementationRoutines || []
   if (
     bodies.some(
-      (body) =>
+      /**
+       * Reject incomplete bodies or bodies extending outside the unit's implementation
+       * section.
+       */ (body) =>
         !body.complete ||
         body.header.start < sectionStart ||
         (body.terminatorEndOffset ?? body.end) > sectionEnd,
@@ -874,24 +996,40 @@ function planRoutineImplementation(
         "Complete the existing implementation blocks before inserting a new routine.",
     }
   }
-  const sameOwner = (node: NavigatorTarget) =>
+  const sameOwner = /**
+   * Test whether a routine belongs to the target class or the same global routine
+   * scope.
+   */ (node: NavigatorTarget) =>
     classMethod
       ? node.parent === target.parent
       : !node.owner && node.routineFlavor === "global"
   const declarations = model.routineNodes
     .filter(
-      (node: NavigatorTarget) =>
+      /**
+       * Keep source-backed declarations belonging to the target class or global
+       * interface scope.
+       */ (node: NavigatorTarget) =>
         sameOwner(node) &&
         isInteger(node.declarationOffset) &&
         (classMethod || (node.declarationOffset ?? Infinity) < implementation.index),
     )
     .sort(
-      (left: NavigatorTarget, right: NavigatorTarget) =>
+      /**
+       * Order eligible declarations by their source offsets to locate immediate
+       * neighbors.
+       */ (left: NavigatorTarget, right: NavigatorTarget) =>
         (left.declarationOffset ?? 0) - (right.declarationOffset ?? 0),
     )
   const index = declarations.indexOf(target)
-  const counterpart = (node: NavigatorTarget) =>
-    bodies.find((body) => body.header.nameOffset === node?.implementationOffset)
+  const counterpart =
+    /** Find the routine body associated with a declaration implementation offset. */ (
+      node: NavigatorTarget,
+    ) =>
+      bodies.find(
+        /** Match a parsed body to the declaration's recorded implementation offset. */ (
+          body,
+        ) => body.header.nameOffset === node?.implementationOffset,
+      )
   const previous = counterpart(declarations[index - 1])
   const next = counterpart(declarations[index + 1])
   let anchor
@@ -908,19 +1046,34 @@ function planRoutineImplementation(
     anchor = next
     before = true
   } else {
-    const ownerBodies = bodies.filter((body) => {
-      if (global) return !body.header.owner
-      return model.routineNodes.some(
-        (node: NavigatorTarget) =>
-          sameOwner(node) && node.implementationOffset === body.header.nameOffset,
-      )
-    })
+    const ownerBodies = bodies.filter(
+      /**
+       * Restrict alphabetical fallback anchors to implementations in the target's scope.
+       */ (body) => {
+        if (global) return !body.header.owner
+        return model.routineNodes.some(
+          /** Check whether this body belongs to a declaration in the target's class. */ (
+            node: NavigatorTarget,
+          ) => sameOwner(node) && node.implementationOffset === body.header.nameOffset,
+        )
+      },
+    )
     const name = (target.name || "").toLowerCase()
-    const equal = ownerBodies.filter((body) => body.header.name.toLowerCase() === name)
+    const equal = ownerBodies.filter(
+      /**
+       * Find existing overload bodies with the same name so the new body stays with its
+       * family.
+       */ (body) => body.header.name.toLowerCase() === name,
+    )
     if (equal.length)
       anchor = equal.at(-1) // Keep overloads together.
     else {
-      anchor = ownerBodies.find((body) => body.header.name.toLowerCase() > name)
+      anchor = ownerBodies.find(
+        /**
+         * Find the first owner-local routine whose name follows the new routine
+         * alphabetically.
+         */ (body) => body.header.name.toLowerCase() > name,
+      )
       before = Boolean(anchor)
       if (!anchor) anchor = ownerBodies.at(-1)
     }
@@ -962,12 +1115,15 @@ function planRoutineImplementation(
       String.raw`^(?:${PascalKeyword.Class}\s+)?(${PascalKeyword.Function}|${PascalKeyword.Procedure})`,
       "i",
     ).exec(heading)?.[1] || ""
-  const casing = (word: string) =>
-    keyword === keyword.toUpperCase()
-      ? word.toUpperCase()
-      : /^[A-Z][a-z]+$/.test(keyword)
-        ? word[0].toUpperCase() + word.slice(1)
-        : word
+  const casing =
+    /** Apply the existing keyword case style to a newly generated Pascal word. */ (
+      word: string,
+    ) =>
+      keyword === keyword.toUpperCase()
+        ? word.toUpperCase()
+        : /^[A-Z][a-z]+$/.test(keyword)
+          ? word[0].toUpperCase() + word.slice(1)
+          : word
   const leftBreaks =
     text
       .slice(0, offset)
@@ -989,12 +1145,18 @@ function planRoutineImplementation(
   }
 }
 
-/** Compact code whitespace without changing defaults or swallowing code after line comments. */
+/**
+ * Compact code whitespace without changing defaults or swallowing code after line
+ * comments.
+ */
 function compactRoutineHeading(text: string) {
   const literals: string[] = []
   const protectedText = text.replace(
     /'(?:''|[^'])*'|\/\/[^\r\n]*|\{[^}]*\}|\(\*[\s\S]*?\*\)/g,
-    (token: string) => {
+    /**
+     * Protect literals and comments from whitespace compaction, retaining a newline
+     * after line comments.
+     */ (token: string) => {
       literals.push(
         token.startsWith("//")
           ? token + (text.includes("\r\n") ? "\r\n" : "\n")
@@ -1006,9 +1168,19 @@ function compactRoutineHeading(text: string) {
   return protectedText
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/\0(\d+)\0/g, (_: string, index: string) => literals[Number(index)])
+    .replace(
+      /\0(\d+)\0/g,
+      /**
+       * Restore each protected literal or comment after compacting the surrounding
+       * heading.
+       */ (_: string, index: string) => literals[Number(index)],
+    )
 }
 
+/**
+ * Apply the reference heading's uppercase/title/lowercase keyword style to generated
+ * Pascal text.
+ */
 function keywordCase(word: string, reference: string | undefined) {
   const first = reference?.match(/[A-Za-z]+/)?.[0] || ""
   return first && first === first.toUpperCase()
@@ -1018,6 +1190,10 @@ function keywordCase(word: string, reference: string | undefined) {
       : word
 }
 
+/**
+ * Derive a compatible declaration heading from a function/procedure implementation,
+ * preserving generic identity and required overload metadata.
+ */
 function declarationFromBody(
   text: string,
   code: string,
@@ -1045,16 +1221,28 @@ function declarationFromBody(
   if (
     (kind === PascalKeyword.Function && !result) ||
     (kind === PascalKeyword.Procedure && result) ||
-    parameters.some(([mode, type]) => !mode && !type)
+    parameters.some(
+      /** Reject an untyped value parameter in the candidate implementation heading. */ ([
+        mode,
+        type,
+      ]) => !mode && !type,
+    )
   )
     return undefined
   const directives = routineDirectiveStatements(code, body.header.headerEnd)
-    .filter((item) =>
-      new RegExp(
-        String.raw`^(${PascalKeyword.Cdecl}|${PascalKeyword.Stdcall}|${PascalKeyword.Safecall}|${PascalKeyword.Register}|pascal|${PascalKeyword.Varargs})$`,
-      ).test(item.name),
+    .filter(
+      /**
+       * Retain calling-convention directives that must accompany the copied declaration.
+       */ (item) =>
+        new RegExp(
+          String.raw`^(${PascalKeyword.Cdecl}|${PascalKeyword.Stdcall}|${PascalKeyword.Safecall}|${PascalKeyword.Register}|pascal|${PascalKeyword.Varargs})$`,
+        ).test(item.name),
     )
-    .map((item) => compactRoutineHeading(text.slice(item.start, item.end)))
+    .map(
+      /** Copy the original directive text with only safe whitespace compaction. */ (
+        item,
+      ) => compactRoutineHeading(text.slice(item.start, item.end)),
+    )
   if (overloaded)
     directives.unshift(`${keywordCase(PascalKeyword.Overload, prefix[1])};`)
   return {
@@ -1078,9 +1266,22 @@ function overloadParameterKey(key: string) {
     string,
     number?,
   ]
-  return JSON.stringify([name, arity, parameters.map(([, type]) => type)])
+  return JSON.stringify([
+    name,
+    arity,
+    parameters.map(
+      /**
+       * Use parameter types alone when checking whether declarations could legally form an
+       * overload family.
+       */ ([, type]) => type,
+    ),
+  ])
 }
 
+/**
+ * Augment a parsed member span with signature identity and directive metadata used to
+ * locate counterpart declarations.
+ */
 function declarationEntry(
   text: string,
   code: string,
@@ -1094,11 +1295,16 @@ function declarationEntry(
     signature,
     routineSignatureKey: routineCounterpartKey(signature, member.name),
     routineOverloaded: (member.directives || []).some(
-      (item) => item.name === PascalKeyword.Overload,
+      /** Record whether the member already carries the overload directive. */ (item) =>
+        item.name === PascalKeyword.Overload,
     ),
   }
 }
 
+/**
+ * Locate the boundary before a member declaration while retaining its attributes and
+ * attached comments.
+ */
 function declarationInsertionBefore(
   text: string,
   entry: DeclarationEntry,
@@ -1111,6 +1317,10 @@ function declarationInsertionBefore(
   )
 }
 
+/**
+ * Locate the boundary after a complete member declaration and any same-line trailing
+ * comments.
+ */
 function declarationInsertionAfter(
   text: string,
   entry: DeclarationEntry,
@@ -1119,7 +1329,10 @@ function declarationInsertionAfter(
   return afterImplementation(text, { terminatorEndOffset: entry.end }, comments)
 }
 
-/** Keep insertions at the same position ordered and translate the caret through all repairs. */
+/**
+ * Keep insertions at the same position ordered and translate the caret through all
+ * repairs.
+ */
 function finishCounterpartPlan(
   main: SourceEdit & { caretRelative: number },
   repairs: SourceEdit[],
@@ -1139,14 +1352,29 @@ function finishCounterpartPlan(
     } else edits.push(repair)
   }
   edits.push({ offset: main.offset, endOffset: main.endOffset, text: main.text })
-  edits.sort((left, right) => left.offset - right.offset)
+  edits.sort(
+    /**
+     * Order planned edits by source offset before checking overlap and translating the
+     * caret.
+     */ (left, right) => left.offset - right.offset,
+  )
   for (let index = 1; index < edits.length; index += 1) {
     if (edits[index].offset < edits[index - 1].endOffset)
       return { reason: "The required declaration edits overlap." }
   }
   const shift = edits
-    .filter((edit) => edit.offset < main.offset)
-    .reduce((sum, edit) => sum + edit.text.length - (edit.endOffset - edit.offset), 0)
+    .filter(
+      /**
+       * Select edits that move the insertion position because they occur earlier in the
+       * document.
+       */ (edit) => edit.offset < main.offset,
+    )
+    .reduce(
+      /**
+       * Accumulate text-length changes caused by edits before the counterpart insertion.
+       */ (sum, edit) => sum + edit.text.length - (edit.endOffset - edit.offset),
+      0,
+    )
   return {
     edits,
     caretOffset: main.offset + caretRelative + shift,
@@ -1179,7 +1407,7 @@ function planRoutineDeclaration(
   }
   const bodies = model?.implementationRoutines || []
   const body = bodies.find(
-    (item) =>
+    /** Find the top-level implementation body containing the caret. */ (item) =>
       caretOffset >= item.header.start &&
       caretOffset <= (item.terminatorEndOffset ?? item.end),
   )
@@ -1189,7 +1417,10 @@ function planRoutineDeclaration(
     }
   if (
     body.children.some(
-      (child) => caretOffset >= child.header.start && caretOffset < child.end,
+      /**
+       * Reject caret positions inside local routines rather than exporting them into
+       * the class or unit interface.
+       */ (child) => caretOffset >= child.header.start && caretOffset < child.end,
     )
   ) {
     return {
@@ -1197,7 +1428,9 @@ function planRoutineDeclaration(
     }
   }
   const target = model.routineNodes.find(
-    (node: NavigatorTarget) => node.implementationOffset === body.header.nameOffset,
+    /** Find the navigator routine associated with the parsed body's header. */ (
+      node: NavigatorTarget,
+    ) => node.implementationOffset === body.header.nameOffset,
   )
   if (
     !target ||
@@ -1223,43 +1456,73 @@ function planRoutineDeclaration(
   if (
     (layout &&
       layout.members.some(
-        (member) =>
+        /**
+         * Check whether the target already appears among the class's routine
+         * declarations.
+         */ (member) =>
           member.kind === "routine" && member.nameOffset === target.declarationOffset,
       )) ||
     (global && (target.declarationOffset ?? Infinity) < implementation.index)
   )
     return { reason: "This routine already has a declaration." }
   const bodyDirectives = routineDirectiveStatements(code, body.header.headerEnd)
-  if (bodyDirectives.some((item) => item.name === PascalKeyword.Forward))
+  if (
+    bodyDirectives.some(
+      /**
+       * Reject forward headings, which do not provide an implementation body to copy.
+       */ (item) => item.name === PascalKeyword.Forward,
+    )
+  )
     return { reason: "A forward declaration is not a routine implementation." }
   let declarations
   if (layout)
     declarations = layout.members
-      .filter((member) => member.kind === "routine")
-      .map((member) => declarationEntry(text, code, member))
+      .filter(
+        /** Select routine members from the class layout for counterpart matching. */ (
+          member,
+        ) => member.kind === "routine",
+      )
+      .map(
+        /**
+         * Build signature and directive metadata for each class routine declaration.
+         */ (member) => declarationEntry(text, code, member),
+      )
   else
     declarations = model.routineNodes
       .filter(
-        (node: NavigatorTarget) =>
+        /** Select unowned routine declarations from the unit's interface section. */ (
+          node: NavigatorTarget,
+        ) =>
           !node.owner &&
           node.routineFlavor === "global" &&
           (node.declarationOffset ?? Infinity) < implementation.index,
       )
-      .map((node: NavigatorTarget) => {
-        const directives = routineDirectiveStatements(
-          code,
-          node.declarationHeaderEndOffset,
-        )
-        return declarationEntry(text, code, {
-          name: node.name || "",
-          nameOffset: node.declarationOffset,
-          start: node.declarationStartOffset ?? 0,
-          headerEnd: node.declarationHeaderEndOffset,
-          end: directives.at(-1)?.end ?? node.declarationHeaderEndOffset ?? 0,
-          directives,
-        })
-      })
-  if (declarations.some((entry) => !entry.headerEnd || !entry.routineSignatureKey)) {
+      .map(
+        /**
+         * Build declaration metadata from each global routine's source heading and
+         * attached directives.
+         */ (node: NavigatorTarget) => {
+          const directives = routineDirectiveStatements(
+            code,
+            node.declarationHeaderEndOffset,
+          )
+          return declarationEntry(text, code, {
+            name: node.name || "",
+            nameOffset: node.declarationOffset,
+            start: node.declarationStartOffset ?? 0,
+            headerEnd: node.declarationHeaderEndOffset,
+            end: directives.at(-1)?.end ?? node.declarationHeaderEndOffset ?? 0,
+            directives,
+          })
+        },
+      )
+  if (
+    declarations.some(
+      /** Reject declarations whose headers or signature identities are incomplete. */ (
+        entry,
+      ) => !entry.headerEnd || !entry.routineSignatureKey,
+    )
+  ) {
     return { reason: "Complete the existing declarations before adding a counterpart." }
   }
   const heading = declarationFromBody(text, code, body, false)
@@ -1268,14 +1531,25 @@ function planRoutineDeclaration(
       reason:
         "The implementation must supply a complete parameter and result signature.",
     }
-  if (declarations.some((entry) => entry.routineSignatureKey === heading.key))
+  if (
+    declarations.some(
+      /** Detect an existing declaration with the exact counterpart signature. */ (
+        entry,
+      ) => entry.routineSignatureKey === heading.key,
+    )
+  )
     return { reason: "This routine already has a declaration." }
   const family = declarations.filter(
-    (entry) => entry.name.toLowerCase() === (target.name || "").toLowerCase(),
+    /**
+     * Collect declarations sharing the target name for overload compatibility checks.
+     */ (entry) => entry.name.toLowerCase() === (target.name || "").toLowerCase(),
   )
   if (
     family.some(
-      (entry) =>
+      /**
+       * Reject signatures with the same parameter types that cannot form a distinct
+       * overload.
+       */ (entry) =>
         overloadParameterKey(entry.routineSignatureKey || "") ===
         overloadParameterKey(heading.key),
     )
@@ -1287,7 +1561,10 @@ function planRoutineDeclaration(
   }
   if (
     layout?.members.some(
-      (member) =>
+      /**
+       * Detect a conflicting nonroutine member or a property accessor that prevents
+       * overload creation.
+       */ (member) =>
         (member.kind !== "routine" &&
           member.name.toLowerCase() === (target.name || "").toLowerCase()) ||
         (family.length &&
@@ -1298,11 +1575,17 @@ function planRoutineDeclaration(
       reason: "The name conflicts with a class member or property-accessor contract.",
     }
   }
-  const sameOwner = (item: RoutineBody) =>
+  const sameOwner = /**
+   * Test whether an implementation belongs to the requested global or class
+   * declaration scope.
+   */ (item: RoutineBody) =>
     global
       ? !item.header.owner
       : model.routineNodes.some(
-          (node: NavigatorTarget) =>
+          /**
+           * Match the parsed implementation to a routine under the requested class
+           * owner.
+           */ (node: NavigatorTarget) =>
             node.parent === owner &&
             node.implementationOffset === item.header.nameOffset,
         )
@@ -1360,18 +1643,30 @@ function planRoutineDeclaration(
   const position = ownerBodies.indexOf(body)
   let previous = entryByBody.get(ownerBodies[position - 1])
   let next = entryByBody.get(ownerBodies[position + 1])
-  const category = (access: string | undefined) =>
+  const category = /**
+   * Normalize strict visibility labels to their base category when choosing an
+   * insertion section.
+   */ (access: string | undefined) =>
     access?.replace(new RegExp(String.raw`^${PascalKeyword.Strict}-`), "")
   let section: StructureSection | undefined
   if (layout) {
     const available = [previous, next].filter(
-      (entry): entry is DeclarationEntry => entry !== undefined,
+      /** Keep only neighboring declarations that actually have counterparts. */ (
+        entry,
+      ): entry is DeclarationEntry => entry !== undefined,
     )
     const preferred = available.some(
-      (entry) => category(entry.access) === PascalKeyword.Protected,
+      /**
+       * Prefer a protected neighbor when selecting the declaration's visibility
+       * category.
+       */ (entry) => category(entry.access) === PascalKeyword.Protected,
     )
       ? PascalKeyword.Protected
-      : available.some((entry) => category(entry.access) === PascalKeyword.Private)
+      : available.some(
+            /** Prefer a private neighbor when no protected neighbor is available. */ (
+              entry,
+            ) => category(entry.access) === PascalKeyword.Private,
+          )
         ? PascalKeyword.Private
         : PascalKeyword.Public
     previous = category(previous?.access) === preferred ? previous : undefined
@@ -1383,8 +1678,17 @@ function planRoutineDeclaration(
   let anchor
   let before = false
   const ordered = declarations
-    .filter((entry) => !layout || entry.section === (previous || next)?.section)
-    .sort((left, right) => left.start - right.start)
+    .filter(
+      /**
+       * Keep declaration-order comparisons within the chosen lexical visibility section.
+       */ (entry) => !layout || entry.section === (previous || next)?.section,
+    )
+    .sort(
+      /** Order same-section declarations by their original source positions. */ (
+        left,
+        right,
+      ) => left.start - right.start,
+    )
   if (
     previous &&
     next &&
@@ -1397,15 +1701,30 @@ function planRoutineDeclaration(
     before = true
   } else {
     const pool = declarations
-      .filter((entry) => !layout || entry.access === PascalKeyword.Public)
-      .sort((left, right) => left.start - right.start)
+      .filter(
+        /**
+         * Use public class declarations, or all global declarations, for alphabetical
+         * fallback placement.
+         */ (entry) => !layout || entry.access === PascalKeyword.Public,
+      )
+      .sort(
+        /**
+         * Order fallback anchors by source position so overload families remain
+         * together.
+         */ (left, right) => left.start - right.start,
+      )
     const equal = pool.filter(
-      (entry) => entry.name.toLowerCase() === (target.name || "").toLowerCase(),
+      /**
+       * Find same-name declarations in the fallback pool to keep overloads together.
+       */ (entry) => entry.name.toLowerCase() === (target.name || "").toLowerCase(),
     )
     if (equal.length) anchor = equal.at(-1)
     else {
       anchor = pool.find(
-        (entry) => entry.name.toLowerCase() > (target.name || "").toLowerCase(),
+        /**
+         * Find the first fallback declaration whose name follows the target
+         * alphabetically.
+         */ (entry) => entry.name.toLowerCase() > (target.name || "").toLowerCase(),
       )
       before = Boolean(anchor)
       anchor ||= pool.at(-1)
@@ -1413,7 +1732,12 @@ function planRoutineDeclaration(
     section = layout
       ? anchor
         ? layout.sections[anchor.section ?? -1]
-        : layout.sections.find((item) => item.access === PascalKeyword.Public)
+        : layout.sections.find(
+            /**
+             * Use an existing public visibility section when no declaration supplies an
+             * anchor.
+             */ (item) => item.access === PascalKeyword.Public,
+          )
       : undefined
   }
   const eol = editorOptions.eol || (text.includes("\r\n") ? "\r\n" : "\n")
@@ -1422,18 +1746,27 @@ function planRoutineDeclaration(
     editorOptions.insertSpaces === false
       ? "\t"
       : " ".repeat(Number.isFinite(size) && size > 0 ? Math.floor(size) : 2)
-  const leadingIndent = (offset: number) =>
-    text.slice(lineStart(text, offset), offset).match(/^[ \t]*/)?.[0] || ""
+  const leadingIndent =
+    /** Read indentation from the source line containing an insertion offset. */ (
+      offset: number,
+    ) => text.slice(lineStart(text, offset), offset).match(/^[ \t]*/)?.[0] || ""
   const classIndent = layout ? leadingIndent(layout.offset) : ""
   const visibilityIndent = layout
     ? leadingIndent(
-        layout.sections.find((item) => !item.implicit)?.start ?? layout.offset,
+        layout.sections.find(
+          /**
+           * Find an explicit visibility label to infer the class's visibility
+           * indentation.
+           */ (item) => !item.implicit,
+        )?.start ?? layout.offset,
       )
     : ""
   const sample =
     anchor ||
     layout?.members.find(
-      (member) => member.section === (section ? layout.sections.indexOf(section) : -1),
+      /** Find a member in the selected section to infer declaration indentation. */ (
+        member,
+      ) => member.section === (section ? layout.sections.indexOf(section) : -1),
     ) ||
     layout?.members[0]
   const memberIndent =
@@ -1444,11 +1777,17 @@ function planRoutineDeclaration(
         : ""
   const needsOverload =
     family.length > 0 ||
-    bodyDirectives.some((item) => item.name === PascalKeyword.Overload)
+    bodyDirectives.some(
+      /**
+       * Preserve an overload directive already present on the implementation heading.
+       */ (item) => item.name === PascalKeyword.Overload,
+    )
   if (
     needsOverload &&
-    layout?.members.some((member) =>
-      member.accessors?.includes((target.name || "").toLowerCase()),
+    layout?.members.some(
+      /**
+       * Reject overload creation when a property depends on the routine as an accessor.
+       */ (member) => member.accessors?.includes((target.name || "").toLowerCase()),
     )
   ) {
     return { reason: "A property-accessor contract cannot be made overloaded." }
@@ -1482,7 +1821,15 @@ function planRoutineDeclaration(
     const midLine = Boolean(text.slice(lineStart(text, offset), offset).trim())
     let prefix = midLine ? eol : ""
     if (layout && !section)
-      prefix += `${visibilityIndent}${keywordCase(PascalKeyword.Public, layout.sections.find((item) => item.spelling)?.spelling || layout.keyword)}${eol}`
+      prefix += `${visibilityIndent}${keywordCase(
+        PascalKeyword.Public,
+        layout.sections.find(
+          /**
+           * Reuse an existing visibility label's spelling when adding a new public
+           * section.
+           */ (item) => item.spelling,
+        )?.spelling || layout.keyword,
+      )}${eol}`
     if (!layout && !anchor && !/\n[ \t\r]*\n$/.test(text.slice(0, offset)))
       prefix += eol
     prefix += memberIndent
@@ -1510,8 +1857,12 @@ function planRoutineDeclaration(
       }
     if (!entry.routineOverloaded) {
       const offset =
-        entry.directives.find((item) => item.name === PascalKeyword.Reintroduce)?.end ??
-        entry.headerEnd
+        entry.directives.find(
+          /**
+           * Place an added overload directive after reintroduce when that directive is
+           * present.
+           */ (item) => item.name === PascalKeyword.Reintroduce,
+        )?.end ?? entry.headerEnd
       const reference = new RegExp(
         String.raw`^(?:${PascalKeyword.Class}\s+)?([A-Za-z]+)`,
         "i",
@@ -1523,7 +1874,10 @@ function planRoutineDeclaration(
       })
     }
     const existing = ownerBodies.find(
-      (item) => item.header.nameOffset === entry.implementationOffset,
+      /**
+       * Locate an overload body whose abbreviated heading may need explicit parameters
+       * or a result type.
+       */ (item) => item.header.nameOffset === entry.implementationOffset,
     )
     if (
       existing &&
@@ -1575,7 +1929,10 @@ function planRoutineCounterpart(
 ): CounterpartPlan | PlanFailure {
   const implementation = /\bimplementation\b/i.exec(maskPascalNonCode(text))
   const declaration = model?.routineNodes?.find(
-    (node: NavigatorTarget) =>
+    /**
+     * Determine whether the caret belongs to a declaration before selecting the
+     * forward or reverse planner.
+     */ (node: NavigatorTarget) =>
       isInteger(node.declarationStartOffset) &&
       caretOffset >= node.declarationStartOffset &&
       caretOffset <=
@@ -1595,18 +1952,31 @@ function planRoutineCounterpart(
       }
 }
 
-/** Execute a version-checked counterpart edit and all required repairs in one undo group. */
+/**
+ * Execute a version-checked counterpart edit and all required repairs in one undo
+ * group.
+ */
 function createImplementationCommand<
   P extends EditorPosition,
   R extends EditorRange<P>,
   S extends EditorSelection<P>,
-  U extends { scheme?: string; toString(): string },
+  U extends {
+    scheme?: string
+    /**
+     * Return the URI identity used to prevent concurrent edits of the same document.
+     */
+    toString(): string
+  },
 >(
   vscode: ImplementationApi<P, R, S, U>,
   {
     readyModel,
     onCreated,
   }: {
+    /**
+     * Await a source model before planning edits; an unavailable model prevents
+     * creation.
+     */
     readyModel(
       document: EditableDocument<P, U>,
     ): PromiseLike<CounterpartModel | undefined>
@@ -1617,10 +1987,13 @@ function createImplementationCommand<
   },
 ) {
   const pending = new Set()
-  return async () => {
+  return /** Plan and create a routine counterpart for the active writable Pascal document. */ async () => {
     const editor = vscode.window.activeTextEditor
     const document = editor?.document
-    const inform = (message: string) => {
+    const inform = /**
+     * Show why counterpart creation cannot proceed and return the command failure
+     * result.
+     */ (message: string) => {
       void vscode.window.showInformationMessage(message)
       return false
     }
@@ -1666,7 +2039,10 @@ function createImplementationCommand<
       if (plan.reason !== undefined) return inform(plan.reason)
       let inserted = false
       const changed = await editor.edit(
-        (builder) => {
+        /**
+         * Apply counterpart edits only while the captured editor and document version
+         * are current.
+         */ (builder) => {
           if (document.version !== version || vscode.window.activeTextEditor !== editor)
             return
           for (const edit of plan.edits) {

@@ -20,21 +20,33 @@ import * as path from "node:path"
 import { createHash } from "node:crypto"
 import { decodeXml, normalizeKey } from "./projectDiscovery"
 
+/**
+ * Read and decode the first named project XML element, returning undefined when its
+ * value is absent or empty.
+ */
 function xmlValue(xml: string, name: string) {
   const expression = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, "i")
   const value = expression.exec(xml)?.[1]
   return value ? decodeXml(value).trim() : undefined
 }
 
+/**
+ * Expand case-insensitive MSBuild property references for up to eight passes,
+ * retaining unresolved macros and stopping once the value stabilizes.
+ */
 function expandSimpleProperties(
   value: string,
   properties: Readonly<Record<string, string>>,
 ) {
   let result = value || ""
+  // Bound recursive macro expansion so mutually dependent project properties cannot keep the extension host in an infinite loop.
   for (let pass = 0; pass < 8; pass += 1) {
     const next = result.replace(
       /\$\(([^)]+)\)/g,
-      (whole, name) => properties[name.toLowerCase()] ?? whole,
+      /**
+       * Expand known compiler properties while retaining unknown placeholders
+       * verbatim.
+       */ (whole, name) => properties[name.toLowerCase()] ?? whole,
     )
     if (next === result) break
     result = next
@@ -42,13 +54,20 @@ function expandSimpleProperties(
   return result
 }
 
+/**
+ * Remove navigation-injected source directories from compiler search paths, rejecting
+ * unresolved macros and canonical duplicates.
+ */
 function excludeManagedSourcePaths(
   paths: readonly string[],
   managedPaths: readonly string[],
 ) {
   const managedKeys = new Set(
     (managedPaths || [])
-      .filter((value) => typeof value === "string" && value.trim())
+      .filter(
+        /** Discard non-string and blank search-path entries. */ (value) =>
+          typeof value === "string" && value.trim(),
+      )
       .map(normalizeKey),
   )
   const result = []
@@ -65,6 +84,10 @@ function excludeManagedSourcePaths(
   return result
 }
 
+/**
+ * Copy the process environment, remove every casing of the inherited DCC search-path
+ * variable, and insert only the supplied compiler paths.
+ */
 function compilerEnvironmentWithSearchPath(
   environment: NodeJS.ProcessEnv,
   searchPaths: readonly string[],
@@ -77,6 +100,10 @@ function compilerEnvironmentWithSearchPath(
   return result
 }
 
+/**
+ * Evaluate the supported sanitized MSBuild condition subset after property expansion;
+ * absent conditions match and unsupported or invalid expressions do not.
+ */
 function conditionMatches(
   condition: string | undefined,
   properties: Readonly<Record<string, string>>,
@@ -97,6 +124,10 @@ function conditionMatches(
   }
 }
 
+/**
+ * Apply matching project property groups in XML order while retaining explicit build
+ * overrides and supplying default Debug/Win32 values.
+ */
 function evaluateProjectProperties(xml: string, overrides: ProjectOverrides = {}) {
   const properties: Record<string, string> = {}
   if (overrides.configuration && overrides.configuration !== "auto")
@@ -136,6 +167,10 @@ function evaluateProjectProperties(xml: string, overrides: ProjectOverrides = {}
   return properties
 }
 
+/**
+ * Read a Delphi project and referenced main source to resolve configuration, platform,
+ * compiler defines, source references, and usable compiler paths.
+ */
 function readProjectInfo(projectPath: string, overrides: ProjectOverrides = {}) {
   const xml = fs.readFileSync(projectPath, "utf8")
   const projectDir = path.dirname(projectPath)
@@ -196,16 +231,30 @@ function readProjectInfo(projectPath: string, overrides: ProjectOverrides = {}) 
     platform: baseProperties.platform,
     references: [
       ...new Map(
-        references.map((item) => [normalizeKey(item), path.resolve(item)]),
+        references.map(
+          /** Pair case-insensitive reference path keys with their absolute paths. */ (
+            item,
+          ) => [normalizeKey(item), path.resolve(item)],
+        ),
       ).values(),
     ],
     searchPaths: [
-      ...new Map(searchPaths.map((item) => [normalizeKey(item), item])).values(),
+      ...new Map(
+        searchPaths.map(
+          /** Pair normalized search-path keys with the original path spellings. */ (
+            item,
+          ) => [normalizeKey(item), item],
+        ),
+      ).values(),
     ],
     defines: [...defines],
   }
 }
 
+/**
+ * Read Vallenta's active-project selection relative to a workspace, returning
+ * undefined for missing, invalid, or unusable state.
+ */
 function readActiveProject(workspaceRoot: string) {
   const filePath = path.join(workspaceRoot, ".vallenta", "projects.local.json")
   try {
@@ -220,11 +269,19 @@ function readActiveProject(workspaceRoot: string) {
   }
 }
 
+/**
+ * Check containment with a relative path rather than a string prefix so similarly
+ * named sibling directories are not treated as children.
+ */
 function pathIsInside(parent: string, candidate: string) {
   const relative = path.relative(parent, candidate)
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
 }
 
+/**
+ * Choose a source file's owning project by explicit membership, active selection, then
+ * deepest containing project directory.
+ */
 function resolveOwningProject(
   filePath: string,
   projects: readonly ProjectInfo[],
@@ -233,28 +290,54 @@ function resolveOwningProject(
   const fileKey = normalizeKey(filePath)
   const activeKey = activeProjectPath ? normalizeKey(activeProjectPath) : undefined
   const direct = projects.filter(
-    (project) =>
-      project.references.some((item) => normalizeKey(item) === fileKey) ||
+    /**
+     * Select projects that directly reference this file or use it as their main
+     * source.
+     */ (project) =>
+      project.references.some(
+        /** Match a project reference to the normalized source-file identity. */ (
+          item,
+        ) => normalizeKey(item) === fileKey,
+      ) ||
       (project.mainSource && normalizeKey(project.mainSource) === fileKey),
   )
+  // Explicit project membership outranks directory proximity; the active project breaks ties only within the applicable candidates.
   const activeDirect = direct.find(
-    (project) => normalizeKey(project.projectPath) === activeKey,
+    /** Prefer the active project among direct source owners. */ (project) =>
+      normalizeKey(project.projectPath) === activeKey,
   )
   if (activeDirect) return activeDirect
   if (direct.length > 0) return direct[0]
   const containing = projects
-    .filter((project) => pathIsInside(project.projectDir, filePath))
-    .sort((left, right) => right.projectDir.length - left.projectDir.length)
+    .filter(
+      /** Select project directories that contain the source file. */ (project) =>
+        pathIsInside(project.projectDir, filePath),
+    )
+    .sort(
+      /**
+       * Prefer the deepest project directory when multiple directories contain the
+       * source file.
+       */ (left, right) => right.projectDir.length - left.projectDir.length,
+    )
   const activeContaining = containing.find(
-    (project) => normalizeKey(project.projectPath) === activeKey,
+    /** Prefer the active project among containing source owners. */ (project) =>
+      normalizeKey(project.projectPath) === activeKey,
   )
   return activeContaining || containing[0]
 }
 
+/**
+ * Quote a path for Pascal source, doubling apostrophes so the result remains a valid
+ * string literal.
+ */
 function pascalQuote(value: string) {
   return `'${value.replace(/'/g, "''")}'`
 }
 
+/**
+ * Resolve an include/resource path relative to the original source, substituting
+ * filename wildcards and retaining unresolved MSBuild macros.
+ */
 function resolveDirectivePath(rawPath: string, originalPath: string) {
   let value = rawPath.replace(/''/g, "'")
   if (path.isAbsolute(value) || /^\$\([^)]+\)/.test(value)) return value
@@ -266,15 +349,26 @@ function resolveDirectivePath(rawPath: string, originalPath: string) {
   return path.resolve(path.dirname(originalPath), value)
 }
 
+/**
+ * Rebase source in/include/resource references for isolated shadow compilation,
+ * redirecting known dirty files while retaining other resolved paths.
+ */
 function rewritePascalPaths(
   text: string,
   originalPath: string,
   shadowByOriginal: ReadonlyMap<string, string> = new Map(),
 ) {
+  /**
+   * Redirect an original canonical source path to its shadow copy when one exists;
+   * otherwise preserve the resolved original path.
+   */
   const lookup = (value: string) => shadowByOriginal.get(normalizeKey(value)) || value
   let result = text.replace(
     new RegExp(String.raw`(\b${PascalKeyword.In}\s*)'((?:''|[^'])+)'`, "gi"),
-    (whole, prefix, rawPath) => {
+    /**
+     * Rewrite a Pascal source path to its shadow-source location while preserving
+     * quoting.
+     */ (whole, prefix, rawPath) => {
       const resolved = path.resolve(
         path.dirname(originalPath),
         rawPath.replace(/''/g, "'"),
@@ -287,7 +381,10 @@ function rewritePascalPaths(
       String.raw`(\{\$\s*(?:I|${CompilerDirective.INCLUDE}|R|RESOURCE)\s+)(?:'((?:''|[^'])+)'|([^}\s]+))(\s*\})`,
       "gi",
     ),
-    (whole, prefix, quoted, bare, suffix) => {
+    /**
+     * Rewrite a compiler directive path while preserving its prefix, suffix, and
+     * Pascal quoting.
+     */ (whole, prefix, quoted, bare, suffix) => {
       const resolved = resolveDirectivePath(quoted || bare, originalPath)
       return `${prefix}${pascalQuote(lookup(resolved))}${suffix}`
     },
@@ -295,6 +392,10 @@ function rewritePascalPaths(
   return result
 }
 
+/**
+ * Normalize compiler labels or diagnostic-code prefixes to error, warning, or hint;
+ * return undefined for unrelated output.
+ */
 function compilerSeverity(value: string, code: string) {
   const normalized = `${value || ""} ${code || ""}`.toLowerCase()
   if (/fatal|\bf\d{4}\b/.test(normalized)) return "error"
@@ -304,6 +405,10 @@ function compilerSeverity(value: string, code: string) {
   return undefined
 }
 
+/**
+ * Extract diagnostics from supported dcc/MSBuild output layouts, retaining original
+ * lines and ignoring lines with no recognized severity.
+ */
 function parseCompilerOutput(output: string) {
   const results = []
   const patterns = [
@@ -381,9 +486,17 @@ function parseCompilerOutput(output: string) {
       })
     }
   }
-  return results.filter((item) => item.severity)
+  return results.filter(
+    /** Keep parsed compiler messages with a recognized diagnostic severity. */ (
+      item,
+    ) => item.severity,
+  )
 }
 
+/**
+ * Fingerprint compiler-relevant project inputs and the project file stamp so
+ * configuration or project changes select a fresh diagnostics cache.
+ */
 function cacheKey(
   project: Pick<
     ProjectInfo,
@@ -423,19 +536,27 @@ class ProjectTaskPool<T = unknown> {
   readonly maxParallel: number
   readonly running = new Map<string, { controller: AbortController }>()
   readonly queued = new Map<string, QueuedProjectTask<T>>()
+  /** Create a project-keyed task queue with at least one concurrent execution slot. */
   constructor(maxParallel = 2) {
     this.maxParallel = Math.max(1, maxParallel)
   }
+  /**
+   * Replace pending work for a project, settle the superseded caller, and queue the
+   * new operation with priority and an abort signal.
+   */
   enqueue(
     projectKey: string,
     priority: number,
     run: (signal: AbortSignal) => T | Promise<T>,
   ): Promise<T | ProjectTaskFailure> {
+    // A new queued request supersedes the old one, but the old caller still needs a cancellation result rather than an abandoned promise.
     this.queued.get(projectKey)?.resolve({ cancelled: true, reason: "superseded" })
     let resolve!: (value: T | ProjectTaskFailure) => void
-    const promise = new Promise<T | ProjectTaskFailure>((done) => {
-      resolve = done
-    })
+    const promise = new Promise<T | ProjectTaskFailure>(
+      /** Capture the resolver used to settle a queued project task. */ (done) => {
+        resolve = done
+      },
+    )
     this.queued.set(projectKey, {
       projectKey,
       priority,
@@ -446,6 +567,10 @@ class ProjectTaskPool<T = unknown> {
     this.pump()
     return promise
   }
+  /**
+   * Settle queued work as cancelled and request cancellation of active work for the
+   * same project key.
+   */
   cancel(projectKey: string, reason = "cancelled"): void {
     const queued = this.queued.get(projectKey)
     if (queued) {
@@ -454,29 +579,48 @@ class ProjectTaskPool<T = unknown> {
     }
     this.running.get(projectKey)?.controller.abort(reason)
   }
+  /** Cancel both queued and running project work with a shared reason. */
   cancelAll(reason = "cancelled"): void {
     for (const key of [...this.queued.keys(), ...this.running.keys()])
       this.cancel(key, reason)
   }
+  /**
+   * Start highest-priority queued work up to the concurrency limit, settle results or
+   * failures, and refill slots after each completion.
+   */
   pump(): void {
     while (this.running.size < this.maxParallel && this.queued.size > 0) {
       const task = [...this.queued.values()].sort(
-        (left, right) =>
-          right.priority - left.priority || left.sequence - right.sequence,
+        /** Prioritize queued work by urgency, using submission order to break ties. */ (
+          left,
+          right,
+        ) => right.priority - left.priority || left.sequence - right.sequence,
       )[0]
       this.queued.delete(task.projectKey)
       const controller = new AbortController()
       this.running.set(task.projectKey, { controller })
       Promise.resolve()
-        .then(() => task.run(controller.signal))
         .then(
-          (value) => task.resolve(value),
-          (error: unknown) => task.resolve({ error }),
+          /** Run the selected project task with its dedicated cancellation signal. */ () =>
+            task.run(controller.signal),
         )
-        .finally(() => {
-          this.running.delete(task.projectKey)
-          this.pump()
-        })
+        .then(
+          /** Settle the queued caller with the successful task result. */ (value) =>
+            task.resolve(value),
+          /** Settle the queued caller with the captured task failure. */ (
+            error: unknown,
+          ) => task.resolve({ error }),
+        )
+        .finally(
+          /**
+           * Release the completed project slot and schedule the next queued task on
+           * either outcome.
+           */ () => {
+            // Free the slot on either outcome before scheduling the next queued project.
+            this.running.delete(task.projectKey)
+            this.pump()
+          },
+        )
     }
   }
 }

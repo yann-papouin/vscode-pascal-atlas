@@ -14,8 +14,11 @@ import type {
 } from "./shared/webviewProtocols"
 import { isNavigatorClientMessage } from "./shared/webviewProtocols"
 interface Emitter<T> {
+  /** Subscribe a listener and return a disposable that removes it. */
   event(listener: (event: T) => unknown): vscode.Disposable
+  /** Deliver an event to the currently subscribed listeners. */
   fire(event: T): void
+  /** Release the emitter and its registered listeners. */
   dispose(): void
 }
 interface NavigatorVscodeApi {
@@ -52,6 +55,10 @@ interface NavigatorWebviewOptions {
   ) => unknown
   onFocusChanged?: (focused: boolean) => unknown
 }
+/**
+ * Render the navigator shell with a nonce-protected bundled script and local codicon
+ * font.
+ */
 function navigatorWebviewHtml(
   webview: Pick<vscode.Webview, "cspSource">,
   codiconFontUri: string | vscode.Uri = "",
@@ -60,7 +67,9 @@ function navigatorWebviewHtml(
   const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`
   const safeCodiconFontUri = String(codiconFontUri).replace(
     /["'()\\\r\n]/g,
-    (character) => `\\${character}`,
+    /** Escape characters that could break the font URI inside its CSS string. */ (
+      character,
+    ) => `\\${character}`,
   )
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
@@ -182,6 +191,10 @@ class ClassNavigatorWebview {
   expandEmitter: Emitter<{ element: NavigatorTarget }>
   collapseEmitter: Emitter<{ element: NavigatorTarget }>
   visibilityEmitter: Emitter<{ visible: boolean }>
+  /**
+   * Initialize a navigator webview bridge, its tree-presentation snapshot, and
+   * expansion/collapse/visibility emitters.
+   */
   constructor(
     readonly vscode: NavigatorVscodeApi,
     readonly viewId: string,
@@ -191,39 +204,61 @@ class ClassNavigatorWebview {
     this.collapseEmitter = new vscode.EventEmitter()
     this.visibilityEmitter = new vscode.EventEmitter()
   }
+  /** Report whether the resolved navigator view is currently visible. */
   get visible() {
     return Boolean(this.view?.visible)
   }
+  /**
+   * Return the description retained for the view, including before its webview is
+   * resolved.
+   */
   get description() {
     return this._description
   }
+  /** Retain a new description and update the resolved VS Code view when available. */
   set description(value: string | undefined) {
     this._description = value
     if (this.view) this.view.description = value
   }
+  /**
+   * Return the current empty/loading/error message shown with the navigator
+   * presentation.
+   */
   get message() {
     return this._message
   }
+  /** Refresh the presentation only when its displayed message changes. */
   set message(value: string | undefined) {
     if (this._message === value) return
     this._message = value
     this.refresh()
   }
+  /** Subscribe to browser-reported node expansion and return its disposable. */
   onDidExpandElement(listener: (event: { element: NavigatorTarget }) => unknown) {
     return this.expandEmitter.event(listener)
   }
+  /** Subscribe to browser-reported node collapse and return its disposable. */
   onDidCollapseElement(listener: (event: { element: NavigatorTarget }) => unknown) {
     return this.collapseEmitter.event(listener)
   }
+  /** Subscribe to navigator view visibility notifications and return its disposable. */
   onDidChangeVisibility(listener: (event: { visible: boolean }) => unknown) {
     return this.visibilityEmitter.event(listener)
   }
+  /**
+   * Retain the extension resource URI and register a persistent-context navigator
+   * webview provider.
+   */
   register(context: Pick<vscode.ExtensionContext, "extensionUri">) {
     this.extensionUri = context.extensionUri
     return this.vscode.window?.registerWebviewViewProvider(this.viewId, this, {
       webviewOptions: { retainContextWhenHidden: true },
     })
   }
+  /**
+   * Bind a VS Code view to compiled local resources, reset the model baseline, and
+   * connect protocol, focus, visibility, and disposal events.
+   */
   resolveWebviewView(view: vscode.WebviewView) {
     this.webviewReady = false
     this.snapshot = undefined
@@ -251,20 +286,37 @@ class ClassNavigatorWebview {
       localResourceRoots: [mediaRoot, scriptRoot],
     }
     view.webview.html = navigatorWebviewHtml(view.webview, codiconFontUri, scriptUri)
-    view.onDidChangeVisibility(() => {
-      if (!view.visible) void this.options.onFocusChanged?.(false)
-      this.visibilityEmitter.fire({ visible: view.visible })
-    })
-    view.onDidDispose(() => {
-      void this.options.onFocusChanged?.(false)
-      this.view = undefined
-      this.webview = undefined
-      this.webviewReady = false
-      this.snapshot = undefined
-    })
-    view.webview.onDidReceiveMessage((message: unknown) => this.handleMessage(message))
-    queueMicrotask(() => this.visibilityEmitter.fire({ visible: view.visible }))
+    view.onDidChangeVisibility(
+      /**
+       * Publish view visibility and clear host focus state when the navigator is hidden.
+       */ () => {
+        if (!view.visible) void this.options.onFocusChanged?.(false)
+        this.visibilityEmitter.fire({ visible: view.visible })
+      },
+    )
+    view.onDidDispose(
+      /** Release the disposed view and invalidate its browser presentation baseline. */ () => {
+        void this.options.onFocusChanged?.(false)
+        this.view = undefined
+        this.webview = undefined
+        this.webviewReady = false
+        this.snapshot = undefined
+      },
+    )
+    view.webview.onDidReceiveMessage(
+      /** Validate browser actions before dispatching them to the host navigator. */ (
+        message: unknown,
+      ) => this.handleMessage(message),
+    )
+    queueMicrotask(
+      /** Publish the resolved webview visibility through the host provider event. */ () =>
+        this.visibilityEmitter.fire({ visible: view.visible }),
+    )
   }
+  /**
+   * Validate and dispatch browser messages while rebinding node IDs to current host
+   * targets and retaining pending search/sort state.
+   */
   handleMessage(value: unknown) {
     if (!isNavigatorClientMessage(value)) return
     const message = value
@@ -328,8 +380,16 @@ class ClassNavigatorWebview {
         break
     }
   }
+  /**
+   * Rebuild the stable-ID target lookup from the current tree so subsequent UI actions
+   * use fresh source offsets.
+   */
   collectNodes(nodes: NavigatorTarget[]) {
     this.nodeById.clear()
+    /**
+     * Walk navigator targets recursively to index their current identities, including
+     * nested children.
+     */
     const visit = (entries: NavigatorTarget[]) => {
       for (const node of entries) {
         if (node.id) this.nodeById.set(node.id, node)
@@ -344,19 +404,43 @@ class ClassNavigatorWebview {
     const roots = this.options.getRoots?.() || []
     this.collectNodes(roots)
     let selected: NavigatorTarget | undefined = this.selection[0]
+    // If an edit removes the selected row, retain the nearest surviving ancestor rather than selecting an unrelated node.
     while (selected && (!selected.id || !this.nodeById.has(selected.id)))
       selected = selected.parent
     selected = selected?.id ? this.nodeById.get(selected.id) : undefined
     this.selection = selected ? [selected] : []
     const selectedId = selected?.id || null
     const nodes = new Map<string, NavigatorFlatPresentation>()
+    /**
+     * Flatten serialized navigation rows to ID-based child lists without transferring
+     * source-only target metadata.
+     */
     const collect = (node: NavigatorTreePresentation) => {
-      nodes.set(node.id, { ...node, children: node.children.map((child) => child.id) })
+      nodes.set(node.id, {
+        ...node,
+        children: node.children.map(
+          /**
+           * Transmit child identities while keeping full targets and source offsets on the
+           * host.
+           */ (child) => child.id,
+        ),
+      })
       node.children.forEach(collect)
     }
     const serialize = this.options.serializeNode
-    if (serialize) roots.map((node) => serialize(node)).forEach(collect)
-    const rootIds = roots.flatMap((node) => (node.id ? [node.id] : []))
+    if (serialize)
+      roots
+        .map(
+          /**
+           * Convert each root to the browser presentation before flattening its descendants.
+           */ (node) => serialize(node),
+        )
+        .forEach(collect)
+    const rootIds = roots.flatMap(
+      /** Include only roots with stable identities in the browser ordering. */ (
+        node,
+      ) => (node.id ? [node.id] : []),
+    )
     const metadata = {
       mode: this.mode,
       message: this._message || "",
@@ -376,10 +460,17 @@ class ClassNavigatorWebview {
         ...metadata,
       }
     else {
+      // Diff only presentation data: source-offset changes should rebind targets without rebuilding otherwise identical browser rows.
       const upsert = [...nodes.values()].filter(
-        (node) => JSON.stringify(node) !== JSON.stringify(previous.get(node.id)),
+        /** Send only nodes whose presentation differs from the previous snapshot. */ (
+          node,
+        ) => JSON.stringify(node) !== JSON.stringify(previous.get(node.id)),
       )
-      const removed = [...previous.keys()].filter((id) => !nodes.has(id))
+      const removed = [...previous.keys()].filter(
+        /** Exclude keys entries rejected by the ownership or visibility predicate. */ (
+          id,
+        ) => !nodes.has(id),
+      )
       const rootsChanged = JSON.stringify(rootIds) !== JSON.stringify(this.rootIds)
       if (
         upsert.length ||
@@ -399,11 +490,18 @@ class ClassNavigatorWebview {
     this.lastSelectedId = selectedId
     if (message) void this.postMessage(message)
   }
+  /**
+   * Switch the displayed class/project mode and refresh only when its value changes.
+   */
   setMode(mode: string) {
     if (this.mode === mode) return
     this.mode = mode
     this.refresh()
   }
+  /**
+   * Rebind a target to the current model, optionally focus/select/expand it, and send
+   * its ancestry so the browser can reveal the row.
+   */
   async reveal(
     node: NavigatorTarget | undefined,
     options: { select?: boolean; focus?: boolean; expand?: boolean | number } = {},
@@ -431,34 +529,56 @@ class ClassNavigatorWebview {
       expandId: options.expand ? node.id : undefined,
     })
   }
+  /**
+   * Open the search panel with remembered options, replacing a pending sort-panel
+   * request.
+   */
   showSearch(options: NavigatorSearchOptions) {
     this.pendingSearchOptions = options
     this.pendingSortSettings = undefined
     this.view?.show(false)
     void this.postMessage({ type: WebviewMessageKind.ShowSearch, options })
   }
+  /**
+   * Ask the browser to hide its search panel without replacing the current tree model.
+   */
   hideSearch() {
     return this.postMessage({ type: WebviewMessageKind.HideSearch })
   }
+  /**
+   * Open sorting controls with remembered settings, replacing a pending search-panel
+   * request.
+   */
   showSort(settings: NavigatorSortSettings) {
     this.pendingSortSettings = settings
     this.pendingSearchOptions = undefined
     this.view?.show(false)
     void this.postMessage({ type: WebviewMessageKind.ShowSort, settings })
   }
+  /** Report whether a sort-panel request remains active in the host bridge. */
   get sortPanelOpen() {
     return this.pendingSortSettings !== undefined
   }
+  /** Ask the browser to close its sort panel. */
   hideSort() {
     return this.postMessage({ type: WebviewMessageKind.HideSort })
   }
+  /**
+   * Update any active sort-panel baseline and transmit the current sort selection to
+   * the browser.
+   */
   updateSortSettings(settings: NavigatorSortSettings) {
     if (this.pendingSortSettings) this.pendingSortSettings = settings
     return this.postMessage({ type: WebviewMessageKind.SortSettings, settings })
   }
+  /** Clear the pending search-panel request after the browser closes search. */
   searchClosed() {
     this.pendingSearchOptions = undefined
   }
+  /**
+   * Restore the host selection and transmit saved expansion/scroll state with the
+   * selected node's current identity.
+   */
   restoreSearchState(
     node: NavigatorTarget | undefined,
     state: NavigatorTreeState | undefined,
@@ -469,6 +589,10 @@ class ClassNavigatorWebview {
       state: { ...state, selectedId: node?.id || null },
     })
   }
+  /**
+   * Send ranked results with their request ID so the browser can ignore outdated
+   * searches.
+   */
   postSearchResults(
     requestId: number,
     results: NavigatorSearchResult[],
@@ -481,19 +605,29 @@ class ClassNavigatorWebview {
       status,
     })
   }
+  /** End the search session and ask the browser to return to the tree presentation. */
   finishSearch() {
     this.pendingSearchOptions = undefined
     return this.postMessage({ type: WebviewMessageKind.FinishSearch })
   }
+  /**
+   * Publish current action capabilities without rebuilding otherwise unchanged
+   * navigation rows.
+   */
   updateCapabilities() {
     return this.postMessage({
       type: WebviewMessageKind.Capabilities,
       capabilities: this.options.capabilities?.() || {},
     })
   }
+  /**
+   * Post a typed host message to the resolved browser, returning false when no view is
+   * available.
+   */
   postMessage(message: NavigatorHostMessage) {
     return this.webview?.postMessage(message) || Promise.resolve(false)
   }
+  /** Dispose the bridge's expansion, collapse, and visibility emitters. */
   dispose() {
     this.expandEmitter.dispose()
     this.collapseEmitter.dispose()

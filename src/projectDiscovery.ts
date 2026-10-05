@@ -23,6 +23,10 @@ const SKIPPED_DIRECTORIES = new Set<string>([
   "release",
 ])
 
+/**
+ * Decode the XML entities used in Delphi project path/property values without changing
+ * other text.
+ */
 function decodeXml(value: string) {
   return value
     .replace(/&quot;/gi, '"')
@@ -32,11 +36,19 @@ function decodeXml(value: string) {
     .replace(/&amp;/gi, "&")
 }
 
+/**
+ * Resolve an absolute path key without trailing separators, folding case only on
+ * Windows for filesystem-appropriate comparisons.
+ */
 function normalizeKey(value: string) {
   const resolved = path.resolve(value).replace(/[\\/]+$/, "")
   return process.platform === "win32" ? resolved.toLowerCase() : resolved
 }
 
+/**
+ * Return first-seen canonical existing paths, excluding empty, non-string, duplicate,
+ * and missing entries.
+ */
 function uniqueExistingPaths(values: readonly unknown[]) {
   const result = []
   const seen = new Set<string>()
@@ -54,6 +66,10 @@ function uniqueExistingPaths(values: readonly unknown[]) {
   return result
 }
 
+/**
+ * Resolve a Vallenta string or path/projectPath record relative to the workspace;
+ * return null for unsupported entries.
+ */
 function projectPathFromEntry(entry: unknown, workspaceRoot: string) {
   const raw =
     typeof entry === "string"
@@ -67,6 +83,10 @@ function projectPathFromEntry(entry: unknown, workspaceRoot: string) {
   return path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(workspaceRoot, raw)
 }
 
+/**
+ * Read the project includes of a groupproj file as absolute paths relative to its
+ * directory; return an empty list when the group is missing.
+ */
 function projectsFromGroup(groupPath: string) {
   if (!fs.existsSync(groupPath)) {
     return []
@@ -85,8 +105,16 @@ function projectsFromGroup(groupPath: string) {
   return projects
 }
 
+/**
+ * Discover project groups up to a bounded count, skipping generated/hidden directories
+ * and symbolic links, then prefer shallower deterministic paths.
+ */
 async function findWorkspaceProjectGroups(workspaceRoot: string, maximum = 64) {
   const groups: string[] = []
+  /**
+   * Traverse eligible child directories without following symbolic links, collecting
+   * the source files or project groups requested by the enclosing discovery operation.
+   */
   async function visit(directory: string) {
     if (groups.length >= maximum) return
     let entries
@@ -95,7 +123,10 @@ async function findWorkspaceProjectGroups(workspaceRoot: string, maximum = 64) {
     } catch {
       return
     }
-    entries.sort((left, right) => left.name.localeCompare(right.name))
+    entries.sort(
+      /** Traverse directory entries in deterministic name order. */ (left, right) =>
+        left.name.localeCompare(right.name),
+    )
     for (const entry of entries) {
       if (groups.length >= maximum) break
       const entryPath = path.join(directory, entry.name)
@@ -114,15 +145,24 @@ async function findWorkspaceProjectGroups(workspaceRoot: string, maximum = 64) {
     }
   }
   await visit(workspaceRoot)
-  return groups.sort((left, right) => {
-    const relativeLeft = path.relative(workspaceRoot, left)
-    const relativeRight = path.relative(workspaceRoot, right)
-    const depthDifference =
-      relativeLeft.split(path.sep).length - relativeRight.split(path.sep).length
-    return depthDifference || relativeLeft.localeCompare(relativeRight)
-  })
+  return groups.sort(
+    /** Prefer shallower project groups, breaking depth ties by relative path. */ (
+      left,
+      right,
+    ) => {
+      const relativeLeft = path.relative(workspaceRoot, left)
+      const relativeRight = path.relative(workspaceRoot, right)
+      const depthDifference =
+        relativeLeft.split(path.sep).length - relativeRight.split(path.sep).length
+      return depthDifference || relativeLeft.localeCompare(relativeRight)
+    },
+  )
 }
 
+/**
+ * Read a JSON object or return a copied fallback for a missing file; report the
+ * filename when parsing or root-shape validation fails.
+ */
 async function readJsonObject(filePath: string, fallback: Record<string, unknown>) {
   if (!fs.existsSync(filePath)) return { ...fallback }
   try {
@@ -136,11 +176,19 @@ async function readJsonObject(filePath: string, fallback: Record<string, unknown
   }
 }
 
+/**
+ * Create the parent directory and persist project state as indented UTF-8 JSON with a
+ * final newline.
+ */
 async function writeJsonObject(filePath: string, value: unknown) {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
   await fs.promises.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8")
 }
 
+/**
+ * Merge discovered project groups into Vallenta workspace state and repair missing or
+ * moved active-project selections while preserving unrelated fields.
+ */
 async function ensureVallentaProjectGroups(
   workspaceRoot: string,
   options: { activateFirstProject?: boolean; maximumGroups?: number } = {},
@@ -167,12 +215,22 @@ async function ensureVallentaProjectGroups(
   const projectGroups = Array.isArray(config.projectGroups) ? config.projectGroups : []
   const knownGroups = new Set(
     projectGroups
-      .map((entry: unknown) => projectPathFromEntry(entry, workspaceRoot))
-      .filter((value): value is string => typeof value === "string")
+      .map(
+        /** Resolve a configured project group entry relative to its workspace root. */ (
+          entry: unknown,
+        ) => projectPathFromEntry(entry, workspaceRoot),
+      )
+      .filter(
+        /** Discard configured project entries that did not resolve to a path. */ (
+          value,
+        ): value is string => typeof value === "string",
+      )
       .map(normalizeKey),
   )
   const addedGroups = discoveredGroups.filter(
-    (groupPath) => !knownGroups.has(normalizeKey(groupPath)),
+    /** Select discovered groups that are absent from the configured project list. */ (
+      groupPath,
+    ) => !knownGroups.has(normalizeKey(groupPath)),
   )
   const configChanged =
     addedGroups.length > 0 ||
@@ -203,13 +261,16 @@ async function ensureVallentaProjectGroups(
     if (!hasActiveProject) {
       const groupPath =
         discoveredGroups.find(
-          (candidate) =>
+          /** Recover the configured active group by its case-insensitive basename. */ (
+            candidate,
+          ) =>
             configuredActiveGroup &&
             path.basename(candidate).toLowerCase() ===
               path.basename(configuredActiveGroup).toLowerCase(),
         ) || discoveredGroups[0]
-      const groupProjects = projectsFromGroup(groupPath).filter((filePath) =>
-        fs.existsSync(filePath),
+      const groupProjects = projectsFromGroup(groupPath).filter(
+        /** Keep project paths from the group that still exist on disk. */ (filePath) =>
+          fs.existsSync(filePath),
       )
       const groupProjectKeys = new Set(groupProjects.map(normalizeKey))
       // A copied/moved workspace often retains absolute paths in
@@ -242,10 +303,14 @@ async function ensureVallentaProjectGroups(
             name: path.basename(groupPath, path.extname(groupPath)),
             lastOpened: Date.now(),
           },
-          ...recentProjects.filter((entry: unknown) => {
-            const existingPath = projectPathFromEntry(entry, workspaceRoot)
-            return !existingPath || normalizeKey(existingPath) !== groupKey
-          }),
+          ...recentProjects.filter(
+            /** Remove only the recent-project entry matching this group identity. */ (
+              entry: unknown,
+            ) => {
+              const existingPath = projectPathFromEntry(entry, workspaceRoot)
+              return !existingPath || normalizeKey(existingPath) !== groupKey
+            },
+          ),
         ].slice(0, 20)
         await writeJsonObject(localPath, local)
         activeProjectChanged = true
@@ -262,6 +327,10 @@ async function ensureVallentaProjectGroups(
   }
 }
 
+/**
+ * Resolve configured projects and project-group children to existing workspace paths;
+ * reject malformed configuration roots.
+ */
 function discoverLoadedProjects(workspaceRoot: string) {
   const configPath = path.join(workspaceRoot, ".vallenta", "projects.json")
   if (!fs.existsSync(configPath)) {
@@ -297,6 +366,10 @@ function discoverLoadedProjects(workspaceRoot: string) {
   return uniqueExistingPaths(candidates)
 }
 
+/**
+ * Collect usable project-relative Unit Search Path entries, omitting unresolved macros
+ * and nonexistent directories.
+ */
 function dprojSearchPaths(projectFile: string) {
   if (!fs.existsSync(projectFile)) {
     return []
@@ -321,9 +394,17 @@ function dprojSearchPaths(projectFile: string) {
   return uniqueExistingPaths(candidates)
 }
 
+/**
+ * Find directories that directly contain Pascal source while traversing eligible
+ * descendants and avoiding generated trees or symlink loops.
+ */
 async function walkSourceDirectories(root: string) {
   const sourceDirectories = new Set<string>()
 
+  /**
+   * Traverse eligible child directories without following symbolic links, collecting
+   * the source files or project groups requested by the enclosing discovery operation.
+   */
   async function visit(directory: string) {
     let entries
     try {
@@ -358,6 +439,10 @@ async function walkSourceDirectories(root: string) {
   return [...sourceDirectories]
 }
 
+/**
+ * Merge project directories, usable Unit Search Paths, and optional nested source
+ * directories into a sorted deduplicated navigation search path.
+ */
 async function collectPascalAtlasPaths(
   projectFiles: string[],
   includeNestedSourceDirectories = true,
@@ -370,8 +455,9 @@ async function collectPascalAtlasPaths(
       candidates.push(...(await walkSourceDirectories(projectDir)))
     }
   }
-  return uniqueExistingPaths(candidates).sort((left, right) =>
-    left.localeCompare(right),
+  return uniqueExistingPaths(candidates).sort(
+    /** Sort the deduplicated source search paths lexically. */ (left, right) =>
+      left.localeCompare(right),
   )
 }
 

@@ -40,13 +40,23 @@ const REDUNDANT_EXTENSIONS = [
   },
 ]
 
+/**
+ * Check whether VS Code can locate an installed extension with the requested
+ * Marketplace identifier.
+ */
 function extensionInstalled(id: string) {
   const wanted = id.toLowerCase()
   return vscode.extensions.all.some(
-    (extension) => extension.id.toLowerCase() === wanted,
+    /** Find the requested extension using its case-insensitive identifier. */ (
+      extension,
+    ) => extension.id.toLowerCase() === wanted,
   )
 }
 
+/**
+ * Ask VS Code to install and enable a required extension; propagate installation
+ * errors to the dependency checker.
+ */
 async function installRequiredExtension(extension: {
   id: string
   name?: string
@@ -59,6 +69,10 @@ async function installRequiredExtension(extension: {
   )
 }
 
+/**
+ * Inspect required/conflicting extensions and local RAD Studio tools, optionally
+ * install missing dependencies, and report failures or requested status notifications.
+ */
 async function checkDependencies(
   output: { appendLine: (arg0: string) => void },
   options: { notify?: boolean; autoInstall?: boolean } = {},
@@ -67,12 +81,14 @@ async function checkDependencies(
   const autoInstall = options.autoInstall ?? configuration.get("autoInstall", true)
   const notify = options.notify === true
   const missing = REQUIRED_EXTENSIONS.filter(
-    (extension) => !extensionInstalled(extension.id),
+    /** Select required extensions that are not installed. */ (extension) =>
+      !extensionInstalled(extension.id),
   )
   const installed = []
   const failed = []
 
   for (const extension of missing) {
+    // Automatic installation is a configured opt-in path; a status check still reports missing dependencies when it is disabled.
     if (!autoInstall) continue
     output.appendLine(
       `Installing required extension ${extension.id}: ${extension.reason}.`,
@@ -88,8 +104,9 @@ async function checkDependencies(
     }
   }
 
-  const redundant = REDUNDANT_EXTENSIONS.filter((extension) =>
-    extensionInstalled(extension.id),
+  const redundant = REDUNDANT_EXTENSIONS.filter(
+    /** Select redundant extensions that are actually installed. */ (extension) =>
+      extensionInstalled(extension.id),
   )
   const activeDocument = vscode.window.activeTextEditor?.document
   const formatterPath = findFormatterExecutable(activeDocument)
@@ -115,18 +132,18 @@ async function checkDependencies(
 
   if (failed.length > 0) {
     void vscode.window.showErrorMessage(
-      `Pascal Atlas could not install required extensions: ${failed.map((item) => item.extension.name).join(", ")}.`,
+      `Pascal Atlas could not install required extensions: ${failed.map(/** List extension names whose automatic installation failed. */ (item) => item.extension.name).join(", ")}.`,
     )
   } else if (notify) {
     const requiredStatus =
       missing.length === 0
         ? "All required extensions are installed"
         : installed.length === missing.length
-          ? `Installed ${installed.map((item) => item.name).join(", ")}; reload to apply`
-          : `Missing ${missing.map((item) => item.name).join(", ")} (automatic installation is disabled)`
+          ? `Installed ${installed.map(/** List extensions successfully installed during setup. */ (item) => item.name).join(", ")}; reload to apply`
+          : `Missing ${missing.map(/** List required extension names still missing after setup. */ (item) => item.name).join(", ")} (automatic installation is disabled)`
     const redundantStatus =
       redundant.length > 0
-        ? `; duplicate extensions can be disabled: ${redundant.map((item) => item.name).join(", ")}`
+        ? `; duplicate extensions can be disabled: ${redundant.map(/** List installed extensions that duplicate provided functionality. */ (item) => item.name).join(", ")}`
         : ""
     const toolStatus =
       tools.formatter && tools.tdump64
@@ -140,18 +157,28 @@ async function checkDependencies(
   return { missing, installed, failed, redundant, tools }
 }
 
+/**
+ * Register dependency diagnostics, run the configured startup check, and normalize
+ * installed Vallenta editor contributions with a backup.
+ */
 function registerDependencySupport(
   context: { subscriptions: vscode.Disposable[] },
   output: vscode.OutputChannel,
 ) {
   context.subscriptions.push(
-    vscode.commands.registerCommand(CommandId.DependenciesCheck, () =>
-      checkDependencies(output, { notify: true }),
+    vscode.commands.registerCommand(
+      CommandId.DependenciesCheck,
+      /** Check required extensions and show the dependency status to the user. */ () =>
+        checkDependencies(output, { notify: true }),
     ),
   )
-  void checkDependencies(output).catch((error) => {
-    output.appendLine(`Dependency check failed: ${error.stack || error.message}`)
-  })
+  void checkDependencies(output).catch(
+    /** Log dependency setup failures without rejecting extension activation. */ (
+      error,
+    ) => {
+      output.appendLine(`Dependency check failed: ${error.stack || error.message}`)
+    },
+  )
   const hideEditorContextMenus = vscode.workspace
     .getConfiguration("pascalAtlas.navigation")
     .get("hideVallentaEditorContextMenus", true)
@@ -160,21 +187,29 @@ function registerDependencySupport(
     removeEditorContextMenus: hideEditorContextMenus,
     removeForcedKeywordBold: true,
   })
-    .then((result) => {
-      if (!result.changed) return
-      output.appendLine(
-        `Normalized Vallenta editor integration: removed ${result.removed.length} context command(s) ` +
-          `and ${result.removedKeywordStyles.length} forced keyword-bold rule(s); backup: ${result.backupPath}.`,
-      )
-      void vscode.window.showInformationMessage(
-        "Pascal keyword font weights were normalized and Vallenta editor integration was updated. Fully quit all VS Code windows, then reopen the editor.",
-      )
-    })
-    .catch((error) => {
-      output.appendLine(
-        `Unable to normalize Vallenta editor integration: ${error.stack || error.message}`,
-      )
-    })
+    .then(
+      /** Report integration cleanup only when editor settings were changed. */ (
+        result,
+      ) => {
+        if (!result.changed) return
+        output.appendLine(
+          `Normalized Vallenta editor integration: removed ${result.removed.length} context command(s) ` +
+            `and ${result.removedKeywordStyles.length} forced keyword-bold rule(s); backup: ${result.backupPath}.`,
+        )
+        void vscode.window.showInformationMessage(
+          "Pascal keyword font weights were normalized and Vallenta editor integration was updated. Fully quit all VS Code windows, then reopen the editor.",
+        )
+      },
+    )
+    .catch(
+      /** Log integration cleanup failures without rejecting extension activation. */ (
+        error,
+      ) => {
+        output.appendLine(
+          `Unable to normalize Vallenta editor integration: ${error.stack || error.message}`,
+        )
+      },
+    )
 }
 
 export {

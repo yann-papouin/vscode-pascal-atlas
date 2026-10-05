@@ -25,14 +25,20 @@ const AI_STEP_CHUNK_CACHE_STATE_KEY = NavigatorStateKey.AiStepChunks
 const AI_STEP_PROMPT_VERSION = 8
 const DEFAULT_MAX_SOURCE_CHARACTERS = 24000
 
+/** Narrow response values to object records before reading their fields. */
 function record(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined
 }
 
+/** Find the beginning of the source line containing a UTF-16 offset. */
 function lineStartOffset(text: string, offset: number) {
   return Math.max(0, text.lastIndexOf("\n", Math.max(0, offset - 1)) + 1)
 }
 
+/**
+ * Convert a UTF-16 offset to the one-based source line numbering sent to
+ * language-model providers.
+ */
 function lineNumberAt(text: string, offset: number) {
   let line = 1
   for (let index = 0; index < Math.min(text.length, Math.max(0, offset)); index += 1) {
@@ -41,6 +47,10 @@ function lineNumberAt(text: string, offset: number) {
   return line
 }
 
+/**
+ * Convert a one-based source line to its original UTF-16 offset, clamping before the
+ * first line or beyond the document.
+ */
 function offsetAtLine(text: string, oneBasedLine: number) {
   if (oneBasedLine <= 1) return 0
   let line = 1
@@ -52,6 +62,10 @@ function offsetAtLine(text: string, oneBasedLine: number) {
   return text.length
 }
 
+/**
+ * Resolve a routine's implemented source range and meaningful line bounds, excluding
+ * trailing whitespace from its last navigable line.
+ */
 function routineSourceRange(text: string, node: NavigatorTarget) {
   if (!isInteger(node?.implementationOffset)) return undefined
   const startOffset = lineStartOffset(text, node.implementationOffset)
@@ -74,6 +88,10 @@ function routineSourceRange(text: string, node: NavigatorTarget) {
   }
 }
 
+/**
+ * Fingerprint routine identity, source content, prompt version, and planning settings
+ * so cached steps are reused only for compatible analyses.
+ */
 function routineAnalysisKey(
   documentUri: string,
   text: string,
@@ -112,6 +130,10 @@ function routineAnalysisKey(
   return `v${AI_STEP_PROMPT_VERSION}|${strategy}|${documentUri}|${identity}|${sourceHash}`
 }
 
+/**
+ * Build numbered routine source within the character budget, retaining real head/tail
+ * line numbers when truncation is required.
+ */
 function buildRoutineAnalysisContext(
   text: string,
   node: NavigatorTarget,
@@ -125,6 +147,10 @@ function buildRoutineAnalysisContext(
     Number(maxSourceCharacters) || DEFAULT_MAX_SOURCE_CHARACTERS,
   )
   const lines = completeSource.split(/\r?\n/)
+  /**
+   * Prefix a source line with its original padded one-based line number for stable
+   * provider-to-editor references.
+   */
   const numberedLine = (line: string, index: number) =>
     `[${String(range.startLine + index).padStart(5, "0")}] ${line}`
   let truncated = false
@@ -156,11 +182,19 @@ function buildRoutineAnalysisContext(
     numberedSource = [
       ...lines
         .slice(0, headEnd)
-        .map((line: string, index: number) => numberedLine(line, index)),
+        .map(
+          /** Number retained leading lines from the routine's original start line. */ (
+            line: string,
+            index: number,
+          ) => numberedLine(line, index),
+        ),
       "{ ... middle section omitted due to length limit ... }",
-      ...lines
-        .slice(tailStart)
-        .map((line: string, index: number) => numberedLine(line, tailStart + index)),
+      ...lines.slice(tailStart).map(
+        /**
+         * Number retained trailing lines using their original positions, including the
+         * omitted middle.
+         */ (line: string, index: number) => numberedLine(line, tailStart + index),
+      ),
     ].join("\n")
   }
   return {
@@ -170,6 +204,10 @@ function buildRoutineAnalysisContext(
   }
 }
 
+/**
+ * Remove comments/string contents while carrying lexical state across lines to
+ * identify meaningful safe step boundaries.
+ */
 function compactPascalLine(
   line: string,
   state: { comment: string; string: boolean; parentheses?: number; brackets?: number },
@@ -218,6 +256,10 @@ function compactPascalLine(
   return result.trim()
 }
 
+/**
+ * Partition ordered entries into up to the requested number of nonempty, roughly equal
+ * contiguous groups.
+ */
 function balancedPartitions<T>(items: T[], count: number): T[][] {
   const result = []
   let offset = 0
@@ -228,15 +270,28 @@ function balancedPartitions<T>(items: T[], count: number): T[][] {
     result.push(items.slice(offset, offset + size))
     offset += size
   }
-  return result.filter((part) => part.length > 0)
+  return result.filter(
+    /**
+     * Discard empty partitions when fewer entries than requested groups are available.
+     */ (part) => part.length > 0,
+  )
 }
 
+/**
+ * Choose a deterministic functional label from a planned group or its first meaningful
+ * Pascal control statement.
+ */
 function fallbackPlannedTitle(
   node: { kind: string; codeLines: Array<{ code: string }> },
   index: number,
 ) {
   if (node.kind === "group") return `Organize functional phase ${index + 1}`
-  const first = node.codeLines.find((line) => line.code)?.code || ""
+  const first =
+    node.codeLines.find(
+      /** Find the first nonempty code line to choose a local fallback title. */ (
+        line,
+      ) => line.code,
+    )?.code || ""
   if (new RegExp(String.raw`^${PascalKeyword.If}\b`, "i").test(first))
     return "Evaluate condition"
   if (
@@ -267,11 +322,16 @@ function fallbackPlannedTitle(
   return `Process code block ${index + 1}`
 }
 
+/**
+ * Partition complete routine source into bounded blocks and hierarchy, preferring safe
+ * split points; truncated source cannot provide a fixed plan.
+ */
 function buildDetailedStepPlan(
   text: string,
   context: RoutineAnalysisContext | undefined,
   options: AiStepOptions = {},
 ): DetailedStepPlan | undefined {
+  // A fixed detailed partition needs the complete routine; head/tail prompt truncation cannot safely own the omitted source boundaries.
   if (!context || context.truncated) return undefined
   const targetLines = Math.max(
     6,
@@ -285,29 +345,39 @@ function buildDetailedStepPlan(
   const source = text.slice(context.startOffset, context.endOffset)
   const rawLines = source.split(/\r?\n/)
   const state = { comment: "", string: false, parentheses: 0, brackets: 0 }
-  const codeLines = rawLines.map((raw: string, index: number) => {
-    const code = compactPascalLine(raw, state)
-    for (const character of code) {
-      if (character === "(") state.parentheses += 1
-      else if (character === ")") state.parentheses = Math.max(0, state.parentheses - 1)
-      else if (character === "[") state.brackets += 1
-      else if (character === "]") state.brackets = Math.max(0, state.brackets - 1)
-    }
-    const safeBoundary =
-      state.parentheses === 0 &&
-      state.brackets === 0 &&
-      (/;\s*$/.test(code) ||
-        new RegExp(String.raw`^${PascalKeyword.End}\b[.;]?\s*$`, "i").test(code))
-    return {
-      raw,
-      code,
-      index,
-      line: context.startLine + index,
-      meaningful: code.length > 0,
-      safeBoundary,
-    }
-  })
-  const meaningful = codeLines.filter((line) => line.meaningful)
+  const codeLines = rawLines.map(
+    /**
+     * Track meaningful code and balanced delimiters to identify safe line boundaries.
+     */ (raw: string, index: number) => {
+      const code = compactPascalLine(raw, state)
+      for (const character of code) {
+        if (character === "(") state.parentheses += 1
+        else if (character === ")")
+          state.parentheses = Math.max(0, state.parentheses - 1)
+        else if (character === "[") state.brackets += 1
+        else if (character === "]") state.brackets = Math.max(0, state.brackets - 1)
+      }
+      const safeBoundary =
+        state.parentheses === 0 &&
+        state.brackets === 0 &&
+        (/;\s*$/.test(code) ||
+          new RegExp(String.raw`^${PascalKeyword.End}\b[.;]?\s*$`, "i").test(code))
+      return {
+        raw,
+        code,
+        index,
+        line: context.startLine + index,
+        meaningful: code.length > 0,
+        safeBoundary,
+      }
+    },
+  )
+  const meaningful = codeLines.filter(
+    /**
+     * Retain code-bearing lines for partition sizing without losing their original line
+     * indices.
+     */ (line) => line.meaningful,
+  )
   if (!meaningful.length) return undefined
 
   const leafRanges: Array<[number, number]> = []
@@ -358,34 +428,38 @@ function buildDetailedStepPlan(
   }
 
   const nodes = new Map<string, PlannedStep>()
-  const leaves = leafRanges.map((range, index) => {
-    const first = meaningful[range[0]]
-    const last = meaningful[range[1]]
-    const nextFirst = leafRanges[index + 1]
-      ? meaningful[leafRanges[index + 1][0]]
-      : undefined
-    const startIndex = first.index
-    const endIndex = nextFirst
-      ? Math.max(startIndex, nextFirst.index - 1)
-      : rawLines.length - 1
-    const chunkSource = rawLines.slice(startIndex, endIndex + 1).join("\n")
-    const node: PlannedStep = {
-      id: `c${String(index + 1).padStart(2, "0")}`,
-      kind: "leaf",
-      line: first.line,
-      endLine: context.startLine + endIndex,
-      meaningfulLines: range[1] - range[0] + 1,
-      codeLines: codeLines.slice(startIndex, endIndex + 1),
-      source: chunkSource,
-      children: [],
-      hash: createHash("sha256")
-        .update(`leaf\n${chunkSource}`)
-        .digest("hex")
-        .slice(0, 24),
-    }
-    nodes.set(node.id, node)
-    return node
-  })
+  const leaves = leafRanges.map(
+    /**
+     * Create a leaf block spanning its meaningful lines and the intervening source text.
+     */ (range, index) => {
+      const first = meaningful[range[0]]
+      const last = meaningful[range[1]]
+      const nextFirst = leafRanges[index + 1]
+        ? meaningful[leafRanges[index + 1][0]]
+        : undefined
+      const startIndex = first.index
+      const endIndex = nextFirst
+        ? Math.max(startIndex, nextFirst.index - 1)
+        : rawLines.length - 1
+      const chunkSource = rawLines.slice(startIndex, endIndex + 1).join("\n")
+      const node: PlannedStep = {
+        id: `c${String(index + 1).padStart(2, "0")}`,
+        kind: "leaf",
+        line: first.line,
+        endLine: context.startLine + endIndex,
+        meaningfulLines: range[1] - range[0] + 1,
+        codeLines: codeLines.slice(startIndex, endIndex + 1),
+        source: chunkSource,
+        children: [],
+        hash: createHash("sha256")
+          .update(`leaf\n${chunkSource}`)
+          .digest("hex")
+          .slice(0, 24),
+      }
+      nodes.set(node.id, node)
+      return node
+    },
+  )
 
   let level: PlannedStep[] = leaves
   let depth = 1
@@ -395,22 +469,41 @@ function buildDetailedStepPlan(
       minimumParents,
       Math.min(maxRoots, Math.floor(level.length / 2)),
     )
-    const groups = balancedPartitions(level, desiredParents).map((children, index) => {
-      const node: PlannedStep = {
-        id: `g${depth}_${String(index + 1).padStart(2, "0")}`,
-        kind: "group",
-        line: children[0].line,
-        endLine: children[children.length - 1].endLine,
-        children: children.map((child) => child.id),
-        codeLines: [],
-        hash: createHash("sha256")
-          .update(`group\n${children.map((child) => child.hash).join("\n")}`)
-          .digest("hex")
-          .slice(0, 24),
-      }
-      nodes.set(node.id, node)
-      return node
-    })
+    const groups = balancedPartitions(level, desiredParents).map(
+      /**
+       * Group adjacent blocks under a parent whose range and hash derive from its
+       * children.
+       */ (children, index) => {
+        const node: PlannedStep = {
+          id: `g${depth}_${String(index + 1).padStart(2, "0")}`,
+          kind: "group",
+          line: children[0].line,
+          endLine: children[children.length - 1].endLine,
+          children: children.map(
+            /**
+             * Store child IDs so the fixed hierarchy remains independent of provider
+             * output.
+             */ (child) => child.id,
+          ),
+          codeLines: [],
+          hash: createHash("sha256")
+            .update(
+              `group\n${children
+                .map(
+                  /**
+                   * Hash child blocks in order so a changed child invalidates its parent's
+                   * cached label.
+                   */ (child) => child.hash,
+                )
+                .join("\n")}`,
+            )
+            .digest("hex")
+            .slice(0, 24),
+        }
+        nodes.set(node.id, node)
+        return node
+      },
+    )
     level = groups
     depth += 1
   }
@@ -424,11 +517,17 @@ function buildDetailedStepPlan(
     maxLines,
     leaves,
     nodes: [...nodes.values()],
-    roots: level.map((node) => node.id),
+    roots: level.map(
+      /** Record the current top-level blocks as the plan's roots. */ (node) => node.id,
+    ),
     maxDepth: depth,
   }
 }
 
+/**
+ * Reuse validated hash-based labels and request only unresolved fixed-plan IDs while
+ * keeping line ranges and hierarchy under parser control.
+ */
 function plannedPrompt(
   plan: DetailedStepPlan,
   context: RoutineAnalysisContext,
@@ -443,18 +542,33 @@ function plannedPrompt(
         : cachedLabels?.[node.hash]
     if (cached) labels[node.id] = normalizeStepTitle(cached)
   }
-  const unresolved = plan.nodes.filter((node) => !labels[node.id])
-  const descriptions = plan.nodes.map((node) =>
-    node.kind === "leaf"
-      ? `${node.id}: lines ${node.line}-${node.endLine}${labels[node.id] ? `, existing title "${labels[node.id]}"` : ""}`
-      : `${node.id}: lines ${node.line}-${node.endLine}, includes ${node.children.join(", ")}${labels[node.id] ? `, existing title "${labels[node.id]}"` : ""}`,
+  const unresolved = plan.nodes.filter(
+    /** Select fixed blocks that still need a provider-supplied label. */ (node) =>
+      !labels[node.id],
+  )
+  const descriptions = plan.nodes.map(
+    /** Describe each block's fixed range, children, and any reusable label. */ (
+      node,
+    ) =>
+      node.kind === "leaf"
+        ? `${node.id}: lines ${node.line}-${node.endLine}${labels[node.id] ? `, existing title "${labels[node.id]}"` : ""}`
+        : `${node.id}: lines ${node.line}-${node.endLine}, includes ${node.children.join(", ")}${labels[node.id] ? `, existing title "${labels[node.id]}"` : ""}`,
   )
   const sources = plan.leaves
-    .filter((node) => !labels[node.id])
-    .map((node) => `--- ${node.id} [${node.line}-${node.endLine}] ---\n${node.source}`)
+    .filter(
+      /** Send source only for leaf blocks whose labels are not cached. */ (node) =>
+        !labels[node.id],
+    )
+    .map(
+      /**
+       * Format an unlabeled leaf's ID, original line range, and source for the prompt.
+       */ (node) => `--- ${node.id} [${node.line}-${node.endLine}] ---\n${node.source}`,
+    )
   return {
     cachedLabels: labels,
-    unresolvedIds: unresolved.map((node) => node.id),
+    unresolvedIds: unresolved.map(
+      /** Record the exact block IDs the response must label. */ (node) => node.id,
+    ),
     prompt: [
       "You are a Delphi/Object Pascal code navigation assistant.",
       `The local parser has divided function ${signature} into fixed code blocks of about ${plan.targetLines} lines.`,
@@ -474,6 +588,10 @@ function plannedPrompt(
   }
 }
 
+/**
+ * Build a routine analysis prompt with bounded granularity/substep settings, fixed
+ * detailed plans when possible, and compatible cached labels.
+ */
 function buildAiStepPrompt(
   text: string,
   node: NavigatorTarget,
@@ -500,9 +618,11 @@ function buildAiStepPrompt(
     ),
   )
   const source = text.slice(context.startOffset, context.endOffset)
-  const meaningfulLineCount = source
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0).length
+  const meaningfulLineCount = source.split(/\r?\n/).filter(
+    /**
+     * Count nonblank source lines to bound the number of requested functional steps.
+     */ (line) => line.trim().length > 0,
+  ).length
   // A hard density ceiling prevents a model from turning every branch or call
   // into a navigation item. Small routines intentionally collapse to one step.
   // Detailed output stays hierarchical: top-level phases remain broad while
@@ -605,23 +725,36 @@ function buildAiStepPrompt(
   }
 }
 
+/**
+ * Combine source-bearing routine analyses into one correlated prompt with each
+ * routine's original line numbers and step limits.
+ */
 function buildBatchAiStepPrompt(requests: AiBatchRequest[]): AiBatchPrompt | undefined {
   const entries = (requests || [])
     .filter(
-      (request): request is AiBatchRequest & { analysis: AiStepPrompt } =>
+      /**
+       * Keep requests with source-bearing analyses that can be included in the batch.
+       */ (request): request is AiBatchRequest & { analysis: AiStepPrompt } =>
         !!request.analysis?.numberedSource,
     )
-    .map((request, index: number) => ({ id: `r${index + 1}`, request }))
+    .map(
+      /**
+       * Assign a batch-local ID that correlates each response with its routine request.
+       */ (request, index: number) => ({ id: `r${index + 1}`, request }),
+    )
   if (!entries.length) return undefined
   const first = entries[0].request.analysis
   const detailed = first.granularity === "detailed"
-  const routineBlocks = entries.map(({ id, request }) =>
-    [
-      `--- ${id} ---`,
-      `Routine: ${request.routine.signature || `${request.routine.owner ? `${request.routine.owner}.` : ""}${request.routine.name || request.routine.label}`}`,
-      `At most ${request.analysis.effectiveMaxSteps} top-level steps.`,
-      request.analysis.numberedSource,
-    ].join("\n"),
+  const routineBlocks = entries.map(
+    /**
+     * Include the routine identity, step budget, and numbered source under its batch ID.
+     */ ({ id, request }) =>
+      [
+        `--- ${id} ---`,
+        `Routine: ${request.routine.signature || `${request.routine.owner ? `${request.routine.owner}.` : ""}${request.routine.name || request.routine.label}`}`,
+        `At most ${request.analysis.effectiveMaxSteps} top-level steps.`,
+        request.analysis.numberedSource,
+      ].join("\n"),
   )
   return {
     entries,
@@ -644,6 +777,10 @@ function buildBatchAiStepPrompt(requests: AiBatchRequest[]): AiBatchPrompt | und
   }
 }
 
+/**
+ * Extract a likely fenced or outer JSON object/array from provider text, falling back
+ * to the trimmed response.
+ */
 function jsonCandidate(value: string) {
   const text = String(value || "").trim()
   const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text)?.[1]
@@ -659,9 +796,17 @@ function jsonCandidate(value: string) {
   return candidate
 }
 
+/**
+ * Collect distinct fenced, balanced, and streamed JSON candidates so reasoning text or
+ * partial trailing output does not discard otherwise usable labels.
+ */
 function jsonCandidates(value: unknown) {
   const text = String(value || "").trim()
   const candidates: string[] = []
+  /**
+   * Retain one nonempty normalized JSON candidate without repeating an already tried
+   * response fragment.
+   */
   const add = (candidate: string) => {
     const normalized = String(candidate || "").trim()
     if (normalized && !candidates.includes(normalized)) candidates.push(normalized)
@@ -706,6 +851,10 @@ function jsonCandidates(value: unknown) {
   return candidates
 }
 
+/**
+ * Return the first parsable JSON response candidate or undefined when every candidate
+ * is invalid/incomplete.
+ */
 function parseJsonResponse(value: unknown): unknown {
   for (const candidate of jsonCandidates(value)) {
     try {
@@ -717,6 +866,10 @@ function parseJsonResponse(value: unknown): unknown {
   return undefined
 }
 
+/**
+ * Normalize provider labels by removing step prefixes/trailing punctuation, collapsing
+ * whitespace, and applying the display-length limit.
+ */
 function normalizeStepTitle(value: unknown) {
   return String(value || "")
     .replace(/^\s*(?:step\s*)?\d+\s*[.:)-]?\s*/iu, "")
@@ -726,6 +879,10 @@ function normalizeStepTitle(value: unknown) {
     .slice(0, 72)
 }
 
+/**
+ * Validate, deduplicate, cap, and source-order provider step entries whose titles and
+ * integer lines fit the requested routine bounds.
+ */
 function normalizedStepEntries(entries: unknown[], range: LineRange, limit: number) {
   const result = []
   const seen = new Set()
@@ -745,14 +902,32 @@ function normalizedStepEntries(entries: unknown[], range: LineRange, limit: numb
     result.push({ title, line, source: entry })
     if (result.length >= limit) break
   }
-  return result.sort((left, right) => left.line - right.line)
+  return result.sort(
+    /** Order normalized steps by their original source lines. */ (left, right) =>
+      left.line - right.line,
+  )
 }
 
+/**
+ * Absorb valid labels only for parser-known plan IDs from supported provider/streamed
+ * JSON shapes, retaining cached labels separately from newly supplied labels.
+ */
 function plannedLabelsFromResponse(value: unknown, analysis: AiStepAnalysis) {
   const plan = analysis?.fixedPlan
-  const knownIds = new Set(plan?.nodes?.map((node) => node.id) || [])
+  // The provider may label existing blocks only; accepting invented IDs would detach labels from parser-owned source ranges.
+  const knownIds = new Set(
+    plan?.nodes?.map(
+      /** Collect the parser-owned IDs that provider labels are allowed to reference. */ (
+        node,
+      ) => node.id,
+    ) || [],
+  )
   const labels = { ...analysis?.cachedLabels }
   const modelLabels: Record<string, string> = {}
+  /**
+   * Merge usable labels from a parsed response shape only when their IDs belong to the
+   * fixed plan and their titles are nonempty.
+   */
   const absorb = (value: unknown) => {
     const parsed = record(value)
     const rows = parsed?.id
@@ -796,28 +971,56 @@ function plannedLabelsFromResponse(value: unknown, analysis: AiStepAnalysis) {
   return { labels, modelLabels }
 }
 
+/**
+ * Rebuild AI step hierarchy from the fixed plan's original boundaries and selected
+ * labels, using deterministic fallback titles for missing labels.
+ */
 function plannedStepsFromLabels(
   analysis: AiStepAnalysis,
   labels: Record<string, string> = {},
 ): AiStep[] {
   const plan = analysis?.fixedPlan
   if (!plan) return []
-  const byId = new Map(plan.nodes.map((node) => [node.id, node]))
+  // Rebuild navigation from the trusted plan instead of trusting provider-supplied line boundaries.
+  const byId = new Map(
+    plan.nodes.map(
+      /** Index fixed blocks by ID for recursive hierarchy reconstruction. */ (
+        node,
+      ) => [node.id, node],
+    ),
+  )
+  /**
+   * Materialize a fixed-plan step and its known children without allowing provider
+   * labels to alter source ranges or hierarchy.
+   */
   const create = (id: string): AiStep | undefined => {
     const node = byId.get(id)
     if (!node) return undefined
     const children = node.children
       .map(create)
-      .filter((step): step is AiStep => step !== undefined)
+      .filter(
+        /** Omit child references absent from the fixed plan. */ (
+          step,
+        ): step is AiStep => step !== undefined,
+      )
     return {
       title: labels[id] || node.fallbackTitle || "",
       line: node.line,
       ...(children.length ? { children } : {}),
     }
   }
-  return plan.roots.map(create).filter((step): step is AiStep => step !== undefined)
+  return plan.roots
+    .map(create)
+    .filter(
+      /** Omit root references absent from the fixed plan. */ (step): step is AiStep =>
+        step !== undefined,
+    )
 }
 
+/**
+ * Normalize planned or free-form provider output into usable steps plus repair
+ * metadata such as missing IDs and validated label counts.
+ */
 function parseAiStepResponseResult(
   value: string,
   analysis: AiStepAnalysis | undefined,
@@ -826,8 +1029,17 @@ function parseAiStepResponseResult(
   if (analysis?.fixedPlan) {
     const { labels, modelLabels } = plannedLabelsFromResponse(value, analysis)
     const unresolvedIds =
-      analysis.unresolvedIds || analysis.fixedPlan.nodes.map((node) => node.id)
-    const missingIds = unresolvedIds.filter((id: string | number) => !modelLabels[id])
+      analysis.unresolvedIds ||
+      analysis.fixedPlan.nodes.map(
+        /** Use all fixed-plan IDs when no explicit unresolved subset was recorded. */ (
+          node,
+        ) => node.id,
+      )
+    const missingIds = unresolvedIds.filter(
+      /** Find requested IDs that this response did not validly label. */ (
+        id: string | number,
+      ) => !modelLabels[id],
+    )
     return {
       planned: true,
       steps: plannedStepsFromLabels(analysis, labels),
@@ -848,6 +1060,10 @@ function parseAiStepResponseResult(
   }
 }
 
+/**
+ * Merge initial/repair labels with cached labels for a fixed plan, preserving its
+ * ranges and recomputing unresolved IDs.
+ */
 function mergeAiStepResponseResults(
   analysis: AiStepAnalysis | undefined,
   first: AiStepResponseResult,
@@ -860,7 +1076,11 @@ function mergeAiStepResponseResults(
     ...second?.modelLabels,
   }
   const unresolvedIds = analysis.unresolvedIds || []
-  const missingIds = unresolvedIds.filter((id: string | number) => !labels[id])
+  const missingIds = unresolvedIds.filter(
+    /**
+     * Find requested IDs still unlabeled after merging the initial and repair responses.
+     */ (id: string | number) => !labels[id],
+  )
   const modelLabels = { ...first?.modelLabels, ...second?.modelLabels }
   return {
     planned: true,
@@ -872,6 +1092,10 @@ function mergeAiStepResponseResults(
   }
 }
 
+/**
+ * Request labels only for missing fixed-plan IDs, retaining existing titles and
+ * parser-defined hierarchy/ranges.
+ */
 function buildAiStepRepairPrompt(
   analysis: AiStepAnalysis | undefined,
   missingIds: string[] = [],
@@ -879,20 +1103,35 @@ function buildAiStepRepairPrompt(
   const plan = analysis?.fixedPlan
   if (!plan) return ""
   const wanted = new Set(missingIds || [])
-  const byId = new Map(plan.nodes.map((node) => [node.id, node]))
+  const byId = new Map(
+    plan.nodes.map(
+      /** Index fixed blocks so repair prompts retain their original source bounds. */ (
+        node,
+      ) => [node.id, node],
+    ),
+  )
   const descriptions = [...wanted]
-    .map((id) => {
-      const node = byId.get(id)
-      if (!node) return ""
-      if (node.kind === "group") {
-        const children = node.children.map((childId: string | number) => {
-          const title = analysis?.cachedLabels?.[childId]
-          return title ? `${childId}（${title}）` : childId
-        })
-        return `${id}: lines ${node.line}-${node.endLine}, includes ${children.join(", ")}`
-      }
-      return `--- ${id} [${node.line}-${node.endLine}] ---\n${node.source}`
-    })
+    .map(
+      /**
+       * Describe only missing blocks, including child IDs for groups and source for
+       * leaves.
+       */ (id) => {
+        const node = byId.get(id)
+        if (!node) return ""
+        if (node.kind === "group") {
+          const children = node.children.map(
+            /**
+             * Annotate child IDs with cached titles when available to guide a group label.
+             */ (childId: string | number) => {
+              const title = analysis?.cachedLabels?.[childId]
+              return title ? `${childId}（${title}）` : childId
+            },
+          )
+          return `${id}: lines ${node.line}-${node.endLine}, includes ${children.join(", ")}`
+        }
+        return `--- ${id} [${node.line}-${node.endLine}] ---\n${node.source}`
+      },
+    )
     .filter(Boolean)
   return [
     "You are a Delphi/Object Pascal code navigation assistant.",
@@ -904,14 +1143,28 @@ function buildAiStepRepairPrompt(
   ].join("\n")
 }
 
+/**
+ * Pair displayed step titles with their fixed-plan content hashes for reuse after
+ * unchanged source blocks move within a routine.
+ */
 function plannedLabelsByHash(
   analysis: AiStepAnalysis | undefined,
   steps: AiStep[],
 ): Array<[string, string]> {
   const plan = analysis?.fixedPlan
   if (!plan) return []
-  const byId = new Map(plan.nodes.map((node) => [node.id, node]))
+  const byId = new Map(
+    plan.nodes.map(
+      /** Index fixed blocks to associate displayed titles with their content hashes. */ (
+        node,
+      ) => [node.id, node],
+    ),
+  )
   const result: Array<[string, string]> = []
+  /**
+   * Traverse fixed-plan IDs and matching step rows to collect reusable content-hash
+   * labels in their existing hierarchy order.
+   */
   const visit = (ids: string[], rows: AiStep[] = []) => {
     for (let index = 0; index < ids.length; index += 1) {
       const node = byId.get(ids[index])
@@ -925,6 +1178,10 @@ function plannedLabelsByHash(
   return result
 }
 
+/**
+ * Parse supported provider step layouts, validating bounds/count/depth and using
+ * parser-owned ranges whenever a fixed plan exists.
+ */
 function parseAiStepResponse(
   value: string,
   range: AiStepAnalysis | undefined,
@@ -955,43 +1212,55 @@ function parseAiStepResponse(
     Math.min(100, Number(options.substepMinParentLines) || 30),
   )
   const topSteps = normalizedStepEntries(sourceSteps, range, maxSteps)
-  const normalizeLevel = (
+  const normalizeLevel = /**
+   * Recursively normalize AI steps, bounding source spans and enforcing substep depth
+   * limits.
+   */ (
     steps: ReturnType<typeof normalizedStepEntries>,
     endLine: number,
     depth: number,
   ): AiStep[] =>
-    steps.map((step, index: number) => {
-      const itemEndLine = Math.max(
-        step.line,
-        (steps[index + 1]?.line ?? endLine + 1) - 1,
-      )
-      let children: AiStep[] = []
-      if (
-        substepsEnabled &&
-        depth < maxDepth &&
-        itemEndLine - step.line + 1 >= substepMinParentLines
-      ) {
-        const childEntries = normalizedStepEntries(
-          Array.isArray(step.source?.children)
-            ? step.source.children
-            : Array.isArray(step.source?.substeps)
-              ? step.source.substeps
-              : [],
-          { startLine: step.line, endLine: itemEndLine },
-          maxSubsteps,
+    steps.map(
+      /**
+       * Bound a step by the next sibling and retain children only when depth and span
+       * allow them.
+       */ (step, index: number) => {
+        const itemEndLine = Math.max(
+          step.line,
+          (steps[index + 1]?.line ?? endLine + 1) - 1,
         )
-        children = normalizeLevel(childEntries, itemEndLine, depth + 1)
-        if (children.length < 2) children = []
-      }
-      return {
-        title: step.title,
-        line: step.line,
-        ...(children.length ? { children } : {}),
-      }
-    })
+        let children: AiStep[] = []
+        if (
+          substepsEnabled &&
+          depth < maxDepth &&
+          itemEndLine - step.line + 1 >= substepMinParentLines
+        ) {
+          const childEntries = normalizedStepEntries(
+            Array.isArray(step.source?.children)
+              ? step.source.children
+              : Array.isArray(step.source?.substeps)
+                ? step.source.substeps
+                : [],
+            { startLine: step.line, endLine: itemEndLine },
+            maxSubsteps,
+          )
+          children = normalizeLevel(childEntries, itemEndLine, depth + 1)
+          if (children.length < 2) children = []
+        }
+        return {
+          title: step.title,
+          line: step.line,
+          ...(children.length ? { children } : {}),
+        }
+      },
+    )
   return normalizeLevel(topSteps, range.endLine, 1)
 }
 
+/**
+ * Correlate batch response rows to requested routine IDs and normalize each routine
+ * using its own analysis limits.
+ */
 function parseBatchAiStepResponse(value: string, batch: AiBatchPrompt | undefined) {
   let parsed: unknown
   try {
@@ -1004,24 +1273,35 @@ function parseBatchAiStepResponse(value: string, batch: AiBatchPrompt | undefine
     : (record(parsed)?.routines ?? record(parsed)?.results)
   if (!Array.isArray(rows)) return []
   const byId = new Map(
-    rows.map((value) => {
-      const row = record(value)
-      return [String(row?.id || ""), row] as const
-    }),
+    rows.map(
+      /** Index batch response records by their correlation IDs. */ (value) => {
+        const row = record(value)
+        return [String(row?.id || ""), row] as const
+      },
+    ),
   )
-  return (batch?.entries || []).map((entry) => {
-    const row = byId.get(entry.id)
-    const steps = row
-      ? parseAiStepResponse(
-          JSON.stringify({ steps: row.steps }),
-          entry.request.analysis,
-          entry.request.analysis,
-        )
-      : []
-    return { ...entry, steps }
-  })
+  return (batch?.entries || []).map(
+    /**
+     * Normalize each requested routine's result using that routine's source bounds and
+     * limits.
+     */ (entry) => {
+      const row = byId.get(entry.id)
+      const steps = row
+        ? parseAiStepResponse(
+            JSON.stringify({ steps: row.steps }),
+            entry.request.analysis,
+            entry.request.analysis,
+          )
+        : []
+      return { ...entry, steps }
+    },
+  )
 }
 
+/**
+ * Create a stable navigable AI-step node with original source offsets, bounded line
+ * span, numbered display label, and recursively nested substeps.
+ */
 function createStepNode(
   text: string,
   analysisKey: string | undefined,
@@ -1052,24 +1332,32 @@ function createStepNode(
     children: [],
   }
   const children = Array.isArray(step.children) ? step.children : []
-  node.children = children.map((child, childIndex: number) =>
-    createStepNode(
-      text,
-      analysisKey,
-      child,
-      childIndex,
-      Math.max(
-        child.line,
-        (children[childIndex + 1]?.line ?? (node.endLine ?? endLine) + 1) - 1,
+  node.children = children.map(
+    /**
+     * Create child nodes within their sibling boundaries, carrying the parent's number
+     * prefix.
+     */ (child, childIndex: number) =>
+      createStepNode(
+        text,
+        analysisKey,
+        child,
+        childIndex,
+        Math.max(
+          child.line,
+          (children[childIndex + 1]?.line ?? (node.endLine ?? endLine) + 1) - 1,
+        ),
+        number,
+        children.length,
       ),
-      number,
-      children.length,
-    ),
   )
   for (const child of node.children) child.parent = node
   return node
 }
 
+/**
+ * Build a routine's AI-step nodes using the next step or routine end to bound each
+ * source range.
+ */
 function createAiStepNodes(
   text: string,
   routineNode: NavigatorTarget,
@@ -1077,21 +1365,25 @@ function createAiStepNodes(
   steps: AiStep[],
 ): NavigatorNode[] {
   const routineRange = routineSourceRange(text, routineNode)
-  return steps.map((step, index: number) =>
-    createStepNode(
-      text,
-      analysisKey,
+  return steps.map(
+    /** Create top-level steps bounded by the next step or the routine's last line. */ (
       step,
-      index,
-      Math.max(
-        step.line,
-        isInteger(steps[index + 1]?.line)
-          ? steps[index + 1].line - 1
-          : (routineRange?.endLine ?? step.line),
+      index: number,
+    ) =>
+      createStepNode(
+        text,
+        analysisKey,
+        step,
+        index,
+        Math.max(
+          step.line,
+          isInteger(steps[index + 1]?.line)
+            ? steps[index + 1].line - 1
+            : (routineRange?.endLine ?? step.line),
+        ),
+        "",
+        steps.length,
       ),
-      "",
-      steps.length,
-    ),
   )
 }
 

@@ -1211,7 +1211,7 @@ test("navigator webview emits a syntactically valid self-contained client script
   assert.match(script, /event\.key === "Escape"[\s\S]*?hideSort\(\)/)
   assert.match(script, /data\.type === WebviewMessageKind\.HideSearch\) hideSearch\(\)/)
   assert.match(script, /data\.type === WebviewMessageKind\.HideSort\) hideSort\(\)/)
-  assert.match(script, /vscode\.setState\(\{ expanded:/)
+  assert.match(script, /vscode\.setState\(\{\s*expanded:/)
   assert.match(
     html,
     /html, body \{[^}]*height:100%;[^}]*min-height:0;[^}]*overflow:hidden;/,
@@ -1239,18 +1239,21 @@ test("navigator webview emits a syntactically valid self-contained client script
   assert.doesNotMatch(html, /<svg viewBox=/)
   assert.match(
     script,
-    /JSON\.stringify\(\{ webviewSection: section, preventDefaultContextMenuItems: true \}\)/,
+    /JSON\.stringify\(\{\s*webviewSection: section,\s*preventDefaultContextMenuItems: true,?\s*\}\)/,
   )
   assert.match(
     script,
-    /document\.addEventListener\("focusin",[\s\S]*?reportWebviewFocus\(true\)/,
+    /document\.addEventListener\(\s*"focusin",[\s\S]*?reportWebviewFocus\(true\)/,
   )
   assert.match(
     script,
-    /window\.addEventListener\("blur",[\s\S]*?reportWebviewFocus\(false\)/,
+    /window\.addEventListener\(\s*"blur",[\s\S]*?reportWebviewFocus\(false\)/,
   )
   assert.match(script, /type: WebviewMessageKind\.FocusChanged, focused/)
-  assert.match(script, /row\.addEventListener\("contextmenu", \(\) => setSelected/)
+  assert.match(
+    script,
+    /row\.addEventListener\(\s*"contextmenu",\s*(?:\/\*\*[\s\S]*?\*\/\s*)?\(\) => setSelected/,
+  )
   assert.doesNotMatch(html + script, /id="context"|class="menu-item"|showContext\(/)
 })
 test("routine kinds use distinct icons while lifecycle routines share one icon", () => {

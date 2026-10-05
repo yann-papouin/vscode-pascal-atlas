@@ -225,6 +225,10 @@ interface EnrichmentOptions extends LookupOptions {
   workspaceMembers?: boolean
 }
 
+/**
+ * Validate persisted content identity and compact range buckets before restoring an
+ * editor coloring snapshot.
+ */
 function isCompactDecorationSnapshot(
   value: unknown,
 ): value is CompactDecorationSnapshot {
@@ -233,12 +237,15 @@ function isCompactDecorationSnapshot(
     typeof value.contentIdentity === "string" &&
     isRecord(value.ranges) &&
     RANGE_KINDS.every(
-      (kind) =>
+      /** Validate each coloring category's array of persisted range tuples. */ (
+        kind,
+      ) =>
         isRecord(value.ranges) &&
         Array.isArray(value.ranges[kind]) &&
         value.ranges[kind].every(
-          (range) =>
-            Array.isArray(range) && range.length === 4 && range.every(isInteger),
+          /** Accept only range tuples containing four integer coordinates. */ (
+            range,
+          ) => Array.isArray(range) && range.length === 4 && range.every(isInteger),
         ),
     )
   )
@@ -269,6 +276,10 @@ const PASCAL_ATLAS_COLOR_KEYS: Record<SemanticTokenType, string> = {
   method: "method",
 }
 
+/**
+ * Resolve a symbol category color from document-scoped Pascal Atlas overrides, editor
+ * semantic-token customization, or the fallback palette.
+ */
 function semanticEditorColor(
   tokenType: SemanticTokenType,
   uri: vscode.ConfigurationScope | null | undefined,
@@ -318,6 +329,10 @@ function semanticEditorColor(
   )
 }
 
+/**
+ * Create an editor decoration type for one resolved semantic category using current
+ * scoped color settings.
+ */
 function semanticDecoration(
   tokenType: SemanticTokenType,
   uri?: vscode.ConfigurationScope | null,
@@ -329,6 +344,10 @@ function semanticDecoration(
   return vscode.window.createTextEditorDecorationType(options)
 }
 
+/**
+ * Collect visible exact/leaf unit identities from uses and the current unit, always
+ * including Delphi's implicit System unit.
+ */
 function visibleUnitKeys(usedUnits: unknown[], ownUnit?: string) {
   // System is implicitly visible in every Delphi compilation unit even when it
   // is absent from both interface and implementation uses clauses.
@@ -347,6 +366,10 @@ function visibleUnitKeys(usedUnits: unknown[], ownUnit?: string) {
   return result
 }
 
+/**
+ * Test whether an owning unit is visible by its exact or permitted leaf identity in
+ * the current document.
+ */
 function unitIsVisible(unitName: string, visibleUnits: Set<string>) {
   const key = String(unitName || "").toLowerCase()
   const leaf = key.split(".").at(-1)!
@@ -388,6 +411,10 @@ const LEGACY_DELPHI_PLATFORM_UNITS = new Set<string>([
   "dbctrls",
 ])
 
+/**
+ * Recognize legacy or namespaced RTL/VCL/FMX/platform unit identities for
+ * source-versus-package lookup policy.
+ */
 function isDelphiPlatformUnit(unitName: string) {
   const key = String(unitName || "").toLowerCase()
   return (
@@ -396,51 +423,89 @@ function isDelphiPlatformUnit(unitName: string) {
   )
 }
 
+/**
+ * Yield one event-loop turn so background indexing/merging does not monopolize the
+ * extension host.
+ */
 function yieldToExtensionHost() {
-  return new Promise<void>((resolve) => setImmediate(resolve))
+  return new Promise<void>(
+    /** Resolve after yielding once to the extension-host event loop. */ (resolve) =>
+      setImmediate(resolve),
+  )
 }
 
+/**
+ * Delay low-priority work until the active Pascal editor has remained idle, renewing
+ * the wait after edits and tracking disposal.
+ */
 function waitForPascalEditorIdle(
   context: vscode.ExtensionContext,
   delayMs: number | undefined,
 ) {
-  return new Promise<void>((resolve) => {
-    let timer: NodeJS.Timeout | undefined
-    let settled = false
-    const complete = () => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      documentSubscription.dispose()
-      editorSubscription.dispose()
-      resolve()
-    }
-    const schedule = () => {
-      if (settled) return
-      clearTimeout(timer)
-      timer = setTimeout(complete, delayMs)
-    }
-    const documentSubscription = vscode.workspace.onDidChangeTextDocument((event) => {
-      if (
-        inList(event.document.languageId, [LanguageId.Pascal, LanguageId.ObjectPascal])
-      )
-        schedule()
-    })
-    const editorSubscription = vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (
-        editor &&
-        inList(editor.document.languageId, [LanguageId.Pascal, LanguageId.ObjectPascal])
-      )
-        schedule()
-    })
-    context.subscriptions.push(documentSubscription, editorSubscription, {
-      dispose() {
+  return new Promise<void>(
+    /**
+     * Wait for the idle timer while retaining listeners that can renew or dispose the
+     * wait.
+     */ (resolve) => {
+      let timer: NodeJS.Timeout | undefined
+      let settled = false
+      /**
+       * Settle the editor-idle wait once and release its timer/listeners so later input
+       * cannot resolve it again.
+       */
+      const complete = () => {
+        if (settled) return
         settled = true
         clearTimeout(timer)
-      },
-    })
-    schedule()
-  })
+        documentSubscription.dispose()
+        editorSubscription.dispose()
+        resolve()
+      }
+      /**
+       * Renew the editor-idle timer after activity, doing nothing once the wait has
+       * already settled.
+       */
+      const schedule = () => {
+        if (settled) return
+        clearTimeout(timer)
+        timer = setTimeout(complete, delayMs)
+      }
+      const documentSubscription = vscode.workspace.onDidChangeTextDocument(
+        /** Restart the idle wait after an edit to a Pascal document. */ (event) => {
+          if (
+            inList(event.document.languageId, [
+              LanguageId.Pascal,
+              LanguageId.ObjectPascal,
+            ])
+          )
+            schedule()
+        },
+      )
+      const editorSubscription = vscode.window.onDidChangeActiveTextEditor(
+        /** Restart the idle wait when a Pascal editor becomes active. */ (editor) => {
+          if (
+            editor &&
+            inList(editor.document.languageId, [
+              LanguageId.Pascal,
+              LanguageId.ObjectPascal,
+            ])
+          )
+            schedule()
+        },
+      )
+      context.subscriptions.push(documentSubscription, editorSubscription, {
+        /**
+         * Cancel the idle timer and prevent the pending wait from settling after
+         * disposal.
+         */
+        dispose() {
+          settled = true
+          clearTimeout(timer)
+        },
+      })
+      schedule()
+    },
+  )
 }
 
 class CompiledSymbolSupport {
@@ -502,6 +567,10 @@ class CompiledSymbolSupport {
   dcpFingerprint = ""
   allTypeUnitIndexPromise: Promise<SymbolUnitIndex> | undefined
 
+  /**
+   * Initialize shared source/compiled indexes, worker parsing, document
+   * analysis/coloring state, persistent snapshots, and package warmup caches.
+   */
   constructor(
     context: vscode.ExtensionContext,
     sourceIndexPromise: Promise<SourceIndex>,
@@ -552,7 +621,10 @@ class CompiledSymbolSupport {
     this.closedDecorationSnapshots = new Map(
       Array.isArray(savedDecorationSnapshots)
         ? savedDecorationSnapshots.filter(
-            (entry): entry is [string, CompactDecorationSnapshot] =>
+            /**
+             * Accept only string-keyed entries containing a valid compact coloring
+             * snapshot.
+             */ (entry): entry is [string, CompactDecorationSnapshot] =>
               Array.isArray(entry) &&
               entry.length === 2 &&
               typeof entry[0] === "string" &&
@@ -584,25 +656,43 @@ class CompiledSymbolSupport {
     this.platformReturnPendingUntil = 0
     this.rebuildDecorationTypes(vscode.window.activeTextEditor?.document?.uri)
     context.subscriptions.push({
-      dispose: () => {
+      dispose: /**
+       * Release the owning idle-wait or extension resource without leaving scheduled
+       * work active.
+       */ () => {
         clearTimeout(this.decorationSnapshotPersistTimer)
         clearTimeout(this.fastSourceUnitsPersistTimer)
-        void this.persistDecorationSnapshots().catch(() => undefined)
+        void this.persistDecorationSnapshots().catch(
+          /** Ignore snapshot persistence failures while disposing extension resources. */ () =>
+            undefined,
+        )
         this.disposeDecorationTypes()
         this.compiledParser.dispose()
       },
     })
     sourceIndexPromise
-      .then((index: SourceIndex) => this.sourceIndexExpanded(index))
-      .catch(() => undefined)
+      .then(
+        /** Adopt the source index when its initial build completes. */ (
+          index: SourceIndex,
+        ) => this.sourceIndexExpanded(index),
+      )
+      .catch(
+        /** Leave compiled support available if the initial source index fails. */ () =>
+          undefined,
+      )
   }
 
+  /** Read the document-scoped debounce for semantic coloring after typing. */
   typingDecorationDelay(document: vscode.TextDocument) {
     return vscode.workspace
       .getConfiguration(ConfigurationSection, document?.uri)
       .get(SettingKey.ColoringTypingDelayMs, 750)
   }
 
+  /**
+   * Adopt a broader source index, persist unit locations, invalidate interactive
+   * caches, and refresh the active document.
+   */
   sourceIndexExpanded(index: SourceIndex) {
     this.sourceIndex = index
     this.rememberSourceUnitLocations(index)
@@ -612,11 +702,18 @@ class CompiledSymbolSupport {
     if (active) this.scheduleDecorate(active, 0)
   }
 
+  /**
+   * Dispose all managed semantic decoration resources and clear their retained list.
+   */
   disposeDecorationTypes() {
     for (const decoration of this.decorationTypes || []) decoration.dispose()
     this.decorationTypes = []
   }
 
+  /**
+   * Replace semantic category decoration resources using the current document's color
+   * settings.
+   */
   rebuildDecorationTypes(uri: vscode.Uri | undefined) {
     this.disposeDecorationTypes()
     this.decoration = semanticDecoration(PascalKeyword.Class, uri)
@@ -637,6 +734,10 @@ class CompiledSymbolSupport {
     ]
   }
 
+  /**
+   * Merge a focused source index into the current index and invalidate lookups that
+   * depended on its earlier coverage.
+   */
   appendSourceIndex(index: SourceIndex) {
     if (!index) return
     if (!this.sourceIndex) this.sourceIndex = index
@@ -648,31 +749,59 @@ class CompiledSymbolSupport {
     if (active) this.scheduleDecorate(active, 0)
   }
 
+  /**
+   * Persist compact unit/file/declaration locations for fast future uses-clause
+   * navigation without serializing the whole source index.
+   */
   rememberSourceUnitLocations(index: Pick<SourceIndex, "units">) {
     for (const [unitName, definitions] of index?.units || []) {
       const compact = definitions
-        .filter((item: SourceDefinition) => item?.filePath)
-        .map((item: SourceDefinition) => ({
-          filePath: item.filePath,
-          offset: item.offset,
-          line: item.line,
-          character: item.character,
-          length: item.length,
-          kind: PascalKeyword.Unit,
-          symbol: item.symbol,
-          unitName: item.unitName,
-        }))
+        .filter(
+          /** Retain unit declarations with a usable source path. */ (
+            item: SourceDefinition,
+          ) => item?.filePath,
+        )
+        .map(
+          /**
+           * Keep the unit identity and coordinates needed by fast uses-clause
+           * navigation.
+           */ (item: SourceDefinition) => ({
+            filePath: item.filePath,
+            offset: item.offset,
+            line: item.line,
+            character: item.character,
+            length: item.length,
+            kind: PascalKeyword.Unit,
+            symbol: item.symbol,
+            unitName: item.unitName,
+          }),
+        )
       if (compact.length > 0) this.fastSourceUnits.set(unitName, compact)
     }
     clearTimeout(this.fastSourceUnitsPersistTimer)
-    this.fastSourceUnitsPersistTimer = setTimeout(() => {
-      const entries = [...this.fastSourceUnits].filter(([, definitions]) =>
-        definitions.some((item: SourceDefinition) => fs.existsSync(item.filePath)),
-      )
-      void this.context.workspaceState.update(SOURCE_UNIT_LOCATION_STATE_KEY, entries)
-    }, 250)
+    this.fastSourceUnitsPersistTimer = setTimeout(
+      /** Persist remembered unit locations after coalescing recent index updates. */ () => {
+        const entries = [...this.fastSourceUnits].filter(
+          /** Keep remembered units with at least one source file that still exists. */ ([
+            ,
+            definitions,
+          ]) =>
+            definitions.some(
+              /** Check whether a remembered source file remains available on disk. */ (
+                item: SourceDefinition,
+              ) => fs.existsSync(item.filePath),
+            ),
+        )
+        void this.context.workspaceState.update(SOURCE_UNIT_LOCATION_STATE_KEY, entries)
+      },
+      250,
+    )
   }
 
+  /**
+   * Build and merge a focused index for units relevant to the active source before
+   * broad background discovery completes.
+   */
   prioritizeSourceUnits(document: vscode.TextDocument) {
     if (
       !document ||
@@ -685,7 +814,9 @@ class CompiledSymbolSupport {
     const signature = [...new Set(unitNames)].sort().join(";")
     if (this.prioritySourcePromises.has(signature))
       return this.prioritySourcePromises.get(signature)
-    const promise = (async () => {
+    const promise = /**
+     * Build and merge a priority source index for units used by the active document.
+     */ (async () => {
       const startedAt = Date.now()
       const priorityIndex = await buildSourceUnitIndexForUnits(
         this.projectSourceRoots,
@@ -697,13 +828,21 @@ class CompiledSymbolSupport {
         `Active-file uses index: ${priorityIndex.fileCount} project file(s) for ` +
           `${path.basename(document.fileName)} after ${Date.now() - startedAt}ms.`,
       )
-    })().catch((error) => {
-      output.appendLine(`Active-file RAD/VCL priority index failed: ${error.message}`)
-    })
+    })().catch(
+      /** Report a failed priority index without rejecting editor startup. */ (
+        error,
+      ) => {
+        output.appendLine(`Active-file RAD/VCL priority index failed: ${error.message}`)
+      },
+    )
     this.prioritySourcePromises.set(signature, promise)
     return promise
   }
 
+  /**
+   * Cache a versioned masked-source snapshot with local definitions, member/type
+   * inference, uses visibility, and lightweight coloring evidence.
+   */
   documentAnalysis(
     document: vscode.TextDocument,
     prepared?: { text: string; code: string },
@@ -762,6 +901,10 @@ class CompiledSymbolSupport {
     return analysis
   }
 
+  /**
+   * Return a current uses-only analysis when full semantic parsing is not yet needed,
+   * reusing an available full-version snapshot.
+   */
   documentUsesAnalysis(document: vscode.TextDocument): DocumentUsesAnalysis {
     const key = document.uri.toString()
     const full = this.documentAnalysisCache.get(key)
@@ -782,6 +925,10 @@ class CompiledSymbolSupport {
     return analysis
   }
 
+  /**
+   * Invalidate/refresh only documents affected by newly indexed package units or
+   * ownership metadata.
+   */
   refreshDocumentsForPackage(packageIndex: CompiledPackageData) {
     const packageUnits = new Set(packageIndex?.packageIndex?.units?.keys() || [])
     if (packageUnits.size === 0) return
@@ -799,13 +946,17 @@ class CompiledSymbolSupport {
       // Those references do not make the BPL the owner of those Units. Refresh
       // only for an authoritative DCP owner (or an exact package/unit name), or
       // every subsequently indexed package can repaint the same editor again.
-      const relevant = [...analysis.usedUnits].some((unitName) => {
-        const owner =
-          this.unitOwnerPackage.get(unitName) ||
-          this.unitOwnerPackage.get(unitName.split(".").at(-1)!)
-        if (owner) return normalizeKey(owner) === packageKey
-        return packageBase === unitName || packageBase === unitName.split(".").at(-1)!
-      })
+      const relevant = [...analysis.usedUnits].some(
+        /** Check whether this used unit is owned by the newly indexed package. */ (
+          unitName,
+        ) => {
+          const owner =
+            this.unitOwnerPackage.get(unitName) ||
+            this.unitOwnerPackage.get(unitName.split(".").at(-1)!)
+          if (owner) return normalizeKey(owner) === packageKey
+          return packageBase === unitName || packageBase === unitName.split(".").at(-1)!
+        },
+      )
       if (!relevant) continue
       const key = document.uri.toString()
       // If the document's own package batch is awaiting this package, that
@@ -816,29 +967,40 @@ class CompiledSymbolSupport {
       this.documentPackagePromises.delete(key)
       this.documentWarmPromises.delete(key)
       clearTimeout(this.pendingPackageRefreshes.get(key))
-      const refreshTimer = setTimeout(() => {
-        this.pendingPackageRefreshes.delete(key)
-        const currentDocument = vscode.workspace.textDocuments.find(
-          (item) => item.uri.toString() === key && !item.isClosed,
-        )
-        if (!currentDocument) return
-        // The first current-file pass may have completed before the package-to-
-        // Unit map existed. Rebuild it now instead of retaining an empty result.
-        this.documentPackagePromises.delete(key)
-        this.documentWarmPromises.delete(key)
-        this.warmCurrentDocument(currentDocument)
-        const editor = vscode.window.visibleTextEditors.find(
-          (item) => item.document.uri.toString() === key,
-        )
-        if (editor) this.scheduleDecorate(editor, 0)
-        output.appendLine(
-          `Compiled Unit package became ready; refreshed ${path.basename(currentDocument.fileName)}.`,
-        )
-      }, 50)
+      const refreshTimer = setTimeout(
+        /**
+         * Refresh the affected open document after coalescing package-index completions.
+         */ () => {
+          this.pendingPackageRefreshes.delete(key)
+          const currentDocument = vscode.workspace.textDocuments.find(
+            /** Find the still-open document awaiting this package refresh. */ (item) =>
+              item.uri.toString() === key && !item.isClosed,
+          )
+          if (!currentDocument) return
+          // The first current-file pass may have completed before the package-to-
+          // Unit map existed. Rebuild it now instead of retaining an empty result.
+          this.documentPackagePromises.delete(key)
+          this.documentWarmPromises.delete(key)
+          this.warmCurrentDocument(currentDocument)
+          const editor = vscode.window.visibleTextEditors.find(
+            /** Find the visible editor displaying the affected document. */ (item) =>
+              item.document.uri.toString() === key,
+          )
+          if (editor) this.scheduleDecorate(editor, 0)
+          output.appendLine(
+            `Compiled Unit package became ready; refreshed ${path.basename(currentDocument.fileName)}.`,
+          )
+        },
+        50,
+      )
       this.pendingPackageRefreshes.set(key, refreshTimer)
     }
   }
 
+  /**
+   * Discover local package/symbol artifacts and supported dump tools, restore
+   * compatible ownership hints, and prime compiled/source lookup state.
+   */
   async initialize() {
     const startedAt = Date.now()
     const installation = vscode.workspace
@@ -853,13 +1015,15 @@ class CompiledSymbolSupport {
     }
     const [foundByFolder, dcpByFolder] = await Promise.all([
       Promise.all(
-        (vscode.workspace.workspaceFolders || []).map((folder) =>
-          findBplFiles(folder.uri.fsPath),
+        (vscode.workspace.workspaceFolders || []).map(
+          /** Discover compiled packages under each workspace root. */ (folder) =>
+            findBplFiles(folder.uri.fsPath),
         ),
       ),
       Promise.all(
-        (vscode.workspace.workspaceFolders || []).map((folder) =>
-          findDcpFiles(folder.uri.fsPath),
+        (vscode.workspace.workspaceFolders || []).map(
+          /** Discover compiled symbol files under each workspace root. */ (folder) =>
+            findDcpFiles(folder.uri.fsPath),
         ),
       ),
     ])
@@ -880,23 +1044,29 @@ class CompiledSymbolSupport {
       }
     }
     const dcpIdentities = await Promise.all(
-      [...this.dcpPathsByBase.values()].map(async (filePath) => {
-        try {
-          const stat = await fs.promises.stat(filePath)
-          return `${normalizeKey(filePath)}:${stat.size}:${Math.trunc(stat.mtimeMs)}`
-        } catch {
-          return normalizeKey(filePath)
-        }
-      }),
+      [...this.dcpPathsByBase.values()].map(
+        /**
+         * Fingerprint each DCP by path, size, and modification time, falling back to its
+         * path when unavailable.
+         */ async (filePath) => {
+          try {
+            const stat = await fs.promises.stat(filePath)
+            return `${normalizeKey(filePath)}:${stat.size}:${Math.trunc(stat.mtimeMs)}`
+          } catch {
+            return normalizeKey(filePath)
+          }
+        },
+      ),
     )
     this.dcpFingerprint = createHash("sha1")
       .update(dcpIdentities.sort().join("|"))
       .digest("hex")
     const packageByBase = new Map(
-      this.bplPaths.map((item) => [
-        path.basename(item, path.extname(item)).toLowerCase(),
-        item,
-      ]),
+      this.bplPaths.map(
+        /** Key installed package paths by lowercase basename for ownership lookup. */ (
+          item,
+        ) => [path.basename(item, path.extname(item)).toLowerCase(), item],
+      ),
     )
     const sharedOwners = this.context.workspaceState.get(
       `pascalAtlas.dcpOwnersV1:${this.dcpFingerprint}`,
@@ -926,6 +1096,9 @@ class CompiledSymbolSupport {
     )
   }
 
+  /**
+   * Require both extension enablement and the requested document-scoped feature flag.
+   */
   featureEnabled(key: string, fallback = true, document?: vscode.TextDocument) {
     const configuration = vscode.workspace.getConfiguration(
       ConfigurationSection,
@@ -936,17 +1109,29 @@ class CompiledSymbolSupport {
     )
   }
 
+  /**
+   * Check whether the document's resolved path lies inside a configured platform
+   * source root.
+   */
   isPlatformSourceDocument(document: vscode.TextDocument) {
     if (!document?.fileName || this.platformSourceRoots.length === 0) return false
     const fileName = path.resolve(document.fileName)
-    return this.platformSourceRoots.some((root) => {
-      const relative = path.relative(path.resolve(root), fileName)
-      return (
-        relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
-      )
-    })
+    return this.platformSourceRoots.some(
+      /**
+       * Test whether the document's resolved path lies inside this platform source root.
+       */ (root) => {
+        const relative = path.relative(path.resolve(root), fileName)
+        return (
+          relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+        )
+      },
+    )
   }
 
+  /**
+   * Describe a supported document's URI, language, platform-source status, and
+   * workspace membership for editor-transition handling.
+   */
   documentVisit(document: vscode.TextDocument | undefined) {
     if (!document) return undefined
     return {
@@ -960,12 +1145,20 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Read whether scoped semantic snapshots may be restored/persisted across window
+   * sessions.
+   */
   persistentDecorationCacheEnabled(document: vscode.TextDocument) {
     return vscode.workspace
       .getConfiguration(ConfigurationSection, document?.uri)
       .get(SettingKey.ColoringPersistedCacheEnabled, true)
   }
 
+  /**
+   * Deduplicate editor ranges into coordinate tuples and pair them with a content hash
+   * for persistence.
+   */
   compactDecorationSnapshot(
     document: vscode.TextDocument,
     snapshot: DecorationSnapshot,
@@ -1001,6 +1194,10 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Restore editor ranges from a previously validated compact snapshot and tag them
+   * with the current document version.
+   */
   hydrateDecorationSnapshot(
     snapshot: CompactDecorationSnapshot,
     document: vscode.TextDocument,
@@ -1017,7 +1214,9 @@ class CompiledSymbolSupport {
     }
     for (const key of RANGE_KINDS) {
       ranges[key] = (snapshot.ranges[key] || []).map(
-        (value: number[]) =>
+        /** Restore an editor range from its persisted start and end coordinates. */ (
+          value: number[],
+        ) =>
           new vscode.Range(
             new vscode.Position(value[0], value[1]),
             new vscode.Position(value[2], value[3]),
@@ -1031,6 +1230,10 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Queue a supported document's compact coloring snapshot and bounded persisted-cache
+   * update when caching is enabled.
+   */
   queueDecorationSnapshot(document: vscode.TextDocument, snapshot: DecorationSnapshot) {
     if (
       !document ||
@@ -1038,6 +1241,7 @@ class CompiledSymbolSupport {
       !this.persistentDecorationCacheEnabled(document)
     )
       return
+    // Persist only source-coordinate/content identities rather than live VS Code editor/range objects.
     const compact = this.compactDecorationSnapshot(document, snapshot)
     if (!compact) return
     const key = normalizeKey(document.fileName)
@@ -1049,14 +1253,26 @@ class CompiledSymbolSupport {
       )
     }
     clearTimeout(this.decorationSnapshotPersistTimer)
-    this.decorationSnapshotPersistTimer = setTimeout(() => {
-      this.decorationSnapshotPersistTimer = undefined
-      void this.persistDecorationSnapshots().catch((error: unknown) => {
-        output.appendLine(`Coloring cache persistence skipped: ${errorMessage(error)}`)
-      })
-    }, 1000)
+    this.decorationSnapshotPersistTimer = setTimeout(
+      /** Persist the latest coloring snapshots after the debounce expires. */ () => {
+        this.decorationSnapshotPersistTimer = undefined
+        void this.persistDecorationSnapshots().catch(
+          /**
+           * Report optional snapshot persistence failures without interrupting coloring.
+           */ (error: unknown) => {
+            output.appendLine(
+              `Coloring cache persistence skipped: ${errorMessage(error)}`,
+            )
+          },
+        )
+      },
+      1000,
+    )
   }
 
+  /**
+   * Persist the retained recent-document coloring snapshots through workspace state.
+   */
   persistDecorationSnapshots() {
     return Promise.resolve(
       this.context.workspaceState.update(DECORATION_SNAPSHOT_STATE_KEY, [
@@ -1065,6 +1281,7 @@ class CompiledSymbolSupport {
     )
   }
 
+  /** Clear managed semantic ranges only on a current visible open editor. */
   clearDecorations(editor: vscode.TextEditor) {
     if (
       !editor ||
@@ -1086,6 +1303,10 @@ class CompiledSymbolSupport {
     if (state) state.hasApplied = false
   }
 
+  /**
+   * Clear per-document definition and signature caches, optionally invalidating its
+   * warm-up and package requests.
+   */
   invalidateInteractiveDocumentState(document: vscode.TextDocument, rewarm = false) {
     if (!document) return
     const uri = document.uri.toString()
@@ -1101,6 +1322,10 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Retire the matching coloring owner, cancel scheduled work, and advance its
+   * generation so late results cannot repaint it.
+   */
   retireDecorationEditor(editor: vscode.TextEditor) {
     if (!editor) return
     const state = this.decorationStates.get(editorUri(editor))
@@ -1112,10 +1337,18 @@ class CompiledSymbolSupport {
     state.pending = false
   }
 
+  /**
+   * Check whether a decoration owner can still be rebound to an eligible visible
+   * editor.
+   */
   editorIsLive(editor: vscode.TextEditor | undefined) {
     return Boolean(this.liveDecorationEditor(editor))
   }
 
+  /**
+   * Resolve a retained decoration owner to its live visible editor using document
+   * identity and lifecycle state.
+   */
   liveDecorationEditor(editor: vscode.TextEditor | undefined) {
     if (!editor || editor.document.isClosed) return undefined
     const state = this.decorationStates.get(editorUri(editor))
@@ -1132,10 +1365,18 @@ class CompiledSymbolSupport {
     return visibleEditor
   }
 
+  /**
+   * Prefer non-trunk and shorter duplicate artifact paths when selecting
+   * package/symbol inputs.
+   */
   pathScore(value: string) {
     return (/trunk-win64-lib/i.test(value) ? 0 : 1000) - value.length
   }
 
+  /**
+   * Cache a compiled class/interface lookup by symbol name; feature and tool gates
+   * return undefined before starting work.
+   */
   async lookup(
     document: vscode.TextDocument,
     symbol: string,
@@ -1145,14 +1386,22 @@ class CompiledSymbolSupport {
     if (!this.tdumpPath || !/^[TI][A-Za-z0-9_]+$/.test(symbol)) return undefined
     const key = symbol.toLowerCase()
     if (this.cache.has(key)) return this.cache.get(key)
-    const promise = this.lookupUncached(document, symbol).catch((error) => {
-      output.appendLine(`Compiled symbol lookup failed for ${symbol}: ${error.message}`)
-      return undefined
-    })
+    const promise = this.lookupUncached(document, symbol).catch(
+      /** Report the failed compiled lookup and return no symbol. */ (error) => {
+        output.appendLine(
+          `Compiled symbol lookup failed for ${symbol}: ${error.message}`,
+        )
+        return undefined
+      },
+    )
     this.cache.set(key, promise)
     return promise
   }
 
+  /**
+   * Search ranked candidate BPL dumps for a class/interface symbol while tolerating
+   * package/tool failures.
+   */
   async lookupUncached(
     document: vscode.TextDocument,
     symbol: string,
@@ -1179,6 +1428,10 @@ class CompiledSymbolSupport {
     return undefined
   }
 
+  /**
+   * Run the local tdump tool for a package/symbol, reusing compatible full-dump cache
+   * data when available.
+   */
   async dumpPackage(bplPath: string, symbol?: string): Promise<string> {
     let cachePath
     if (!symbol) {
@@ -1227,10 +1480,16 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Memoize package string-dump work and restore/write compatible compressed dump
+   * cache data for symbol recovery.
+   */
   async dumpPackageStrings(bplPath: string): Promise<string> {
     const key = normalizeKey(bplPath)
     if (this.packageStringCache.has(key)) return this.packageStringCache.get(key)!
-    const promise = (async () => {
+    const promise = /**
+     * Restore cached package strings or regenerate and cache the local tdump output.
+     */ (async () => {
       let cachePath
       try {
         const stat = await fs.promises.stat(bplPath)
@@ -1304,21 +1563,32 @@ class CompiledSymbolSupport {
       } finally {
         await fs.promises.rm(temporaryBpl, { force: true })
       }
-    })().catch((error) => {
-      output.appendLine(
-        `Compiled RTTI string dump failed for ${path.basename(bplPath)}: ${error.message}`,
-      )
-      return ""
-    })
+    })().catch(
+      /** Report a failed RTTI string dump and supply empty recovery input. */ (
+        error,
+      ) => {
+        output.appendLine(
+          `Compiled RTTI string dump failed for ${path.basename(bplPath)}: ${error.message}`,
+        )
+        return ""
+      },
+    )
     this.packageStringCache.set(key, promise)
     return promise
   }
 
+  /**
+   * Build or restore one validated compiled package index, update ownership/class
+   * caches, and refresh affected documents after adoption.
+   */
   async indexPackage(bplPath: string): Promise<CompiledPackageData> {
     const key = normalizeKey(bplPath)
     if (this.packageClassCache.has(key)) return this.packageClassCache.get(key)!
     const startedAt = Date.now()
-    const promise = (async () => {
+    const promise = /**
+     * Restore or build the package symbol index using the configured parsed-cache
+     * policy.
+     */ (async () => {
       let cachePath
       const parsedCacheEnabled = vscode.workspace
         .getConfiguration(ConfigurationSection)
@@ -1359,58 +1629,80 @@ class CompiledSymbolSupport {
       }
       return parsed
     })()
-      .then((index) => {
-        const { names, units, packageIndex } = index
-        for (const [unitKey, unit] of packageIndex.units) {
-          if (!this.unitPackageIndex.has(unitKey))
-            this.unitPackageIndex.set(unitKey, new Set())
-          this.unitPackageIndex.get(unitKey)!.add(bplPath)
-          if (!this.compiledUnitsByName.has(unitKey))
-            this.compiledUnitsByName.set(unitKey, [])
-          this.compiledUnitsByName.get(unitKey)!.push(unit)
-          const leaf = unitKey.split(".").at(-1)!
-          if (!this.compiledUnitsByLeaf.has(leaf))
-            this.compiledUnitsByLeaf.set(leaf, [])
-          this.compiledUnitsByLeaf.get(leaf)!.push(unit)
-        }
-        output.appendLine(
-          `${index.parsedCacheHit ? "Restored" : "Indexed"} compiled package ${path.basename(bplPath)} ` +
-            `(${names.size} class symbols, ${packageIndex.units.size} units, ${packageIndex.globals.size} globals, ` +
-            `${packageIndex.routines.size} routines) after ${Date.now() - startedAt}ms.`,
-        )
-        return { names, units, packageIndex, bplPath }
-      })
-      .catch((error) => {
-        output.appendLine(
-          `Compiled package index failed for ${path.basename(bplPath)}: ${error.message}`,
-        )
-        return {
-          names: new Map(),
-          units: new Map(),
-          packageIndex: {
+      .then(
+        /**
+         * Index recovered unit ownership and log package parsing or cache-restoration
+         * timing.
+         */ (index) => {
+          const { names, units, packageIndex } = index
+          for (const [unitKey, unit] of packageIndex.units) {
+            if (!this.unitPackageIndex.has(unitKey))
+              this.unitPackageIndex.set(unitKey, new Set())
+            this.unitPackageIndex.get(unitKey)!.add(bplPath)
+            if (!this.compiledUnitsByName.has(unitKey))
+              this.compiledUnitsByName.set(unitKey, [])
+            this.compiledUnitsByName.get(unitKey)!.push(unit)
+            const leaf = unitKey.split(".").at(-1)!
+            if (!this.compiledUnitsByLeaf.has(leaf))
+              this.compiledUnitsByLeaf.set(leaf, [])
+            this.compiledUnitsByLeaf.get(leaf)!.push(unit)
+          }
+          output.appendLine(
+            `${index.parsedCacheHit ? "Restored" : "Indexed"} compiled package ${path.basename(bplPath)} ` +
+              `(${names.size} class symbols, ${packageIndex.units.size} units, ${packageIndex.globals.size} globals, ` +
+              `${packageIndex.routines.size} routines) after ${Date.now() - startedAt}ms.`,
+          )
+          return { names, units, packageIndex, bplPath }
+        },
+      )
+      .catch(
+        /**
+         * Report package indexing failure and return an empty index so other packages
+         * remain usable.
+         */ (error) => {
+          output.appendLine(
+            `Compiled package index failed for ${path.basename(bplPath)}: ${error.message}`,
+          )
+          return {
+            names: new Map(),
             units: new Map(),
-            classes: new Map(),
-            globals: new Map(),
-            routines: new Map(),
-          },
-          bplPath,
-        }
-      })
-      .then((index) => {
-        this.packageIndexReady.add(key)
-        this.refreshDocumentsForPackage(index)
-        return index
-      })
+            packageIndex: {
+              units: new Map(),
+              classes: new Map(),
+              globals: new Map(),
+              routines: new Map(),
+            },
+            bplPath,
+          }
+        },
+      )
+      .then(
+        /** Mark the package ready and schedule refreshes for documents that use it. */ (
+          index,
+        ) => {
+          this.packageIndexReady.add(key)
+          this.refreshDocumentsForPackage(index)
+          return index
+        },
+      )
     this.packageClassCache.set(key, promise)
     return promise
   }
 
+  /**
+   * Recover a useful unit display spelling from matching package basenames without
+   * common design-time prefixes.
+   */
   displayUnitName(unitName: string, bplPath: string) {
     const base = path.basename(bplPath, path.extname(bplPath))
     const stripped = base.replace(/^(?:bcgl|dcl)/i, "")
     return stripped.toLowerCase() === unitName.toLowerCase() ? stripped : unitName
   }
 
+  /**
+   * Collect potential owning units for a type symbol, preferring already indexed
+   * packages before scanning remaining candidates.
+   */
   async unitCandidatesForSymbol(symbol: string) {
     const key = symbol.toLowerCase()
     const results = new Set<string>()
@@ -1422,17 +1714,30 @@ class CompiledSymbolSupport {
       )
     }
 
+    /**
+     * Index a bounded candidate package batch and accumulate the symbol/unit matches
+     * needed by the enclosing lookup.
+     */
     const inspect = async (paths: string[]): Promise<boolean> => {
       for (let start = 0; start < paths.length; start += 8) {
         const batch = paths.slice(start, start + 8)
         const indexes = await Promise.all(
-          batch.map((item: string) => this.indexPackage(item)),
+          batch.map(
+            /** Load the selected package index, sharing any existing parse request. */ (
+              item: string,
+            ) => this.indexPackage(item),
+          ),
         )
-        indexes.forEach((index, indexInBatch) => {
-          for (const unitName of index.units.get(key) || []) {
-            results.add(this.displayUnitName(unitName, batch[indexInBatch]))
-          }
-        })
+        indexes.forEach(
+          /** Collect the symbol's owning units with package-derived display spellings. */ (
+            index,
+            indexInBatch,
+          ) => {
+            for (const unitName of index.units.get(key) || []) {
+              results.add(this.displayUnitName(unitName, batch[indexInBatch]))
+            }
+          },
+        )
         if (results.size > 0) return true
       }
       return false
@@ -1443,82 +1748,124 @@ class CompiledSymbolSupport {
     return [...results]
   }
 
+  /**
+   * Memoize a complete compiled symbol-to-unit candidate index built in bounded
+   * package batches.
+   */
   async allUnitCandidates() {
     if (this.allUnitIndexPromise) return this.allUnitIndexPromise
-    this.allUnitIndexPromise = (async () => {
-      const result: SymbolUnitIndex = new Map()
-      for (let start = 0; start < this.bplPaths.length; start += 8) {
-        const batch = this.bplPaths.slice(start, start + 8)
-        const indexes = await Promise.all(batch.map((item) => this.indexPackage(item)))
-        indexes.forEach((index, indexInBatch) => {
-          for (const [symbol, unitNames] of index.units) {
-            if (!result.has(symbol)) result.set(symbol, new Set())
-            for (const unitName of unitNames) {
-              result
-                .get(symbol)!
-                .add(this.displayUnitName(unitName, batch[indexInBatch]))
-            }
-          }
-        })
-      }
-      return result
-    })()
+    this.allUnitIndexPromise =
+      /** Collect symbol-to-unit candidates from package indexes in bounded batches. */ (async () => {
+        const result: SymbolUnitIndex = new Map()
+        for (let start = 0; start < this.bplPaths.length; start += 8) {
+          const batch = this.bplPaths.slice(start, start + 8)
+          const indexes = await Promise.all(
+            batch.map(
+              /** Load the selected package index, sharing any existing parse request. */ (
+                item,
+              ) => this.indexPackage(item),
+            ),
+          )
+          indexes.forEach(
+            /** Merge each package's symbol-to-unit candidates into the combined lookup. */ (
+              index,
+              indexInBatch,
+            ) => {
+              for (const [symbol, unitNames] of index.units) {
+                if (!result.has(symbol)) result.set(symbol, new Set())
+                for (const unitName of unitNames) {
+                  result
+                    .get(symbol)!
+                    .add(this.displayUnitName(unitName, batch[indexInBatch]))
+                }
+              }
+            },
+          )
+        }
+        return result
+      })()
     return this.allUnitIndexPromise
   }
 
+  /**
+   * Memoize the compiled type-only unit-candidate index used by missing-uses
+   * assistance.
+   */
   async allTypeUnitCandidates() {
     if (this.allTypeUnitIndexPromise) return this.allTypeUnitIndexPromise
-    this.allTypeUnitIndexPromise = (async () => {
+    this.allTypeUnitIndexPromise = /**
+     * Collect type-to-unit candidates from package class indexes in bounded batches.
+     */ (async () => {
       const result: SymbolUnitIndex = new Map()
       for (let start = 0; start < this.bplPaths.length; start += 8) {
         const batch = this.bplPaths.slice(start, start + 8)
-        const indexes = await Promise.all(batch.map((item) => this.indexPackage(item)))
-        indexes.forEach((index, indexInBatch) => {
-          for (const unit of index.packageIndex.units.values()) {
-            for (const [symbol] of unit.classes) {
-              if (!result.has(symbol)) result.set(symbol, new Set())
-              result
-                .get(symbol)!
-                .add(this.displayUnitName(unit.symbol, batch[indexInBatch]))
+        const indexes = await Promise.all(
+          batch.map(
+            /** Load the selected package index, sharing any existing parse request. */ (
+              item,
+            ) => this.indexPackage(item),
+          ),
+        )
+        indexes.forEach(
+          /** Collect owning units only for recovered class and interface symbols. */ (
+            index,
+            indexInBatch,
+          ) => {
+            for (const unit of index.packageIndex.units.values()) {
+              for (const [symbol] of unit.classes) {
+                if (!result.has(symbol)) result.set(symbol, new Set())
+                result
+                  .get(symbol)!
+                  .add(this.displayUnitName(unit.symbol, batch[indexInBatch]))
+              }
             }
-          }
-        })
+          },
+        )
       }
       return result
     })()
     return this.allTypeUnitIndexPromise
   }
 
+  /** Resolve a compiled unit under the supplied cache policy. */
   indexedSymbol(
     document: vscode.TextDocument,
     symbol: string | undefined,
     kinds: readonly ["unit"],
     options?: LookupOptions,
   ): Promise<CompiledUnit | undefined>
+  /** Resolve a compiled global under the supplied cache policy. */
   indexedSymbol(
     document: vscode.TextDocument,
     symbol: string | undefined,
     kinds: readonly [typeof CompiledSymbolKind.Global],
     options?: LookupOptions,
   ): Promise<CompiledGlobal | undefined>
+  /** Resolve a compiled routine under the supplied cache policy. */
   indexedSymbol(
     document: vscode.TextDocument,
     symbol: string | undefined,
     kinds: readonly [typeof CompiledSymbolKind.Routine],
     options?: LookupOptions,
   ): Promise<CompiledRoutine | undefined>
+  /** Resolve a compiled class or interface under the supplied cache policy. */
   indexedSymbol(
     document: vscode.TextDocument,
     symbol: string | undefined,
     kinds: readonly ["class"],
     options?: LookupOptions,
   ): Promise<CompiledClass | undefined>
+  /** Search the requested compiled symbol kinds under the supplied cache policy. */
   indexedSymbol(
     document: vscode.TextDocument,
     symbol: string | undefined,
     kinds?: readonly CompiledInfo["kind"][],
     options?: LookupOptions,
   ): Promise<CompiledInfo | undefined>
+  /**
+   * Search ranked package indexes for the requested symbol kinds; cache-only lookup
+   * starts no cold package work.
+   */
   async indexedSymbol(
     document: vscode.TextDocument,
     symbol: string | undefined,
@@ -1535,14 +1882,20 @@ class CompiledSymbolSupport {
     const analysis = this.documentAnalysis(document)
     const usedUnits = analysis.usedUnits
     const ranked = rankBplCandidates(this.bplPaths, analysis.text)
-    const cached = ranked.filter((item) =>
-      options.cachedOnly
-        ? this.packageIndexReady.has(normalizeKey(item))
-        : this.packageClassCache.has(normalizeKey(item)),
+    const cached = ranked.filter(
+      /**
+       * Select ready packages for cache-only lookup, or reuse packages with existing
+       * index requests.
+       */ (item) =>
+        options.cachedOnly
+          ? this.packageIndexReady.has(normalizeKey(item))
+          : this.packageClassCache.has(normalizeKey(item)),
     )
     const sourceIndex = this.sourceIndex || { units: new Map() }
     const packageUnits = [...usedUnits].filter(
-      (unitName) =>
+      /** Request ownership hints only for used units absent from the source index. */ (
+        unitName,
+      ) =>
         !sourceIndex.units?.has(unitName) &&
         !sourceIndex.units?.has(unitName.split(".").at(-1)!),
     )
@@ -1551,14 +1904,26 @@ class CompiledSymbolSupport {
     const priorityKeys = new Set(priority.map(normalizeKey))
     const remaining = options.cachedOnly
       ? []
-      : ranked.filter((item) => !priorityKeys.has(normalizeKey(item)))
+      : ranked.filter(
+          /**
+           * Leave packages already covered by priority lookup out of the remaining scan.
+           */ (item) => !priorityKeys.has(normalizeKey(item)),
+        )
     let fallback: CompiledInfo | undefined
 
+    /**
+     * Index a bounded candidate package batch and accumulate the symbol/unit matches
+     * needed by the enclosing lookup.
+     */
     const inspect = async (paths: string[]): Promise<CompiledInfo | undefined> => {
       for (let start = 0; start < paths.length; start += 8) {
         const batch = paths.slice(start, start + 8)
         const indexes = await Promise.all(
-          batch.map((item: string) => this.indexPackage(item)),
+          batch.map(
+            /** Load the selected package index, sharing any existing parse request. */ (
+              item: string,
+            ) => this.indexPackage(item),
+          ),
         )
         const matches: CompiledInfo[] = []
         for (const index of indexes) {
@@ -1586,8 +1951,10 @@ class CompiledSymbolSupport {
           }
         }
         if (matches.length > 0) {
-          const preferred = matches.find((item) =>
-            usedUnits.has(item.namespace.toLowerCase()),
+          const preferred = matches.find(
+            /** Prefer a match whose namespace appears in the document's uses clauses. */ (
+              item,
+            ) => usedUnits.has(item.namespace.toLowerCase()),
           )
           if (preferred) return preferred
           if (!fallback) fallback = matches[0]
@@ -1599,6 +1966,10 @@ class CompiledSymbolSupport {
     return (await inspect(priority)) || (await inspect(remaining)) || fallback
   }
 
+  /**
+   * Find an exact or unambiguous leaf/suffix unit match in one package index without
+   * conflating unrelated namespaces.
+   */
   compiledUnitForName(
     packageIndex: CompiledPackageIndex | undefined,
     unitName: string,
@@ -1609,33 +1980,51 @@ class CompiledSymbolSupport {
     const leaf = key.split(".").at(-1)!
     const requestedParts = key.split(".")
     const suffixMatches = [...(packageIndex?.units.values() || [])]
-      .map((unit) => {
-        const candidate = unit.symbol.toLowerCase()
-        const parts = candidate.split(".")
-        if (parts.at(-1) !== leaf) return undefined
-        let score = 1
-        if (candidate.endsWith(`.${key}`)) score = 100
-        else if (parts[0] === requestedParts[0]) {
-          score = 50
-          let commonSuffix = 0
-          while (
-            commonSuffix < Math.min(parts.length, requestedParts.length) &&
-            parts.at(-1 - commonSuffix) === requestedParts.at(-1 - commonSuffix)
-          ) {
-            commonSuffix += 1
+      .map(
+        /**
+         * Score matching unit leaves by their qualified-name suffix and namespace
+         * overlap.
+         */ (unit) => {
+          const candidate = unit.symbol.toLowerCase()
+          const parts = candidate.split(".")
+          if (parts.at(-1) !== leaf) return undefined
+          let score = 1
+          if (candidate.endsWith(`.${key}`)) score = 100
+          else if (parts[0] === requestedParts[0]) {
+            score = 50
+            let commonSuffix = 0
+            while (
+              commonSuffix < Math.min(parts.length, requestedParts.length) &&
+              parts.at(-1 - commonSuffix) === requestedParts.at(-1 - commonSuffix)
+            ) {
+              commonSuffix += 1
+            }
+            score += commonSuffix * 10 - Math.abs(parts.length - requestedParts.length)
           }
-          score += commonSuffix * 10 - Math.abs(parts.length - requestedParts.length)
-        }
-        return { unit, score }
-      })
-      .filter((value): value is { unit: CompiledUnit; score: number } => Boolean(value))
-      .sort((left, right) => right.score - left.score)
+          return { unit, score }
+        },
+      )
+      .filter(
+        /** Discard unit candidates whose leaf name does not match. */ (
+          value,
+        ): value is { unit: CompiledUnit; score: number } => Boolean(value),
+      )
+      .sort(
+        /** Rank qualified unit matches by descending namespace score. */ (
+          left,
+          right,
+        ) => right.score - left.score,
+      )
     return suffixMatches.length > 0 &&
       (suffixMatches.length === 1 || suffixMatches[0].score > suffixMatches[1].score)
       ? suffixMatches[0].unit
       : undefined
   }
 
+  /**
+   * Resolve an already cached compiled unit identity without starting package
+   * dump/index work.
+   */
   cachedCompiledUnitForName(unitName: string) {
     const key = unitName.toLowerCase()
     const exact = this.compiledUnitsByName.get(key)
@@ -1645,6 +2034,10 @@ class CompiledSymbolSupport {
     if (candidates.length === 1) return candidates[0]
     if (candidates.length === 0) return undefined
     const requestedParts = key.split(".")
+    /**
+     * Rank a compiled unit identity by exact or qualified-name suffix agreement with
+     * the requested unit.
+     */
     const score = (unit: { symbol: string }) => {
       const candidate = unit.symbol.toLowerCase()
       const parts = candidate.split(".")
@@ -1659,9 +2052,18 @@ class CompiledSymbolSupport {
       }
       return commonSuffix * 10 + Number(parts[0] === requestedParts[0])
     }
-    return [...candidates].sort((left, right) => score(right) - score(left))[0]
+    return [...candidates].sort(
+      /** Prefer the strongest exact or namespace match among cached units. */ (
+        left,
+        right,
+      ) => score(right) - score(left),
+    )[0]
   }
 
+  /**
+   * Resolve package indexes relevant to a document's used units, using source and
+   * ownership hints to avoid scanning unrelated packages.
+   */
   async packageIndexesForUsedUnits(
     document: vscode.TextDocument,
   ): Promise<CompiledUnit[]> {
@@ -1670,14 +2072,18 @@ class CompiledSymbolSupport {
     const requestedUnits = [...usedUnits]
 
     const sourceIndex = this.sourceIndex
-    const compiledUnits = requestedUnits.filter((unitName) => {
-      const leaf = unitName.split(".").at(-1)!
-      return (
-        !isDelphiPlatformUnit(unitName) &&
-        !sourceIndex?.units?.has(unitName) &&
-        !sourceIndex?.units?.has(leaf)
-      )
-    })
+    const compiledUnits = requestedUnits.filter(
+      /** Skip platform units and units already represented by source declarations. */ (
+        unitName,
+      ) => {
+        const leaf = unitName.split(".").at(-1)!
+        return (
+          !isDelphiPlatformUnit(unitName) &&
+          !sourceIndex?.units?.has(unitName) &&
+          !sourceIndex?.units?.has(leaf)
+        )
+      },
+    )
 
     // Start packages that can be inferred from the Unit namespace immediately.
     // Do not make MVCFramework.*, Spring.*, etc. wait behind the binary owner
@@ -1685,17 +2091,25 @@ class CompiledSymbolSupport {
     const namespacePriority: string[] = []
     for (const unitName of compiledUnits) {
       const unitKey = unitName.toLowerCase()
-      const owner = this.bplPaths.find((item) => {
-        const base = path.basename(item, path.extname(item)).toLowerCase()
-        return unitKey === base || unitKey.startsWith(`${base}.`)
-      })
+      const owner = this.bplPaths.find(
+        /** Find a package whose basename owns this unit's namespace prefix. */ (
+          item,
+        ) => {
+          const base = path.basename(item, path.extname(item)).toLowerCase()
+          return unitKey === base || unitKey.startsWith(`${base}.`)
+        },
+      )
       if (!owner) continue
       this.unitOwnerPackage.set(unitKey, owner)
       this.unitOwnerPackage.set(unitKey.split(".").at(-1)!, owner)
       if (!namespacePriority.includes(owner)) namespacePriority.push(owner)
     }
     const namespacePriorityPromise = Promise.all(
-      namespacePriority.map((item) => this.indexPackage(item)),
+      namespacePriority.map(
+        /** Load the selected package index, sharing any existing parse request. */ (
+          item,
+        ) => this.indexPackage(item),
+      ),
     )
 
     // Resolve ownership before consulting package indexes. A package often
@@ -1704,9 +2118,17 @@ class CompiledSymbolSupport {
     const hinted = await this.hintedPackagePaths(compiledUnits)
     await Promise.all([
       namespacePriorityPromise,
-      ...hinted.map((item: string) => this.indexPackage(item)),
+      ...hinted.map(
+        /** Load the selected package index, sharing any existing parse request. */ (
+          item: string,
+        ) => this.indexPackage(item),
+      ),
     ])
 
+    /**
+     * Collect compatible package/unit ownership candidates from cached index evidence
+     * while avoiding duplicate or conflicting unit selections.
+     */
     const collectMatches = async () => {
       const matches = []
       const seen = new Set()
@@ -1728,26 +2150,43 @@ class CompiledSymbolSupport {
         // With no DCP owner, prefer a package whose own name matches the Unit;
         // otherwise use one stable best candidate instead of fanning out to all
         // packages that merely link against it.
-        const exact = candidates.find((item) => {
-          const base = path.basename(item, path.extname(item)).toLowerCase()
-          return base === unitName || base === leaf
-        })
+        const exact = candidates.find(
+          /**
+           * Prefer a package basename that exactly matches the qualified unit or its
+           * leaf.
+           */ (item) => {
+            const base = path.basename(item, path.extname(item)).toLowerCase()
+            return base === unitName || base === leaf
+          },
+        )
         const selected =
           exact ||
           candidates.sort(
-            (left, right) => this.pathScore(right) - this.pathScore(left),
+            /**
+             * Choose the preferred artifact path when several packages might own the
+             * unit.
+             */ (left, right) => this.pathScore(right) - this.pathScore(left),
           )[0]
         if (selected) selectedByUnit.set(unitName, selected)
       }
       const packagePaths = [...new Set(selectedByUnit.values())]
       const indexes = await Promise.all(
-        packagePaths.map(async (bplPath) => ({
-          bplPath,
-          index: await this.indexPackage(bplPath),
-        })),
+        packagePaths.map(
+          /** Load each chosen package together with its ownership path. */ async (
+            bplPath,
+          ) => ({
+            bplPath,
+            index: await this.indexPackage(bplPath),
+          }),
+        ),
       )
       const indexesByPath = new Map(
-        indexes.map((item) => [normalizeKey(item.bplPath), item.index]),
+        indexes.map(
+          /** Key completed package indexes by canonical package path. */ (item) => [
+            normalizeKey(item.bplPath),
+            item.index,
+          ],
+        ),
       )
       for (const [unitName, bplPath] of selectedByUnit) {
         const index = indexesByPath.get(normalizeKey(bplPath))
@@ -1767,6 +2206,10 @@ class CompiledSymbolSupport {
     return collectMatches()
   }
 
+  /**
+   * Recover/cache package ownership evidence for unresolved units from compatible
+   * persisted hints and definition-shaped binary names.
+   */
   async hintedPackagePaths(unitNames: string[]): Promise<string[]> {
     if (unitNames.length === 0) return []
     // A decoration request may arrive between setting tdumpPath and completing
@@ -1791,10 +2234,14 @@ class CompiledSymbolSupport {
         // MVCFramework.Servlet in MVCFramework.bpl. Prefer this deterministic
         // basename match before inspecting binary ownership signatures.
         const unitKey = unitName.toLowerCase()
-        const namespaceOwner = this.bplPaths.find((item) => {
-          const base = path.basename(item, path.extname(item)).toLowerCase()
-          return unitKey === base || unitKey.startsWith(`${base}.`)
-        })
+        const namespaceOwner = this.bplPaths.find(
+          /** Find the package matching this unit or its namespace prefix. */ (
+            item,
+          ) => {
+            const base = path.basename(item, path.extname(item)).toLowerCase()
+            return unitKey === base || unitKey.startsWith(`${base}.`)
+          },
+        )
         if (namespaceOwner) {
           this.unitOwnerPackage.set(unitKey, namespaceOwner)
           this.unitOwnerPackage.set(unitKey.split(".").at(-1)!, namespaceOwner)
@@ -1808,15 +2255,19 @@ class CompiledSymbolSupport {
     unitNames = unresolvedUnits
     const signature = [...unitNames].sort().join(";")
     if (this.dcpHintCache.has(signature)) return this.dcpHintCache.get(signature)!
-    const promise = (async () => {
+    const promise = /**
+     * Restore matching package hints or discover and persist hints for the current DCP
+     * fingerprint.
+     */ (async () => {
       const storageKey = `pascalAtlas.dcpHintsV2:${this.dcpFingerprint}:${signature}`
       const persisted = asStringArray(this.context.workspaceState.get(storageKey, []))
       if (persisted.length > 0) {
         const byBase = new Map(
-          this.bplPaths.map((item) => [
-            path.basename(item, path.extname(item)).toLowerCase(),
-            item,
-          ]),
+          this.bplPaths.map(
+            /** Key installed package paths by lowercase basename for ownership lookup. */ (
+              item,
+            ) => [path.basename(item, path.extname(item)).toLowerCase(), item],
+          ),
         )
         const restored: string[] = []
         for (const entry of persisted) {
@@ -1833,63 +2284,99 @@ class CompiledSymbolSupport {
           await this.persistUnitOwnerCache()
           output.appendLine(
             `Current-file package hints restored for [${unitNames.join(", ")}]: ` +
-              `${restored.map((item) => path.basename(item)).join(", ")}.`,
+              `${restored.map(/** Show package filenames in the ownership-hint log. */ (item) => path.basename(item)).join(", ")}.`,
           )
           return uniquePaths([...alreadyOwned, ...restored])
         }
       }
       const scores = new Map<string, Map<string, number>>()
-      const escaped = unitNames.map((unit: string) => {
-        const leaf = unit.split(".").at(-1)!
-        return {
-          unit,
-          expression: new RegExp(
-            `(?:_ZN|_ZTRN|_ZTVN)${leaf.length}${leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
-            "gi",
-          ),
-        }
-      })
+      const escaped = unitNames.map(
+        /** Build a length-prefixed ABI-name matcher for each unresolved unit's leaf. */ (
+          unit: string,
+        ) => {
+          const leaf = unit.split(".").at(-1)!
+          return {
+            unit,
+            expression: new RegExp(
+              `(?:_ZN|_ZTRN|_ZTVN)${leaf.length}${leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+              "gi",
+            ),
+          }
+        },
+      )
       const candidates = this.bplPaths
-        .map((bplPath) => ({
-          bplPath,
-          dcpPath: this.dcpPathsByBase.get(
-            path.basename(bplPath, path.extname(bplPath)).toLowerCase(),
-          ),
-        }))
-        .filter((item) => item.dcpPath)
+        .map(
+          /** Pair each package with the DCP having the same basename. */ (
+            bplPath,
+          ) => ({
+            bplPath,
+            dcpPath: this.dcpPathsByBase.get(
+              path.basename(bplPath, path.extname(bplPath)).toLowerCase(),
+            ),
+          }),
+        )
+        .filter(
+          /** Inspect only packages with a corresponding compiled-symbol file. */ (
+            item,
+          ) => item.dcpPath,
+        )
       for (let start = 0; start < candidates.length; start += 6) {
         const batch = candidates.slice(start, start + 6)
         const values = await Promise.all(
-          batch.map(async (item) => {
-            try {
-              // Count definition-shaped Itanium names in the BPL. A DCP also
-              // repeats dependency references heavily (Triangulation appeared
-              // 269/264/235 times in owner/consumers), while `_ZN/_ZTRN/_ZTVN`
-              // counts retain a clear 29/10/9 ownership signal.
-              return (await fs.promises.readFile(item.bplPath)).toString("latin1")
-            } catch {
-              return ""
-            }
-          }),
+          batch.map(
+            /**
+             * Read package bytes as Latin-1 for ABI-name counting, treating unreadable
+             * packages as empty.
+             */ async (item) => {
+              try {
+                // Count definition-shaped Itanium names in the BPL. A DCP also
+                // repeats dependency references heavily (Triangulation appeared
+                // 269/264/235 times in owner/consumers), while `_ZN/_ZTRN/_ZTVN`
+                // counts retain a clear 29/10/9 ownership signal.
+                return (await fs.promises.readFile(item.bplPath)).toString("latin1")
+              } catch {
+                return ""
+              }
+            },
+          ),
         )
-        values.forEach((value, index) => {
-          if (!value) return
-          const perUnit = new Map<string, number>()
-          for (const item of escaped)
-            perUnit.set(item.unit, [...value.matchAll(item.expression)].length)
-          scores.set(batch[index].bplPath, perUnit)
-        })
+        values.forEach(
+          /**
+           * Count definition-shaped ABI names per unit and retain the package ownership
+           * scores.
+           */ (value, index) => {
+            if (!value) return
+            const perUnit = new Map<string, number>()
+            for (const item of escaped)
+              perUnit.set(item.unit, [...value.matchAll(item.expression)].length)
+            scores.set(batch[index].bplPath, perUnit)
+          },
+        )
       }
       const result: string[] = []
       const persistedOwners = []
       for (const unitName of unitNames) {
         const ranked = [...scores]
-          .map(([bplPath, perUnit]) => ({
-            bplPath,
-            score: perUnit.get(unitName) || 0,
-          }))
-          .filter((item) => item.score > 0)
-          .sort((left, right) => right.score - left.score)
+          .map(
+            /** Attach this unit's ownership score to each package candidate. */ ([
+              bplPath,
+              perUnit,
+            ]) => ({
+              bplPath,
+              score: perUnit.get(unitName) || 0,
+            }),
+          )
+          .filter(
+            /** Discard packages containing no definition-shaped names for this unit. */ (
+              item,
+            ) => item.score > 0,
+          )
+          .sort(
+            /** Rank possible owners by descending unit-definition count. */ (
+              left,
+              right,
+            ) => right.score - left.score,
+          )
         // A real owner normally contains both the Unit implementation and its
         // RTTI, while consumers still contain imported symbol names. Requiring
         // a 3x lead rejected valid shared packages such as bcglGeoAlgo3D (15
@@ -1912,7 +2399,7 @@ class CompiledSymbolSupport {
       }
       output.appendLine(
         `Current-file package hints for [${unitNames.join(", ")}]: ` +
-          `${result.map((item) => path.basename(item)).join(", ") || "none"}.`,
+          `${result.map(/** Show package filenames in the ownership-hint log. */ (item) => path.basename(item)).join(", ") || "none"}.`,
       )
       await this.context.workspaceState.update(storageKey, persistedOwners)
       await this.persistUnitOwnerCache()
@@ -1922,7 +2409,12 @@ class CompiledSymbolSupport {
     return promise
   }
 
+  /**
+   * Persist compact unit-to-package-base ownership hints under the current
+   * symbol-artifact fingerprint.
+   */
   persistUnitOwnerCache() {
+    // Ownership hints are meaningful only for the discovered artifact set; avoid persisting startup guesses before its fingerprint exists.
     if (!this.dcpFingerprint) return Promise.resolve()
     const owners: Record<string, string> = {}
     for (const [unitName, bplPath] of this.unitOwnerPackage) {
@@ -1934,25 +2426,49 @@ class CompiledSymbolSupport {
     )
   }
 
+  /**
+   * Schedule unindexed packages in low-priority batches after interactive work has had
+   * an opportunity to finish.
+   */
   warmRemainingPackages() {
     if (this.backgroundWarmPromise) return
-    this.backgroundWarmPromise = (async () => {
+    this.backgroundWarmPromise = /**
+     * Warm uncached packages in small batches and yield between batches to keep the
+     * host responsive.
+     */ (async () => {
       const remaining = this.bplPaths.filter(
-        (item) => !this.packageClassCache.has(normalizeKey(item)),
+        /** Warm only packages without a cached or in-flight index. */ (item) =>
+          !this.packageClassCache.has(normalizeKey(item)),
       )
       for (let start = 0; start < remaining.length; start += 4) {
         await Promise.all(
-          remaining.slice(start, start + 4).map((item) => this.indexPackage(item)),
+          remaining
+            .slice(start, start + 4)
+            .map(
+              /** Load the selected package index, sharing any existing parse request. */ (
+                item,
+              ) => this.indexPackage(item),
+            ),
         )
-        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        await new Promise<void>(
+          /** Yield a timer turn between package batches so interactive work can run. */ (
+            resolve,
+          ) => setTimeout(resolve, 0),
+        )
       }
       const active = vscode.window.activeTextEditor
       if (active) this.scheduleDecorate(active, 0)
-    })().catch((error) =>
-      output.appendLine(`Background package warm-up failed: ${error.message}`),
+    })().catch(
+      /** Report a failed background warm-up without blocking interactive lookup. */ (
+        error,
+      ) => output.appendLine(`Background package warm-up failed: ${error.message}`),
     )
   }
 
+  /**
+   * Memoize relevant direct/used-unit package data for a document while avoiding broad
+   * compiled work for source-backed platform files.
+   */
   packageDataForDocument(document: vscode.TextDocument): Promise<PackageDocumentData> {
     if (!this.tdumpPath || document.languageId !== LanguageId.Pascal) {
       return Promise.resolve({ directIndexes: [], usedUnitIndexes: [] })
@@ -1976,11 +2492,13 @@ class CompiledSymbolSupport {
     const ownUnitNames = new Set(
       [analysis.ownUnit, analysis.ownUnit?.split(".").at(-1)!].filter(Boolean),
     )
-    const exactPackages = this.bplPaths.filter((item) =>
-      ownUnitNames.has(path.basename(item, path.extname(item)).toLowerCase()),
+    const exactPackages = this.bplPaths.filter(
+      /** Find packages whose basename matches the current source unit. */ (item) =>
+        ownUnitNames.has(path.basename(item, path.extname(item)).toLowerCase()),
     )
     const readyPackages = bplCandidatesForDocument(this.bplPaths, analysis.text).filter(
-      (item) => this.packageIndexReady.has(normalizeKey(item)),
+      /** Reuse only packages whose index is already ready. */ (item) =>
+        this.packageIndexReady.has(normalizeKey(item)),
     )
     // Do not make current-file decoration wait for an arbitrary batch of eight
     // packages. Used Units are resolved separately via DCP ownership; the direct
@@ -1991,29 +2509,45 @@ class CompiledSymbolSupport {
     )
     const startedAt = Date.now()
     const promise = Promise.all([
-      Promise.all(packagePaths.map((item) => this.indexPackage(item))),
+      Promise.all(
+        packagePaths.map(
+          /** Load the selected package index, sharing any existing parse request. */ (
+            item,
+          ) => this.indexPackage(item),
+        ),
+      ),
       this.packageIndexesForUsedUnits(document),
-    ]).then(([directIndexes, usedUnitIndexes]) => {
-      // This document already has a decoration pass awaiting the complete batch.
-      // Cancel per-package refresh timers so Appbase/MvcEnv/MVCFramework_Cef are
-      // committed together instead of visibly repainting the editor three times.
-      clearTimeout(this.pendingPackageRefreshes.get(key))
-      this.pendingPackageRefreshes.delete(key)
-      output.appendLine(
-        `Current-file package batch ready for ${path.basename(document.fileName)}: ` +
-          `${usedUnitIndexes.length} used Unit(s), ${directIndexes.length} direct package(s) ` +
-          `after ${Date.now() - startedAt}ms.`,
-      )
-      return { directIndexes, usedUnitIndexes }
-    })
+    ]).then(
+      /**
+       * Cancel per-package repaint timers and return the completed document package
+       * batch.
+       */ ([directIndexes, usedUnitIndexes]) => {
+        // This document already has a decoration pass awaiting the complete batch.
+        // Cancel per-package refresh timers so Appbase/MvcEnv/MVCFramework_Cef are
+        // committed together instead of visibly repainting the editor three times.
+        clearTimeout(this.pendingPackageRefreshes.get(key))
+        this.pendingPackageRefreshes.delete(key)
+        output.appendLine(
+          `Current-file package batch ready for ${path.basename(document.fileName)}: ` +
+            `${usedUnitIndexes.length} used Unit(s), ${directIndexes.length} direct package(s) ` +
+            `after ${Date.now() - startedAt}ms.`,
+        )
+        return { directIndexes, usedUnitIndexes }
+      },
+    )
     const cacheEntry = { version: document.version, promise, pending: true }
     this.documentPackagePromises.set(key, cacheEntry)
     promise.then(
-      () => {
+      /**
+       * Clear the pending flag only if this completed request still owns the cache
+       * entry.
+       */ () => {
         if (this.documentPackagePromises.get(key) === cacheEntry)
           cacheEntry.pending = false
       },
-      () => {
+      /**
+       * Clear the pending flag only if this failed request still owns the cache entry.
+       */ () => {
         if (this.documentPackagePromises.get(key) === cacheEntry)
           cacheEntry.pending = false
       },
@@ -2021,6 +2555,10 @@ class CompiledSymbolSupport {
     return promise
   }
 
+  /**
+   * Prewarm eligible current-file source and compiled lookups under document/feature
+   * gates without blocking editor interaction.
+   */
   warmCurrentDocument(document: vscode.TextDocument) {
     if (
       !document ||
@@ -2041,11 +2579,15 @@ class CompiledSymbolSupport {
     const key = document.uri.toString()
     const cached = this.documentWarmPromises.get(key)
     if (cached?.version === document.version) return cached.promise
-    const promise = (async () => {
+    const promise = /**
+     * Warm compiled symbols needed by identifiers and inferred receiver types in this
+     * document.
+     */ (async () => {
       const startedAt = Date.now()
       const identifiers = new Set(
-        [...analysis.code.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\b/g)].map((match) =>
-          match[0].toLowerCase(),
+        [...analysis.code.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\b/g)].map(
+          /** Collect identifier lookup keys from the masked document. */ (match) =>
+            match[0].toLowerCase(),
         ),
       )
       for (const match of analysis.code.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\b/g)) {
@@ -2091,18 +2633,29 @@ class CompiledSymbolSupport {
           `(${usedUnitIndexes.length} compiled unit(s), ${enrichments.length} referenced object(s)) ` +
           `after ${Date.now() - startedAt}ms.`,
       )
-    })().catch((error) => {
-      output.appendLine(
-        `Current-file navigation warm-up failed for ${document.fileName}: ${error.message}`,
-      )
-    })
+    })().catch(
+      /** Report a failed current-file warm-up without blocking navigation. */ (
+        error,
+      ) => {
+        output.appendLine(
+          `Current-file navigation warm-up failed for ${document.fileName}: ${error.message}`,
+        )
+      },
+    )
     this.documentWarmPromises.set(key, { version: document.version, promise })
     return promise
   }
 
+  /**
+   * Memoize observed receiver/member names from workspace source to supplement
+   * incomplete compiled metadata.
+   */
   async workspaceMemberIndex() {
     if (this.workspaceMemberIndexPromise) return this.workspaceMemberIndexPromise
-    this.workspaceMemberIndexPromise = (async () => {
+    this.workspaceMemberIndexPromise = /**
+     * Build a workspace index of observed member accesses from source files in bounded
+     * batches.
+     */ (async () => {
       const result: ObservedMemberIndex = new Map()
       const files = await vscode.workspace.findFiles(
         "**/*.{pas,pp,dpr,dpk}",
@@ -2111,14 +2664,19 @@ class CompiledSymbolSupport {
       )
       for (let start = 0; start < files.length; start += 32) {
         const parsed = await Promise.all(
-          files.slice(start, start + 32).map(async (uri) => {
-            try {
-              const bytes = await vscode.workspace.fs.readFile(uri)
-              return maskPascalNonCode(Buffer.from(bytes).toString("utf8"))
-            } catch {
-              return ""
-            }
-          }),
+          files.slice(start, start + 32).map(
+            /**
+             * Read and mask workspace source, treating unreadable files as empty
+             * observation input.
+             */ async (uri) => {
+              try {
+                const bytes = await vscode.workspace.fs.readFile(uri)
+                return maskPascalNonCode(Buffer.from(bytes).toString("utf8"))
+              } catch {
+                return ""
+              }
+            },
+          ),
         )
         for (const code of parsed) {
           await yieldToExtensionHost()
@@ -2133,12 +2691,16 @@ class CompiledSymbolSupport {
     return this.workspaceMemberIndexPromise
   }
 
+  /** Memoize off-thread mangled-symbol class parsing from the package's string dump. */
   mangledClassesForPackage(bplPath: string): Promise<Map<string, CompiledClass>> {
     const packageKey = normalizeKey(bplPath)
     if (this.packageMangledClassCache.has(packageKey)) {
       return this.packageMangledClassCache.get(packageKey)!
     }
-    const promise = (async () => {
+    const promise = /**
+     * Restore or recover mangled class information for this package and cache the
+     * result.
+     */ (async () => {
       let cachePath
       const parsedCacheEnabled = vscode.workspace
         .getConfiguration(ConfigurationSection)
@@ -2179,6 +2741,10 @@ class CompiledSymbolSupport {
     return promise
   }
 
+  /**
+   * Attach compatible class/RTTI evidence to a compiled global lazily, respecting a
+   * cache-only request.
+   */
   async enrichGlobal(
     global: CompiledGlobal | undefined,
     options: EnrichmentOptions = {},
@@ -2187,7 +2753,10 @@ class CompiledSymbolSupport {
     if (options.cachedOnly && !global.rttiLoaded && !global.rttiPromise) return global
     if (!global.rttiLoaded) {
       if (!global.rttiPromise)
-        global.rttiPromise = (async () => {
+        global.rttiPromise = /**
+         * Enrich the compiled global with class RTTI once and mark its RTTI loading
+         * complete.
+         */ (async () => {
           if (global.classInfo && !global.classInfo.rttiMembers) {
             await this.enrichClass(global.classInfo)
             global.classInfo.rttiMembers ||= []
@@ -2209,11 +2778,18 @@ class CompiledSymbolSupport {
     if (options.workspaceMembers === false || global.workspaceMembersLoaded)
       return global
     if (global.workspaceEnrichmentPromise) return global.workspaceEnrichmentPromise
-    global.workspaceEnrichmentPromise = (async () => {
+    global.workspaceEnrichmentPromise = /**
+     * Attach workspace-observed members to the compiled global and mark that lookup
+     * complete.
+     */ (async () => {
       const index = await this.workspaceMemberIndex()
       global.observedMembers = [
         ...(index.get(global.symbol.toLowerCase()) || new Map()).values(),
-      ].map((name) => ({ name, signature: `${global.symbol}.${name}`, inferred: true }))
+      ].map(
+        /** Describe a member observed on this global in workspace source. */ (
+          name,
+        ) => ({ name, signature: `${global.symbol}.${name}`, inferred: true }),
+      )
       global.workspaceMembersLoaded = true
       return global
     })()
@@ -2225,6 +2801,10 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Infer and cache a compiled routine's return class lazily without launching new
+   * work for cache-only requests.
+   */
   async enrichRoutine(
     routine: CompiledRoutine | undefined,
     options: EnrichmentOptions = {},
@@ -2234,7 +2814,10 @@ class CompiledSymbolSupport {
       return routine
     if (!routine.returnTypeLoaded) {
       if (!routine.returnTypePromise)
-        routine.returnTypePromise = (async () => {
+        routine.returnTypePromise = /**
+         * Infer and cache a compiled routine return class from recovered package
+         * symbols.
+         */ (async () => {
           const classes = await this.mangledClassesForPackage(routine.bplPath)
           routine.classInfo = inferRoutineReturnClass(routine.symbol, classes)
           routine.typeName = routine.classInfo?.symbol
@@ -2251,15 +2834,22 @@ class CompiledSymbolSupport {
     if (options.workspaceMembers === false || routine.workspaceMembersLoaded)
       return routine
     if (routine.workspaceEnrichmentPromise) return routine.workspaceEnrichmentPromise
-    routine.workspaceEnrichmentPromise = (async () => {
+    routine.workspaceEnrichmentPromise = /**
+     * Attach workspace-observed members to the compiled routine and mark that lookup
+     * complete.
+     */ (async () => {
       const index = await this.workspaceMemberIndex()
       routine.observedMembers = [
         ...(index.get(routine.symbol.toLowerCase()) || new Map()).values(),
-      ].map((name) => ({
-        name,
-        signature: `${routine.symbol}.${name}`,
-        inferred: true,
-      }))
+      ].map(
+        /** Describe a member observed on this routine's result in workspace source. */ (
+          name,
+        ) => ({
+          name,
+          signature: `${routine.symbol}.${name}`,
+          inferred: true,
+        }),
+      )
       routine.workspaceMembersLoaded = true
       if (routine.classInfo) {
         output.appendLine(
@@ -2277,6 +2867,10 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Merge recovered methods, properties, and RTTI into a class descriptor, sharing
+   * in-flight work and honoring cache-only requests.
+   */
   async enrichClass(
     classInfo: CompiledClass | undefined,
     options: EnrichmentOptions = {},
@@ -2293,14 +2887,20 @@ class CompiledSymbolSupport {
     }
     if (classInfo.compiledMembersLoaded) return classInfo
     if (!classInfo.compiledMembersPromise)
-      classInfo.compiledMembersPromise = (async () => {
+      classInfo.compiledMembersPromise = /**
+       * Merge recovered methods and RTTI into the compiled class without duplicating
+       * known members.
+       */ (async () => {
         const recovered = (await this.mangledClassesForPackage(classInfo.bplPath)).get(
           classInfo.symbol.toLowerCase(),
         )
         if (recovered) {
           for (const method of recovered.methods) {
             const existing = classInfo.methods.find(
-              (item: { name: string }) =>
+              /**
+               * Find an exported method with the same name before merging recovered
+               * metadata.
+               */ (item: { name: string }) =>
                 item.name.toLowerCase() === method.name.toLowerCase(),
             )
             if (!existing) {
@@ -2312,7 +2912,10 @@ class CompiledSymbolSupport {
           for (const property of recovered.properties || []) {
             if (
               !classInfo.properties.some(
-                (item: { name: string }) =>
+                /**
+                 * Avoid duplicating a property already present in the class
+                 * descriptor.
+                 */ (item: { name: string }) =>
                   item.name.toLowerCase() === property.name.toLowerCase(),
               )
             ) {
@@ -2332,6 +2935,9 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Return the original identifier spelling and editor range at a document position.
+   */
   wordAt(document: vscode.TextDocument, position: vscode.Position) {
     const range = document.getWordRangeAtPosition(position, /[A-Za-z_][A-Za-z0-9_]*/)
     if (!range) return undefined
@@ -2343,6 +2949,10 @@ class CompiledSymbolSupport {
       : undefined
   }
 
+  /**
+   * Suppress navigation for standalone reserved/intrinsic words using current masked
+   * source, while preserving escaped/qualified symbols.
+   */
   navigationBlockedAt(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -2358,6 +2968,10 @@ class CompiledSymbolSupport {
     )
   }
 
+  /**
+   * Resolve class metadata at an identifier or inferred receiver type when compiled
+   * navigation evidence is needed.
+   */
   async infoAt(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -2379,6 +2993,10 @@ class CompiledSymbolSupport {
     return info ? { info, token } : undefined
   }
 
+  /**
+   * Resolve a compiled symbol or member at the caret, following receiver chains and
+   * the lookup cache policy.
+   */
   async compiledReferenceAt(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -2644,6 +3262,10 @@ class CompiledSymbolSupport {
     return undefined
   }
 
+  /**
+   * Return the caret identifier as a candidate type, optionally replacing it with
+   * locally inferred receiver-type evidence.
+   */
   typeAt(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -2664,6 +3286,10 @@ class CompiledSymbolSupport {
     return typeName ? { typeName, token } : undefined
   }
 
+  /**
+   * Combine indexed local type inference and source for-in element inference into
+   * candidate receiver type names.
+   */
   receiverTypeNames(
     analysis: DocumentAnalysis,
     qualifier: string,
@@ -2683,8 +3309,9 @@ class CompiledSymbolSupport {
     const key = inferred.toLowerCase().split(".").at(-1)!
     const definitions = [
       ...(analysis.sourceUnit?.types || []).filter(
-        (item: { symbol: string }) =>
-          item.symbol.toLowerCase().split(".").at(-1)! === key,
+        /** Match a local type declaration by its unqualified identifier. */ (item: {
+          symbol: string
+        }) => item.symbol.toLowerCase().split(".").at(-1)! === key,
       ),
       ...(this.sourceIndex?.types.get(key) || []),
     ]
@@ -2697,6 +3324,10 @@ class CompiledSymbolSupport {
     return names
   }
 
+  /**
+   * Infer a for-in variable's element type through its indexed collection and source
+   * type aliases.
+   */
   sourceForInVariableType(
     analysis: DocumentAnalysis,
     identifier: string,
@@ -2718,6 +3349,10 @@ class CompiledSymbolSupport {
     return this.sourceCollectionElementType(analysis, collectionType)
   }
 
+  /**
+   * Resolve collection element metadata directly or through source aliases/generic
+   * substitutions, stopping type cycles.
+   */
   sourceCollectionElementType(
     analysis: DocumentAnalysis,
     collectionType: string,
@@ -2731,8 +3366,9 @@ class CompiledSymbolSupport {
     nextVisited.add(collectionKey)
     const definitions = [
       ...(analysis.sourceUnit?.types || []).filter(
-        (item: SourceDefinition) =>
-          pascalTypeBaseName(item.symbol).toLowerCase() === collectionKey,
+        /** Find local type declarations for the collection's base name. */ (
+          item: SourceDefinition,
+        ) => pascalTypeBaseName(item.symbol).toLowerCase() === collectionKey,
       ),
       ...(this.sourceIndex?.types.get(collectionKey) || []),
     ]
@@ -2759,6 +3395,10 @@ class CompiledSymbolSupport {
     return undefined
   }
 
+  /**
+   * Resolve nearest member definitions across current-file and project source indexes,
+   * including aliases/inheritance.
+   */
   sourceMemberDefinitionsForType(
     analysis: DocumentAnalysis,
     typeName: string,
@@ -2771,6 +3411,10 @@ class CompiledSymbolSupport {
     )
   }
 
+  /**
+   * Substitute a source member's declared result type using its owner's generic
+   * parameters and the concrete receiver.
+   */
   sourceMemberResultType(
     analysis: DocumentAnalysis,
     receiverType: string,
@@ -2780,16 +3424,26 @@ class CompiledSymbolSupport {
     const ownerKey = pascalTypeBaseName(definition.owner || receiverType).toLowerCase()
     const ownerDefinitions = [
       ...(analysis.sourceUnit?.types || []).filter(
-        (item: SourceDefinition) =>
-          pascalTypeBaseName(item.symbol).toLowerCase() === ownerKey,
+        /** Find local declarations for the member owner's base type. */ (
+          item: SourceDefinition,
+        ) => pascalTypeBaseName(item.symbol).toLowerCase() === ownerKey,
       ),
       ...(this.sourceIndex?.types.get(ownerKey) || []),
     ]
     const parameters =
-      ownerDefinitions.find((item) => item.typeParameters?.length)?.typeParameters || []
+      ownerDefinitions.find(
+        /**
+         * Choose an owner declaration with generic parameters available for
+         * substitution.
+         */ (item) => item.typeParameters?.length,
+      )?.typeParameters || []
     return substitutePascalTypeParameters(definition.typeName, parameters, receiverType)
   }
 
+  /**
+   * Propagate receiver types through a source-backed member/index/call chain using
+   * declarations and generic result metadata.
+   */
   sourceReceiverTypesForChain(
     analysis: DocumentAnalysis,
     chain: string[],
@@ -2802,8 +3456,9 @@ class CompiledSymbolSupport {
     if (
       types.length === 0 &&
       (analysis.sourceUnit?.types?.some(
-        (item: SourceDefinition) =>
-          pascalTypeBaseName(item.symbol).toLowerCase() === firstKey,
+        /** Recognize a declared type used directly as the initial receiver. */ (
+          item: SourceDefinition,
+        ) => pascalTypeBaseName(item.symbol).toLowerCase() === firstKey,
       ) ||
         this.sourceIndex?.types.has(firstKey))
     ) {
@@ -2838,6 +3493,10 @@ class CompiledSymbolSupport {
     return types
   }
 
+  /**
+   * Resolve a member chain asynchronously across source and compiled evidence under
+   * navigation-specific lookup constraints.
+   */
   async navigationReceiverTypesForChain(
     document: vscode.TextDocument,
     analysis: DocumentAnalysis,
@@ -2851,8 +3510,9 @@ class CompiledSymbolSupport {
     if (
       types.length === 0 &&
       (analysis.sourceUnit?.types?.some(
-        (item: SourceDefinition) =>
-          pascalTypeBaseName(item.symbol).toLowerCase() === firstKey,
+        /** Recognize a declared type used directly as the initial receiver. */ (
+          item: SourceDefinition,
+        ) => pascalTypeBaseName(item.symbol).toLowerCase() === firstKey,
       ) ||
         this.sourceIndex?.types.has(firstKey) ||
         /^[TI][A-Za-z0-9_]+$/.test(chain[0]))
@@ -2862,7 +3522,10 @@ class CompiledSymbolSupport {
     return resolvePascalReceiverTypeChain(
       types,
       chain.slice(1),
-      async (typeName: string, memberName: string) => {
+      /**
+       * Advance a receiver type through an indexed access or the next source or
+       * compiled member.
+       */ async (typeName: string, memberName: string) => {
         if (memberName === PASCAL_INDEX_DEREFERENCE) {
           const elementType =
             inferPascalCollectionElementType(typeName) ||
@@ -2875,10 +3538,16 @@ class CompiledSymbolSupport {
           typeName,
           memberName,
         )
-          .map((definition) =>
-            this.sourceMemberResultType(analysis, typeName, definition),
+          .map(
+            /** Substitute each source member's result type for the concrete receiver. */ (
+              definition,
+            ) => this.sourceMemberResultType(analysis, typeName, definition),
           )
-          .filter((value): value is string => Boolean(value))
+          .filter(
+            /** Retain only result types supported by source metadata. */ (
+              value,
+            ): value is string => Boolean(value),
+          )
         if (sourceTypes.length > 0) return sourceTypes
 
         const info = await this.enrichClass(
@@ -2898,6 +3567,10 @@ class CompiledSymbolSupport {
     )
   }
 
+  /**
+   * Find compiled class/interface metadata corresponding to a source type's relevant
+   * hierarchy under the requested cache policy.
+   */
   async compiledInfosForSourceHierarchy(
     document: vscode.TextDocument,
     analysis: DocumentAnalysis,
@@ -2924,8 +3597,9 @@ class CompiledSymbolSupport {
       if (info) infos.push(info)
       const definitions = [
         ...(analysis.sourceUnit?.types || []).filter(
-          (item: SourceDefinition) =>
-            pascalTypeBaseName(item.symbol).toLowerCase() === key,
+          /** Find local declarations for the current hierarchy type. */ (
+            item: SourceDefinition,
+          ) => pascalTypeBaseName(item.symbol).toLowerCase() === key,
         ),
         ...(this.sourceIndex?.types.get(key) || []),
       ]
@@ -2936,6 +3610,10 @@ class CompiledSymbolSupport {
     return infos
   }
 
+  /**
+   * Propagate known receiver types through compiled member metadata and index
+   * dereference markers.
+   */
   compiledReceiverTypesForChain(
     analysis: DocumentAnalysis,
     chain: string[],
@@ -2975,6 +3653,10 @@ class CompiledSymbolSupport {
     return types
   }
 
+  /**
+   * Resolve concrete compiled receiver descriptors for a source member chain without
+   * adopting unrelated namespace candidates.
+   */
   async compiledReceiverInfosForChain(
     document: vscode.TextDocument,
     analysis: DocumentAnalysis,
@@ -3040,6 +3722,10 @@ class CompiledSymbolSupport {
     return infos
   }
 
+  /**
+   * Resolve member definitions from one source index through its owner
+   * aliases/hierarchy.
+   */
   sourceMemberDefinitions(
     index: Pick<SourceIndex, "members" | "types">,
     typeName: string,
@@ -3048,6 +3734,10 @@ class CompiledSymbolSupport {
     return findSourceMemberDefinitions(index, typeName, memberName)
   }
 
+  /**
+   * Collect members from a type and its inherited or aliased declarations, keeping the
+   * nearest definition of each name.
+   */
   allSourceMembers(index: Pick<SourceIndex, "members" | "types">, typeName: string) {
     const result = new Map<string, SourceDefinition>()
     const pending = [typeName]
@@ -3067,6 +3757,10 @@ class CompiledSymbolSupport {
     return result
   }
 
+  /**
+   * Return an empty caret range or a length-based selection according to the
+   * document's navigation settings.
+   */
   navigationTargetRange(
     start: vscode.Position,
     length: number | undefined,
@@ -3080,6 +3774,10 @@ class CompiledSymbolSupport {
     return new vscode.Range(start, start.translate(0, Math.max(0, Number(length) || 0)))
   }
 
+  /**
+   * Build a VS Code definition link with an exact origin token and declaration/body
+   * target coordinates.
+   */
   definitionLink(
     originSelectionRange: vscode.Range,
     targetUri: vscode.Uri,
@@ -3103,6 +3801,10 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Return definition links retaining the supplied origin token and optional
+   * implementation preference.
+   */
   locationsForDefinitions(
     definitions: SourceDefinition[],
     symbol: string,
@@ -3110,12 +3812,20 @@ class CompiledSymbolSupport {
     document: vscode.TextDocument,
     originSelectionRange: vscode.Range,
   ): Promise<vscode.DefinitionLink[]>
+  /**
+   * Return source locations without an origin token, optionally preferring
+   * implementation coordinates.
+   */
   locationsForDefinitions(
     definitions: SourceDefinition[],
     symbol: string,
     preferImplementation?: boolean,
     document?: vscode.TextDocument,
   ): Promise<vscode.Location[]>
+  /**
+   * Convert source definitions to locations or links, using implementation coordinates
+   * when requested and skipping unavailable source files.
+   */
   async locationsForDefinitions(
     definitions: SourceDefinition[],
     symbol: string,
@@ -3186,6 +3896,10 @@ class CompiledSymbolSupport {
     return locations
   }
 
+  /**
+   * Find a current-file declaration target using masked text and original
+   * identifier/source ranges.
+   */
   async sourceLocalDeclarationAt(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -3210,7 +3924,10 @@ class CompiledSymbolSupport {
     const isRoutineDeclaration = (
       analysis.localDefinitions.get(token.word.toLowerCase()) || []
     ).some(
-      (item: SourceDefinition) =>
+      /**
+       * Distinguish a routine heading from a variable declaration with a similar
+       * shape.
+       */ (item: SourceDefinition) =>
         item.kind === SourceSymbolKind.Routine && item.offset === declaration.offset,
     )
     if (isRoutineDeclaration) return undefined
@@ -3227,6 +3944,10 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Resolve a member reference through current/local/project receiver type evidence,
+   * using cached compiled metadata only when requested.
+   */
   async sourceMemberAt(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -3263,16 +3984,24 @@ class CompiledSymbolSupport {
     if (definitions.length === 0) return undefined
     const unique = [
       ...new Map(
-        definitions.map((item) => [
-          `${normalizeKey(item.filePath)}:${item.offset}`,
-          item,
-        ]),
+        definitions.map(
+          /**
+           * Deduplicate member definitions by canonical file path and declaration
+           * offset.
+           */ (item) => [`${normalizeKey(item.filePath)}:${item.offset}`, item],
+        ),
       ).values(),
-    ].sort((left, right) => left.offset - right.offset)
+    ].sort(
+      /** Order unique member declarations by source offset. */ (left, right) =>
+        left.offset - right.offset,
+    )
     if (
       unique.length > 1 &&
       unique.every(
-        (item) => normalizeKey(item.filePath) === normalizeKey(unique[0].filePath),
+        /**
+         * Check whether the nearby duplicate declarations all belong to one source
+         * file.
+         */ (item) => normalizeKey(item.filePath) === normalizeKey(unique[0].filePath),
       ) &&
       unique.at(-1)!.offset - unique[0].offset < 256
     ) {
@@ -3285,7 +4014,10 @@ class CompiledSymbolSupport {
     }
     const implementationOffset = document.offsetAt(token.range.start)
     const clickedImplementation = definitions.some(
-      (definition) =>
+      /**
+       * Detect a click on the current routine implementation before preferring an
+       * implementation target.
+       */ (definition) =>
         definition.kind === SourceSymbolKind.Routine &&
         normalizeKey(definition.filePath) === normalizeKey(document.fileName) &&
         definition.implementationOffset === implementationOffset,
@@ -3295,7 +4027,9 @@ class CompiledSymbolSupport {
       this.featureEnabled(SettingKey.NavigationPreferImplementation, true, document)
     const implementationDefinitions = preferImplementation
       ? definitions.filter(
-          (item) =>
+          /** Retain routine declarations that have a known implementation location. */ (
+            item,
+          ) =>
             item.kind === SourceSymbolKind.Routine &&
             isInteger(item.implementationOffset),
         )
@@ -3318,6 +4052,10 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Resolve whole uses-unit targets from current source indexes or remembered unit
+   * locations.
+   */
   sourceUsesUnitLinksAt(document: vscode.TextDocument, position: vscode.Position) {
     const analysis = this.documentUsesAnalysis(document)
     const match = findPascalUsesUnitAt(
@@ -3375,6 +4113,10 @@ class CompiledSymbolSupport {
       : undefined
   }
 
+  /**
+   * Resolve a used unit to compatible compiled metadata and its generated virtual-unit
+   * location.
+   */
   async compiledUsesUnitLinksAt(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -3411,6 +4153,10 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Collect source definition links for the caret symbol using local declarations,
+   * member ownership, visible units, and project metadata.
+   */
   async sourceDefinitionsAt(document: vscode.TextDocument, position: vscode.Position) {
     const token = this.wordAt(document, position)
     if (!token) return undefined
@@ -3455,7 +4201,10 @@ class CompiledSymbolSupport {
 
     const clickOffset = document.offsetAt(token.range.start)
     const exact = definitions.filter(
-      (definition: SourceDefinition) =>
+      /**
+       * Find definitions whose declaration or implementation span starts at the
+       * clicked token.
+       */ (definition: SourceDefinition) =>
         normalizeKey(definition.filePath) === normalizeKey(document.fileName) &&
         (definition.offset === clickOffset ||
           definition.implementationOffset === clickOffset),
@@ -3463,27 +4212,38 @@ class CompiledSymbolSupport {
     if (exact.length > 0) {
       definitions = [
         exact.sort(
-          (left: SourceDefinition, right: SourceDefinition) =>
+          /**
+           * Prefer owner-qualified definitions and definitions with implementation
+           * coordinates.
+           */ (left: SourceDefinition, right: SourceDefinition) =>
             Number(Boolean(right.owner)) - Number(Boolean(left.owner)) ||
             Number(isInteger(right.implementationOffset)) -
               Number(isInteger(left.implementationOffset)),
         )[0],
       ]
     } else {
-      const preferred = definitions.filter((definition: SourceDefinition) => {
-        return unitIsVisible(definition.unitName, analysis.visibleUnits)
-      })
+      const preferred = definitions.filter(
+        /** Prefer definitions belonging to units visible in this document. */ (
+          definition: SourceDefinition,
+        ) => {
+          return unitIsVisible(definition.unitName, analysis.visibleUnits)
+        },
+      )
       if (preferred.length > 0) definitions = preferred
 
       const currentFile = definitions.filter(
-        (definition: SourceDefinition) =>
+        /**
+         * Prefer declarations in the active document when several visible units match.
+         */ (definition: SourceDefinition) =>
           normalizeKey(definition.filePath) === normalizeKey(document.fileName),
       )
       if (currentFile.length > 0) definitions = currentFile
     }
 
     const clickedImplementation = exact.some(
-      (definition: SourceDefinition) =>
+      /**
+       * Detect a click on an implementation so navigation can offer its declaration.
+       */ (definition: SourceDefinition) =>
         definition.kind === SourceSymbolKind.Routine &&
         definition.implementationOffset === clickOffset,
     )
@@ -3516,6 +4276,10 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Determine whether source navigation can answer the caret reference before
+   * attempting a compiled fallback.
+   */
   async hasSourceReferenceAt(document: vscode.TextDocument, position: vscode.Position) {
     if (this.sourceUsesUnitLinksAt(document, position)?.links.length) return true
     const analysis = this.documentAnalysis(document)
@@ -3532,12 +4296,17 @@ class CompiledSymbolSupport {
     if (analysis.localDefinitions.has(resolved.typeName.toLowerCase())) return true
     return Boolean(
       (this.sourceIndex?.definitions.get(resolved.typeName.toLowerCase()) || []).some(
-        (definition: SourceDefinition) =>
-          unitIsVisible(definition.unitName, analysis.visibleUnits),
+        /** Check whether the source index contains a symbol owned by a visible unit. */ (
+          definition: SourceDefinition,
+        ) => unitIsVisible(definition.unitName, analysis.visibleUnits),
       ),
     )
   }
 
+  /**
+   * Choose source-first definition targets, honor cancellation, and bound cache-only
+   * compiled lookup; unresolved results leave other providers available.
+   */
   async definitionAt(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -3616,49 +4385,72 @@ class CompiledSymbolSupport {
       // consumes that ready cache so another provider cannot be delayed by us.
       compiledPromise = this.compiledDefinitionAt(document, position, {
         cachedOnly: true,
-      }).catch((error) => {
-        output.appendLine(`Background definition lookup failed: ${error.message}`)
-        return undefined
-      })
+      }).catch(
+        /** Report the compiled fallback failure and leave the definition unresolved. */ (
+          error,
+        ) => {
+          output.appendLine(`Background definition lookup failed: ${error.message}`)
+          return undefined
+        },
+      )
       this.definitionPromises.set(definitionKey, compiledPromise)
-      compiledPromise.then((value) => {
-        // `cachedOnly` can legitimately miss while prewarming is still in
-        // flight. An empty result is not stable and must never poison Ctrl-hover
-        // for the rest of this document version.
-        if (
-          value === undefined &&
-          this.definitionPromises.get(definitionKey) === compiledPromise
-        ) {
-          this.definitionPromises.delete(definitionKey)
-        }
-      })
+      compiledPromise.then(
+        /**
+         * Remove cache-only misses so later prewarming can make the same token
+         * resolvable.
+         */ (value) => {
+          // `cachedOnly` can legitimately miss while prewarming is still in
+          // flight. An empty result is not stable and must never poison Ctrl-hover
+          // for the rest of this document version.
+          if (
+            value === undefined &&
+            this.definitionPromises.get(definitionKey) === compiledPromise
+          ) {
+            this.definitionPromises.delete(definitionKey)
+          }
+        },
+      )
     }
     const waitMs = vscode.workspace
       .getConfiguration(ConfigurationSection, document.uri)
       .get(SettingKey.NavigationInteractiveWaitMs, 100)
     const compiledLocation = await new Promise<
       vscode.DefinitionLink | typeof INTERACTIVE_LOOKUP_TIMEOUT | undefined
-    >((resolve) => {
-      let settled = false
-      const timer = setTimeout(
-        () => {
-          settled = true
-          resolve(INTERACTIVE_LOOKUP_TIMEOUT)
-        },
-        Math.max(0, waitMs),
-      )
-      compiledPromise.then((value) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve(value)
-      })
-    })
+    >(
+      /**
+       * Race the compiled definition request against the configured interactive
+       * deadline.
+       */ (resolve) => {
+        let settled = false
+        const timer = setTimeout(
+          /** Release interactive navigation when its compiled lookup budget expires. */ () => {
+            settled = true
+            resolve(INTERACTIVE_LOOKUP_TIMEOUT)
+          },
+          Math.max(0, waitMs),
+        )
+        compiledPromise.then(
+          /**
+           * Return the compiled target only if the interactive deadline has not already
+           * settled the wait.
+           */ (value) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            resolve(value)
+          },
+        )
+      },
+    )
     return compiledLocation === INTERACTIVE_LOOKUP_TIMEOUT
       ? undefined
       : compiledLocation
   }
 
+  /**
+   * Return a definition link into a generated virtual Pascal unit for a compiled
+   * symbol; cache-only requests skip cold class lookup.
+   */
   async compiledDefinitionAt(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -3704,6 +4496,10 @@ class CompiledSymbolSupport {
     )
   }
 
+  /**
+   * Execute best-target navigation for the active Pascal caret, retaining the current
+   * identifier origin and configured selection/reveal behavior.
+   */
   async navigateToDefinition() {
     const editor = vscode.window.activeTextEditor
     if (!editor) return
@@ -3750,6 +4546,10 @@ class CompiledSymbolSupport {
     )
   }
 
+  /**
+   * Present declaration/body candidates for explicit selection and navigate to the
+   * accepted current target.
+   */
   async navigateToAllDefinitions() {
     const editor = vscode.window.activeTextEditor
     if (!editor) return
@@ -3771,8 +4571,10 @@ class CompiledSymbolSupport {
         analysis.localDefinitions.get(token.word.toLowerCase()) ||
         this.sourceIndex?.definitions.get(token.word.toLowerCase()) ||
         []
-      const visible = definitions.filter((item: SourceDefinition) =>
-        unitIsVisible(item.unitName, analysis.visibleUnits),
+      const visible = definitions.filter(
+        /** Limit explicit definition choices to units visible in the current document. */ (
+          item: SourceDefinition,
+        ) => unitIsVisible(item.unitName, analysis.visibleUnits),
       )
       if (visible.length > 0) definitions = visible
     }
@@ -3781,6 +4583,10 @@ class CompiledSymbolSupport {
       vscode.QuickPickItem & { location: vscode.Location | vscode.DefinitionLink }
     > = []
     const seen = new Set<string>()
+    /**
+     * Add a distinct source/body definition link only when its target offset and
+     * owning file are usable.
+     */
     const addCandidate = (definition: SourceDefinition, implementation: boolean) => {
       const targetOffset = implementation
         ? definition.implementationOffset
@@ -3869,6 +4675,10 @@ class CompiledSymbolSupport {
     )
   }
 
+  /**
+   * Create/cache a virtual document identity and rendered Pascal source for recovered
+   * compiled metadata.
+   */
   virtualUri(info: CompiledInfo) {
     const uri = vscode.Uri.from({
       scheme: "pascal-atlas-binary",
@@ -3882,6 +4692,10 @@ class CompiledSymbolSupport {
     return uri
   }
 
+  /**
+   * Locate a recovered compiled declaration/member inside its generated virtual Pascal
+   * unit.
+   */
   virtualLocation(info: CompiledInfo, target: CompiledReference["target"]) {
     const uri = this.virtualUri(info)
     const text = this.virtualDocuments.get(uri.toString()) || ""
@@ -3931,34 +4745,51 @@ class CompiledSymbolSupport {
     return new vscode.Location(uri, new vscode.Position(lineIndex, character))
   }
 
+  /**
+   * Wait up to waitMs for document package data; return undefined on timeout or
+   * failure while background work continues.
+   */
   async packageDataWithin(document: vscode.TextDocument, waitMs: number) {
     const packagePromise = this.packageDataForDocument(document)
-    return new Promise<PackageDocumentData | undefined>((resolve) => {
-      let settled = false
-      const timer = setTimeout(
-        () => {
-          settled = true
-          resolve(undefined)
-        },
-        Math.max(0, waitMs),
-      )
-      packagePromise.then(
-        (value) => {
-          if (settled) return
-          settled = true
-          clearTimeout(timer)
-          resolve(value)
-        },
-        () => {
-          if (settled) return
-          settled = true
-          clearTimeout(timer)
-          resolve(undefined)
-        },
-      )
-    })
+    return new Promise<PackageDocumentData | undefined>(
+      /**
+       * Wait for package data until completion, rejection, or the interactive deadline.
+       */ (resolve) => {
+        let settled = false
+        const timer = setTimeout(
+          /** Return no package data when the interactive deadline expires. */ () => {
+            settled = true
+            resolve(undefined)
+          },
+          Math.max(0, waitMs),
+        )
+        packagePromise.then(
+          /** Complete the package-data wait and cancel its deadline timer. */ (
+            value,
+          ) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            resolve(value)
+          },
+          /**
+           * Treat a rejected package request as unavailable data and cancel its deadline
+           * timer.
+           */ () => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            resolve(undefined)
+          },
+        )
+      },
+    )
   }
 
+  /**
+   * Build visible unqualified source/compiled symbol completions while avoiding
+   * duplicates of native keyword/snippet candidates.
+   */
   async unqualifiedCompletionItems(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -3976,6 +4807,10 @@ class CompiledSymbolSupport {
     if (hasNativePascalCompletion(prefix)) return undefined
     const analysis = this.documentAnalysis(document)
     const items = new Map<string, vscode.CompletionItem>()
+    /**
+     * Add a matching symbol completion once, assigning its kind, display detail,
+     * replacement span, and priority.
+     */
     const add = (
       name: string,
       kind: vscode.CompletionItemKind | undefined,
@@ -3991,6 +4826,7 @@ class CompiledSymbolSupport {
       item.sortText = `${priority}-${key}`
       items.set(key, item)
     }
+    /** Translate source symbol metadata to the closest VS Code completion kind. */
     const completionKind = (kind: string) => {
       if (kind === SourceSymbolKind.Routine) return vscode.CompletionItemKind.Function
       if (kind === PascalKeyword.Type) return vscode.CompletionItemKind.Class
@@ -4013,8 +4849,10 @@ class CompiledSymbolSupport {
     if (this.sourceIndex) {
       for (const [name, definitions] of this.sourceIndex.definitions) {
         if (!name.startsWith(prefix) || items.size >= 250) continue
-        const definition = definitions.find((item: SourceDefinition) =>
-          unitIsVisible(item.unitName, analysis.visibleUnits),
+        const definition = definitions.find(
+          /** Include only source symbols belonging to a visible owning unit. */ (
+            item: SourceDefinition,
+          ) => unitIsVisible(item.unitName, analysis.visibleUnits),
         )
         if (definition)
           add(
@@ -4061,41 +4899,71 @@ class CompiledSymbolSupport {
       : undefined
   }
 
+  /**
+   * Read a routine's current or on-disk source heading, preferring stored compatible
+   * signature metadata.
+   */
   async sourceSignature(document: vscode.TextDocument, definition: SourceDefinition) {
     if (definition.signature) return definition.signature
     const key = `${normalizeKey(definition.filePath)}:${definition.offset}`
     if (this.sourceSignatureCache.has(key)) return this.sourceSignatureCache.get(key)
-    const promise = (async () => {
+    const promise = /**
+     * Read the definition source and extract its routine signature using the recorded
+     * offset.
+     */ (async () => {
       const text =
         normalizeKey(definition.filePath) === normalizeKey(document.fileName)
           ? document.getText()
           : await fs.promises.readFile(definition.filePath, "utf8")
       return extractPascalRoutineSignature(text, definition.offset)
-    })().catch(() => undefined)
+    })().catch(
+      /** Treat an unreadable source heading as unavailable signature metadata. */ () =>
+        undefined,
+    )
     this.sourceSignatureCache.set(key, promise)
     return promise
   }
 
+  /** Create VS Code signature and parameter labels from a Pascal routine heading. */
   signatureInformation(label: string) {
     const signature = new vscode.SignatureInformation(label)
     signature.parameters = splitSignatureParameters(label).map(
-      (parameter) => new vscode.ParameterInformation(parameter),
+      /** Create VS Code parameter metadata from each parsed parameter label. */ (
+        parameter,
+      ) => new vscode.ParameterInformation(parameter),
     )
     return signature
   }
 
+  /**
+   * Order overloads by default-parameter count, select one covering the active
+   * argument, and clamp its active parameter.
+   */
   signatureHelpFromLabels(labels: string[], activeParameter: number) {
-    const orderedLabels = [...labels].sort((left, right) => {
-      const defaults = (label: string) =>
-        splitSignatureParameters(label).filter((parameter) =>
-          /(?:^|\s)=\s*(?!=)/.test(parameter),
-        ).length
-      return defaults(right) - defaults(left)
-    })
+    const orderedLabels = [...labels].sort(
+      /** Show overloads with more default parameters first. */ (left, right) => {
+        /**
+         * Count default-valued signature parameters to rank overloads with optional
+         * arguments.
+         */
+        const defaults = (label: string) =>
+          splitSignatureParameters(label).filter(
+            /** Identify parameters declaring a default value rather than a comparison. */ (
+              parameter,
+            ) => /(?:^|\s)=\s*(?!=)/.test(parameter),
+          ).length
+        return defaults(right) - defaults(left)
+      },
+    )
     const help = new vscode.SignatureHelp()
-    help.signatures = orderedLabels.map((label) => this.signatureInformation(label))
+    help.signatures = orderedLabels.map(
+      /** Convert each overload label into VS Code signature metadata. */ (label) =>
+        this.signatureInformation(label),
+    )
     const matchingIndex = help.signatures.findIndex(
-      (signature) => signature.parameters.length > activeParameter,
+      /** Choose an overload that has a parameter at the active argument index. */ (
+        signature,
+      ) => signature.parameters.length > activeParameter,
     )
     help.activeSignature = Math.max(0, matchingIndex)
     const parameterCount = help.signatures[help.activeSignature]?.parameters.length || 0
@@ -4104,6 +4972,10 @@ class CompiledSymbolSupport {
     return help
   }
 
+  /**
+   * Resolve source-first/cached compiled call signatures under feature/trigger gates
+   * and reuse short-lived labels for repeated argument positions.
+   */
   async signatureHelpAt(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -4155,17 +5027,25 @@ class CompiledSymbolSupport {
       if (definitions.length === 0 && this.sourceIndex) {
         definitions = (
           this.sourceIndex.definitions.get(call.name.toLowerCase()) || []
-        ).filter((item: SourceDefinition) =>
-          unitIsVisible(item.unitName, analysis.visibleUnits),
+        ).filter(
+          /** Consider external routine declarations only from visible owning units. */ (
+            item: SourceDefinition,
+          ) => unitIsVisible(item.unitName, analysis.visibleUnits),
         )
       }
     }
     const labels = new Set<string>()
     const sourceLabels = await Promise.all(
       definitions
-        .filter((item: SourceDefinition) => item.kind === SourceSymbolKind.Routine)
-        .map((definition: SourceDefinition) =>
-          this.sourceSignature(document, definition),
+        .filter(
+          /** Build signature labels only from routine definitions. */ (
+            item: SourceDefinition,
+          ) => item.kind === SourceSymbolKind.Routine,
+        )
+        .map(
+          /** Read each routine's stored or source-derived heading. */ (
+            definition: SourceDefinition,
+          ) => this.sourceSignature(document, definition),
         ),
     )
     for (const label of sourceLabels) {
@@ -4213,17 +5093,26 @@ class CompiledSymbolSupport {
     return this.signatureHelpFromLabels(cacheEntry.labels, call.activeParameter)
   }
 
+  /**
+   * Register definition/hover/completion/signature/virtual-content providers and
+   * coloring lifecycle listeners with the extension context.
+   */
   register() {
     const selector = [{ language: LanguageId.Pascal, scheme: UriScheme.File }]
     this.context.subscriptions.push(
       vscode.workspace.registerTextDocumentContentProvider("pascal-atlas-binary", {
-        provideTextDocumentContent: (uri) =>
-          this.virtualDocuments.get(uri.toString()) || "",
+        provideTextDocumentContent:
+          /** Read the rendered Pascal source stored for a virtual compiled-unit URI. */ (
+            uri,
+          ) => this.virtualDocuments.get(uri.toString()) || "",
       }),
     )
     this.context.subscriptions.push(
       vscode.languages.registerDefinitionProvider(selector, {
-        provideDefinition: async (document, position, cancellationToken) => {
+        provideDefinition: /**
+         * Expose source/compiled definition links through the VS Code provider's
+         * required result-array shape.
+         */ async (document, position, cancellationToken) => {
           const result = await this.definitionAt(document, position, cancellationToken)
           return result && !Array.isArray(result) ? [result] : result
         },
@@ -4231,7 +5120,10 @@ class CompiledSymbolSupport {
     )
     this.context.subscriptions.push(
       vscode.languages.registerHoverProvider(selector, {
-        provideHover: async (document, position, cancellationToken) => {
+        provideHover: /**
+         * Build eligible compiled-symbol hover information without duplicating whole
+         * uses-unit definition lookup or ignoring cancellation.
+         */ async (document, position, cancellationToken) => {
           if (
             !this.featureEnabled(SettingKey.HoverEnabled, true, document) ||
             !this.featureEnabled(SettingKey.SymbolsCompiledEnabled, true, document)
@@ -4290,7 +5182,10 @@ class CompiledSymbolSupport {
       vscode.languages.registerCompletionItemProvider(
         selector,
         {
-          provideCompletionItems: async (document, position) => {
+          provideCompletionItems: /**
+           * Produce supported Pascal symbol/member completion candidates under current
+           * visibility, receiver inference, and feature settings.
+           */ async (document, position) => {
             if (!this.featureEnabled(SettingKey.CompletionEnabled, true, document))
               return undefined
             const analysis = this.documentAnalysis(document)
@@ -4365,16 +5260,21 @@ class CompiledSymbolSupport {
               const sourceMembers = this.allSourceMembers(sourceIndex, resolvedTypeName)
               if (sourceMembers.size > 0) {
                 return new vscode.CompletionList(
-                  [...sourceMembers.values()].map((definition) => {
-                    const kind =
-                      definition.kind === SourceSymbolKind.Routine
-                        ? vscode.CompletionItemKind.Method
-                        : vscode.CompletionItemKind.Property
-                    const item = new vscode.CompletionItem(definition.symbol, kind)
-                    item.detail = `[source: ${definition.unitName}] ${definition.owner}.${definition.symbol}`
-                    item.sortText = `0000-${definition.symbol.toLowerCase()}`
-                    return item
-                  }),
+                  [...sourceMembers.values()].map(
+                    /**
+                     * Create completion items from source member declarations and their
+                     * owning types.
+                     */ (definition) => {
+                      const kind =
+                        definition.kind === SourceSymbolKind.Routine
+                          ? vscode.CompletionItemKind.Method
+                          : vscode.CompletionItemKind.Property
+                      const item = new vscode.CompletionItem(definition.symbol, kind)
+                      item.detail = `[source: ${definition.unitName}] ${definition.owner}.${definition.symbol}`
+                      item.sortText = `0000-${definition.symbol.toLowerCase()}`
+                      return item
+                    },
+                  ),
                   false,
                 )
               }
@@ -4391,20 +5291,29 @@ class CompiledSymbolSupport {
               if (!groups.has(key)) groups.set(key, [])
               groups.get(key)!.push(method)
             }
-            const items = [...groups.values()].map((overloads) => {
-              const item = new vscode.CompletionItem(
-                overloads[0].name,
-                vscode.CompletionItemKind.Method,
-              )
-              item.detail = `[compiled: ${path.basename(info.bplPath)}] ${overloads.length} overload(s)`
-              item.documentation = new vscode.MarkdownString(
-                overloads
-                  .map((method: CompiledMethod) => `\`${method.signature}\``)
-                  .join("\n\n"),
-              )
-              item.sortText = `0000-${overloads[0].name.toLowerCase()}`
-              return item
-            })
+            const items = [...groups.values()].map(
+              /**
+               * Combine a compiled method's overloads into one completion item with
+               * signature documentation.
+               */ (overloads) => {
+                const item = new vscode.CompletionItem(
+                  overloads[0].name,
+                  vscode.CompletionItemKind.Method,
+                )
+                item.detail = `[compiled: ${path.basename(info.bplPath)}] ${overloads.length} overload(s)`
+                item.documentation = new vscode.MarkdownString(
+                  overloads
+                    .map(
+                      /** Format each compiled overload signature as Markdown code. */ (
+                        method: CompiledMethod,
+                      ) => `\`${method.signature}\``,
+                    )
+                    .join("\n\n"),
+                )
+                item.sortText = `0000-${overloads[0].name.toLowerCase()}`
+                return item
+              },
+            )
             const knownMembers = knownCompiledMembers(
               info,
               initializedBy?.observedMembers ||
@@ -4440,7 +5349,10 @@ class CompiledSymbolSupport {
       vscode.languages.registerSignatureHelpProvider(
         selector,
         {
-          provideSignatureHelp: (document, position, _token, context) =>
+          provideSignatureHelp: /**
+           * Delegate call-context signature help to the shared source-first signature
+           * resolver.
+           */ (document, position, _token, context) =>
             this.signatureHelpAt(document, position, context),
         },
         "(",
@@ -4448,169 +5360,199 @@ class CompiledSymbolSupport {
       ),
     )
     this.context.subscriptions.push(
-      vscode.window.onDidChangeVisibleTextEditors((editors) => {
-        for (const state of this.decorationStates.values()) {
-          const visibleEditor = findVisibleEditor(editors, state.editor)
-          if (state.editor && !visibleEditor) {
-            this.retireDecorationEditor(state.editor)
-          } else if (visibleEditor) {
-            state.editor = visibleEditor
+      vscode.window.onDidChangeVisibleTextEditors(
+        /**
+         * Rebind decoration state to visible editors and retire states whose editor is
+         * no longer visible.
+         */ (editors) => {
+          for (const state of this.decorationStates.values()) {
+            const visibleEditor = findVisibleEditor(editors, state.editor)
+            if (state.editor && !visibleEditor) {
+              this.retireDecorationEditor(state.editor)
+            } else if (visibleEditor) {
+              state.editor = visibleEditor
+            }
           }
-        }
-        const activeUri = vscode.window.activeTextEditor?.document.uri.toString()
-        for (const editor of editors) {
-          const inactiveDelay = vscode.workspace
-            .getConfiguration(ConfigurationSection, editor.document.uri)
-            .get(SettingKey.ColoringInactiveEditorDelayMs, 350)
-          this.scheduleDecorate(
-            editor,
-            editor.document.uri.toString() === activeUri ? 0 : inactiveDelay,
-          )
-        }
-      }),
-    )
-    this.context.subscriptions.push(
-      vscode.window.onDidChangeActiveTextEditor((editor) => {
-        const previousEditor = this.activeEditor
-        const previousVisit = this.activeDocumentVisit
-        if (
-          previousEditor &&
-          previousEditor !== editor &&
-          shouldRetireEditor(vscode.window.visibleTextEditors, previousEditor)
-        ) {
-          this.retireDecorationEditor(previousEditor)
-        }
-        this.activeEditor = editor
-        const nextVisit = this.documentVisit(editor?.document)
-        this.activeDocumentVisit = nextVisit
-        if (editor) {
-          const returnedFromPlatformSource =
-            editor.document.languageId === LanguageId.Pascal &&
-            nextVisit?.isWorkspaceDocument &&
-            (previousVisit?.isPlatformSource ||
-              Date.now() < this.platformReturnPendingUntil)
-          if (returnedFromPlatformSource) this.platformReturnPendingUntil = 0
-          // Preview navigation to RTL/System files cancels outstanding definition
-          // requests. Do not reuse an empty cached promise after Back restores the
-          // original editor, and rewarm data that Vallenta may have closed.
-          this.invalidateInteractiveDocumentState(
-            editor.document,
-            returnedFromPlatformSource,
-          )
-          // The current-file pass is synchronous and isolated from package/LSP
-          // work, so an editor switch must paint immediately. Optional compiled
-          // enrichment still happens after the fast result is already visible.
-          this.scheduleDecorate(editor, 0)
-          void this.prioritizeSourceUnits(editor.document)
-          if (returnedFromPlatformSource) {
-            void this.warmCurrentDocument(editor.document)
-            output.appendLine(
-              `Restored interactive navigation after RTL/System return: ${path.basename(editor.document.fileName)}.`,
+          const activeUri = vscode.window.activeTextEditor?.document.uri.toString()
+          for (const editor of editors) {
+            const inactiveDelay = vscode.workspace
+              .getConfiguration(ConfigurationSection, editor.document.uri)
+              .get(SettingKey.ColoringInactiveEditorDelayMs, 350)
+            this.scheduleDecorate(
+              editor,
+              editor.document.uri.toString() === activeUri ? 0 : inactiveDelay,
             )
           }
-        }
-      }),
+        },
+      ),
     )
     this.context.subscriptions.push(
-      vscode.workspace.onDidChangeTextDocument((event) => {
-        this.documentAnalysisCache.delete(event.document.uri.toString())
-        const definitionPrefix = `${event.document.uri}:`
-        for (const key of this.definitionPromises.keys()) {
-          if (key.startsWith(definitionPrefix)) this.definitionPromises.delete(key)
-        }
-        const editor = vscode.window.visibleTextEditors.find(
-          (item) => item.document.uri.toString() === event.document.uri.toString(),
-        )
-        if (editor) {
-          const configuration = vscode.workspace.getConfiguration(
-            ConfigurationSection,
-            editor.document.uri,
-          )
-          const active =
-            vscode.window.activeTextEditor?.document.uri.toString() ===
-            event.document.uri.toString()
-          this.scheduleDecorate(
-            editor,
-            active
-              ? configuration.get(SettingKey.ColoringTypingDelayMs, 750)
-              : configuration.get(SettingKey.ColoringInactiveEditorDelayMs, 350),
-          )
-        }
-      }),
-    )
-    this.context.subscriptions.push(
-      vscode.workspace.onDidCloseTextDocument((document) => {
-        const key = document.uri.toString()
-        if (
-          (document.languageId === LanguageId.Platform ||
-            this.isPlatformSourceDocument(document)) &&
-          (!vscode.window.activeTextEditor ||
-            vscode.window.activeTextEditor.document.uri.toString() === key)
-        ) {
-          // Closing a preview can emit didClose before active-editor changed.
-          // Keep a short immutable marker so the restored project editor still
-          // gets its interactive caches invalidated and warmed.
-          this.platformReturnPendingUntil = Date.now() + 2000
-        }
-        const decorationState = this.decorationStates.get(key)
-        clearTimeout(decorationState?.timer)
-        if (decorationState?.lastApplied && document.uri.scheme === UriScheme.File) {
-          const snapshotKey = normalizeKey(document.fileName)
-          const snapshot = {
-            ...decorationState.lastApplied,
-            contentIdentity: createHash("sha1")
-              .update(document.getText())
-              .digest("hex"),
+      vscode.window.onDidChangeActiveTextEditor(
+        /**
+         * Track active-editor transitions, restore coloring, and prioritize returning
+         * from platform source.
+         */ (editor) => {
+          const previousEditor = this.activeEditor
+          const previousVisit = this.activeDocumentVisit
+          if (
+            previousEditor &&
+            previousEditor !== editor &&
+            shouldRetireEditor(vscode.window.visibleTextEditors, previousEditor)
+          ) {
+            this.retireDecorationEditor(previousEditor)
           }
-          this.queueDecorationSnapshot(document, snapshot)
-        }
-        this.decorationStates.delete(key)
-        this.documentWarmPromises.delete(key)
-        this.documentPackagePromises.delete(key)
-        this.documentAnalysisCache.delete(key)
-        const signaturePrefix = `${document.uri}:`
-        for (const cacheKey of this.signatureHelpCache.keys()) {
-          if (cacheKey.startsWith(signaturePrefix))
-            this.signatureHelpCache.delete(cacheKey)
-        }
-        clearTimeout(this.pendingPackageRefreshes.get(key))
-        this.pendingPackageRefreshes.delete(key)
-        const definitionPrefix = `${document.uri}:`
-        for (const cacheKey of this.definitionPromises.keys()) {
-          if (cacheKey.startsWith(definitionPrefix))
-            this.definitionPromises.delete(cacheKey)
-        }
-      }),
+          this.activeEditor = editor
+          const nextVisit = this.documentVisit(editor?.document)
+          this.activeDocumentVisit = nextVisit
+          if (editor) {
+            const returnedFromPlatformSource =
+              editor.document.languageId === LanguageId.Pascal &&
+              nextVisit?.isWorkspaceDocument &&
+              (previousVisit?.isPlatformSource ||
+                Date.now() < this.platformReturnPendingUntil)
+            if (returnedFromPlatformSource) this.platformReturnPendingUntil = 0
+            // Preview navigation to RTL/System files cancels outstanding definition
+            // requests. Do not reuse an empty cached promise after Back restores the
+            // original editor, and rewarm data that Vallenta may have closed.
+            this.invalidateInteractiveDocumentState(
+              editor.document,
+              returnedFromPlatformSource,
+            )
+            // The current-file pass is synchronous and isolated from package/LSP
+            // work, so an editor switch must paint immediately. Optional compiled
+            // enrichment still happens after the fast result is already visible.
+            this.scheduleDecorate(editor, 0)
+            void this.prioritizeSourceUnits(editor.document)
+            if (returnedFromPlatformSource) {
+              void this.warmCurrentDocument(editor.document)
+              output.appendLine(
+                `Restored interactive navigation after RTL/System return: ${path.basename(editor.document.fileName)}.`,
+              )
+            }
+          }
+        },
+      ),
     )
     this.context.subscriptions.push(
-      vscode.workspace.onDidChangeConfiguration((event) => {
-        if (
-          !event.affectsConfiguration("pascalAtlas.coloring") &&
-          !event.affectsConfiguration("pascalAtlas.symbols.compiled") &&
-          !event.affectsConfiguration("pascalAtlas.enabled")
-        )
-          return
-        if (event.affectsConfiguration("pascalAtlas.coloring.colors")) {
+      vscode.workspace.onDidChangeTextDocument(
+        /**
+         * Invalidate edited-document analysis and lookups, then schedule fresh coloring
+         * for its visible editor.
+         */ (event) => {
+          this.documentAnalysisCache.delete(event.document.uri.toString())
+          const definitionPrefix = `${event.document.uri}:`
+          for (const key of this.definitionPromises.keys()) {
+            if (key.startsWith(definitionPrefix)) this.definitionPromises.delete(key)
+          }
+          const editor = vscode.window.visibleTextEditors.find(
+            /** Find the visible editor containing the changed document. */ (item) =>
+              item.document.uri.toString() === event.document.uri.toString(),
+          )
+          if (editor) {
+            const configuration = vscode.workspace.getConfiguration(
+              ConfigurationSection,
+              editor.document.uri,
+            )
+            const active =
+              vscode.window.activeTextEditor?.document.uri.toString() ===
+              event.document.uri.toString()
+            this.scheduleDecorate(
+              editor,
+              active
+                ? configuration.get(SettingKey.ColoringTypingDelayMs, 750)
+                : configuration.get(SettingKey.ColoringInactiveEditorDelayMs, 350),
+            )
+          }
+        },
+      ),
+    )
+    this.context.subscriptions.push(
+      vscode.workspace.onDidCloseTextDocument(
+        /**
+         * Retain eligible closed-document coloring snapshots and release its transient
+         * lookup state.
+         */ (document) => {
+          const key = document.uri.toString()
+          if (
+            (document.languageId === LanguageId.Platform ||
+              this.isPlatformSourceDocument(document)) &&
+            (!vscode.window.activeTextEditor ||
+              vscode.window.activeTextEditor.document.uri.toString() === key)
+          ) {
+            // Closing a preview can emit didClose before active-editor changed.
+            // Keep a short immutable marker so the restored project editor still
+            // gets its interactive caches invalidated and warmed.
+            this.platformReturnPendingUntil = Date.now() + 2000
+          }
+          const decorationState = this.decorationStates.get(key)
+          clearTimeout(decorationState?.timer)
+          if (decorationState?.lastApplied && document.uri.scheme === UriScheme.File) {
+            const snapshotKey = normalizeKey(document.fileName)
+            const snapshot = {
+              ...decorationState.lastApplied,
+              contentIdentity: createHash("sha1")
+                .update(document.getText())
+                .digest("hex"),
+            }
+            this.queueDecorationSnapshot(document, snapshot)
+          }
+          this.decorationStates.delete(key)
+          this.documentWarmPromises.delete(key)
+          this.documentPackagePromises.delete(key)
+          this.documentAnalysisCache.delete(key)
+          const signaturePrefix = `${document.uri}:`
+          for (const cacheKey of this.signatureHelpCache.keys()) {
+            if (cacheKey.startsWith(signaturePrefix))
+              this.signatureHelpCache.delete(cacheKey)
+          }
+          clearTimeout(this.pendingPackageRefreshes.get(key))
+          this.pendingPackageRefreshes.delete(key)
+          const definitionPrefix = `${document.uri}:`
+          for (const cacheKey of this.definitionPromises.keys()) {
+            if (cacheKey.startsWith(definitionPrefix))
+              this.definitionPromises.delete(cacheKey)
+          }
+        },
+      ),
+    )
+    this.context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration(
+        /**
+         * Rebuild coloring resources or refresh visible editors when relevant feature
+         * settings change.
+         */ (event) => {
+          if (
+            !event.affectsConfiguration("pascalAtlas.coloring") &&
+            !event.affectsConfiguration("pascalAtlas.symbols.compiled") &&
+            !event.affectsConfiguration("pascalAtlas.enabled")
+          )
+            return
+          if (event.affectsConfiguration("pascalAtlas.coloring.colors")) {
+            this.rebuildDecorationTypes(vscode.window.activeTextEditor?.document?.uri)
+            for (const state of this.decorationStates.values()) state.hasApplied = false
+          }
+          for (const editor of vscode.window.visibleTextEditors)
+            this.scheduleDecorate(editor, 0)
+        },
+      ),
+    )
+    this.context.subscriptions.push(
+      vscode.window.onDidChangeActiveColorTheme(
+        /**
+         * Rebuild default theme colors and repaint visible editors after a theme change.
+         */ () => {
+          if (
+            !vscode.workspace
+              .getConfiguration(ConfigurationSection)
+              .get(SettingKey.ColoringColorsUseDefault, true)
+          )
+            return
           this.rebuildDecorationTypes(vscode.window.activeTextEditor?.document?.uri)
           for (const state of this.decorationStates.values()) state.hasApplied = false
-        }
-        for (const editor of vscode.window.visibleTextEditors)
-          this.scheduleDecorate(editor, 0)
-      }),
-    )
-    this.context.subscriptions.push(
-      vscode.window.onDidChangeActiveColorTheme(() => {
-        if (
-          !vscode.workspace
-            .getConfiguration(ConfigurationSection)
-            .get(SettingKey.ColoringColorsUseDefault, true)
-        )
-          return
-        this.rebuildDecorationTypes(vscode.window.activeTextEditor?.document?.uri)
-        for (const state of this.decorationStates.values()) state.hasApplied = false
-        for (const editor of vscode.window.visibleTextEditors)
-          this.scheduleDecorate(editor, 0)
-      }),
+          for (const editor of vscode.window.visibleTextEditors)
+            this.scheduleDecorate(editor, 0)
+        },
+      ),
     )
 
     // The active editor usually exists before this extension registers its
@@ -4627,6 +5569,10 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Debounce per-document semantic coloring, distinguishing active/inactive editor
+   * priorities and retaining owner generation.
+   */
   scheduleDecorate(editor: vscode.TextEditor, delay = 750) {
     if (
       !editor ||
@@ -4691,16 +5637,22 @@ class CompiledSymbolSupport {
     clearTimeout(state.timer)
     const generation = state.generation
     state.timer = setTimeout(
-      () => void this.runScheduledDecoration(key, generation),
+      /** Start the coloring pass for the generation captured by this debounce timer. */ () =>
+        void this.runScheduledDecoration(key, generation),
       delay,
     )
   }
 
+  /**
+   * Run a queued coloring pass only while its generation/document/editor ownership
+   * remains current.
+   */
   async runScheduledDecoration(key: string, generation: number) {
     const state = this.decorationStates.get(key)
     if (!state || state.generation !== generation) return
     const liveEditor = vscode.window.visibleTextEditors.find(
-      (editor) => !editor.document.isClosed && editor.document.uri.toString() === key,
+      /** Find a visible, open editor for the scheduled document URI. */ (editor) =>
+        !editor.document.isClosed && editor.document.uri.toString() === key,
     )
     if (!liveEditor) return
     state.editor = liveEditor
@@ -4726,7 +5678,10 @@ class CompiledSymbolSupport {
       state.running = false
       if (state.pending || state.generation !== generation) {
         const currentEditor = vscode.window.visibleTextEditors.find(
-          (editor) =>
+          /**
+           * Reschedule pending work only if the document still has an open visible
+           * editor.
+           */ (editor) =>
             !editor.document.isClosed && editor.document.uri.toString() === key,
         )
         if (currentEditor) this.scheduleDecorate(currentEditor, 0)
@@ -4734,15 +5689,28 @@ class CompiledSymbolSupport {
     }
   }
 
+  /**
+   * Apply categorized ranges to the live editor and remember the compatible snapshot
+   * for later refresh/restoration.
+   */
   applyDecorationRanges(editor: vscode.TextEditor, ranges: DecorationRanges) {
     let liveEditor = this.liveDecorationEditor(editor)
     if (!liveEditor) return false
     editor = liveEditor
+    /**
+     * Build a stable start/end source-position key for deduplicating editor decoration
+     * ranges.
+     */
     const rangeKey = (range: vscode.Range) =>
       `${range.start.line}:${range.start.character}:${range.end.line}:${range.end.character}`
+    /** Retain the first range for each stable source-position identity. */
     const uniqueRanges = (values: vscode.Range[]) => [
       ...new Map(
-        values.map((range: vscode.Range) => [rangeKey(range), range]),
+        values.map(
+          /** Key ranges by start and end coordinates to remove duplicate decorations. */ (
+            range: vscode.Range,
+          ) => [rangeKey(range), range],
+        ),
       ).values(),
     ]
     const memberRanges = uniqueRanges(ranges.memberRanges)
@@ -4755,14 +5723,20 @@ class CompiledSymbolSupport {
       [
         this.globalDecoration,
         uniqueRanges(ranges.globalRanges).filter(
-          (range) => !memberKeys.has(rangeKey(range)),
+          /**
+           * Remove variable coloring where authoritative method coloring already
+           * exists.
+           */ (range) => !memberKeys.has(rangeKey(range)),
         ),
       ],
       [this.memberDecoration, memberRanges],
       [
         this.propertyDecoration,
         uniqueRanges(ranges.propertyRanges).filter(
-          (range) => !memberKeys.has(rangeKey(range)),
+          /**
+           * Remove property coloring where authoritative method coloring already
+           * exists.
+           */ (range) => !memberKeys.has(rangeKey(range)),
         ),
       ],
       [this.constantDecoration, uniqueRanges(ranges.constantRanges)],
@@ -4800,9 +5774,14 @@ class CompiledSymbolSupport {
     return true
   }
 
+  /**
+   * Build immediate local/source/cached compiled ranges without waiting for broad
+   * package warmup.
+   */
   async fastDecorationRanges(
     editor: vscode.TextEditor,
-    isStale = () => false,
+    isStale = /** Decline optional fast-decoration resolution for this preliminary lookup. */ () =>
+      false,
   ): Promise<FastDecorationRanges | undefined> {
     const analysis = this.documentAnalysis(editor.document)
     const {
@@ -4897,34 +5876,49 @@ class CompiledSymbolSupport {
       const visibleDefinitions = [
         ...(localDefinitions.get(key) || []),
         ...(sourceIndex.definitions.get(key) || []).filter(
-          (definition: SourceDefinition) =>
-            unitIsVisible(definition.unitName, visibleUnits),
+          /** Use indexed definitions only when their owning unit is visible. */ (
+            definition: SourceDefinition,
+          ) => unitIsVisible(definition.unitName, visibleUnits),
         ),
       ]
       const hasConstant =
         !isMember &&
-        visibleDefinitions.some((definition) => definition.kind === "constant")
+        visibleDefinitions.some(
+          /** Recognize indexed constant declarations for constant coloring. */ (
+            definition,
+          ) => definition.kind === "constant",
+        )
       const hasEnumMember =
         !isMember &&
-        visibleDefinitions.some((definition) => definition.kind === "enumMember")
+        visibleDefinitions.some(
+          /** Recognize indexed enum values for enum-member coloring. */ (definition) =>
+            definition.kind === "enumMember",
+        )
       const hasType =
         !isMember &&
-        visibleDefinitions.some((definition) => definition.kind === PascalKeyword.Type)
+        visibleDefinitions.some(
+          /** Recognize indexed type declarations for type coloring. */ (definition) =>
+            definition.kind === PascalKeyword.Type,
+        )
       const hasRoutine =
         !isMember &&
         visibleDefinitions.some(
-          (definition) => definition.kind === SourceSymbolKind.Routine,
+          /** Recognize indexed routines for method coloring. */ (definition) =>
+            definition.kind === SourceSymbolKind.Routine,
         )
       const hasGlobal =
         !isMember &&
         !hasRoutine &&
         visibleDefinitions.some(
-          (definition) => definition.kind === "variable" || definition.kind === "field",
+          /** Recognize indexed variables and fields for variable coloring. */ (
+            definition,
+          ) => definition.kind === "variable" || definition.kind === "field",
         )
       const hasProperty =
         !isMember &&
         visibleDefinitions.some(
-          (definition) => definition.kind === PascalKeyword.Property,
+          /** Recognize indexed properties for property coloring. */ (definition) =>
+            definition.kind === PascalKeyword.Property,
         )
       // Predefined type names are not reserved words in Delphi and can be
       // shadowed by a real routine. Prefer an in-scope declaration when one is
@@ -5020,11 +6014,19 @@ class CompiledSymbolSupport {
     return ranges
   }
 
+  /**
+   * Combine current source/compiled semantic evidence and apply ranges only while the
+   * captured document/version/editor generation is still valid.
+   */
   async decorate(editor: vscode.TextEditor, generation?: number) {
     if (editor.document.languageId !== LanguageId.Pascal) return
     const editorKey = editor.document.uri.toString()
     const startedAt = Date.now()
     const version = editor.document.version
+    /**
+     * Reject coloring work whose document is closed, buffer version changed, or
+     * decoration generation no longer owns the editor.
+     */
     const isStale = () =>
       editor.document.isClosed ||
       editor.document.version !== version ||
@@ -5055,7 +6057,9 @@ class CompiledSymbolSupport {
       }
     }
     const fastEditor = vscode.window.visibleTextEditors.find(
-      (item) => !item.document.isClosed && item.document.uri.toString() === editorKey,
+      /** Find the live editor again before applying the current-file coloring pass. */ (
+        item,
+      ) => !item.document.isClosed && item.document.uri.toString() === editorKey,
     )
     if (!fastEditor || fastEditor.document.version !== version || isStale()) return
     editor = fastEditor
@@ -5069,7 +6073,11 @@ class CompiledSymbolSupport {
     )
     if (isStale()) return
     const compiledClasses = new Set(
-      directIndexes.flatMap((index: CompiledPackageData) => [...index.names.keys()]),
+      directIndexes.flatMap(
+        /** Collect class-name keys from all direct package indexes. */ (
+          index: CompiledPackageData,
+        ) => [...index.names.keys()],
+      ),
     )
     const compiledClassInfos = new Map<string, CompiledClass>()
     for (const index of directIndexes) {
@@ -5080,8 +6088,9 @@ class CompiledSymbolSupport {
     const compiledGlobals = new Map<string, CompiledGlobal>()
     const compiledRoutines = new Map<string, CompiledRoutine>()
     const referencedIdentifiers = new Set(
-      [...ranges.code.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\b/g)].map((match) =>
-        match[0].toLowerCase(),
+      [...ranges.code.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\b/g)].map(
+        /** Collect identifier lookup keys from the masked document. */ (match) =>
+          match[0].toLowerCase(),
       ),
     )
     for (const match of ranges.code.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\b/g)) {
@@ -5209,7 +6218,10 @@ class CompiledSymbolSupport {
     }
     if (!isStale()) {
       const completeEditor = vscode.window.visibleTextEditors.find(
-        (item) => !item.document.isClosed && item.document.uri.toString() === editorKey,
+        /**
+         * Find the live editor again before committing the enriched coloring result.
+         */ (item) =>
+          !item.document.isClosed && item.document.uri.toString() === editorKey,
       )
       if (!completeEditor || completeEditor.document.version !== version) return
       editor = completeEditor
@@ -5242,6 +6254,10 @@ class UsesQuickFixSupport {
   knownTypeDecoration
   refreshTimers: Map<string, NodeJS.Timeout>
 
+  /**
+   * Initialize missing-uses support and its source/DCP/compiled candidate caches,
+   * editor decorations, and debounce state.
+   */
   constructor(
     context: vscode.ExtensionContext,
     compiledSymbolSupport: CompiledSymbolSupport,
@@ -5261,10 +6277,12 @@ class UsesQuickFixSupport {
     context.subscriptions.push(this.knownTypeDecoration)
   }
 
+  /** Return the shared source-index promise used by missing-uses actions. */
   async sourceIndex() {
     return this.sourceIndexPromise
   }
 
+  /** Memoize a source-type-only symbol-to-unit lookup for type-focused assistance. */
   async sourceTypeIndex() {
     if (!this.sourceTypeIndexPromise) {
       this.sourceTypeIndexPromise = this.sourceIndex().then(sourceTypeUnitIndex)
@@ -5272,6 +6290,10 @@ class UsesQuickFixSupport {
     return this.sourceTypeIndexPromise
   }
 
+  /**
+   * Require extension and missing-unit assistance enablement in the document's
+   * settings scope.
+   */
   enabled(document: vscode.TextDocument) {
     const configuration = vscode.workspace.getConfiguration(
       ConfigurationSection,
@@ -5283,6 +6305,10 @@ class UsesQuickFixSupport {
     )
   }
 
+  /**
+   * Resolve viable owning-unit candidates for a nonintrinsic symbol under source-only
+   * or compiled-fallback policy.
+   */
   async unitCandidates(document: vscode.TextDocument, symbol: string) {
     if (isPascalIntrinsicIdentifier(symbol)) return []
     const compiledFallback = vscode.workspace
@@ -5294,57 +6320,89 @@ class UsesQuickFixSupport {
     return filterAddUnitCandidates(index.get(symbol.toLowerCase()))
   }
 
+  /**
+   * Memoize lightweight source plus raw DCP symbol candidates without requiring all
+   * BPLs to be indexed.
+   */
   async combinedIndex() {
     if (!this.combinedIndexPromise) {
       const roots = (vscode.workspace.workspaceFolders || []).map(
-        (folder) => folder.uri.fsPath,
+        /** Use workspace folders as roots for lightweight DCP discovery. */ (folder) =>
+          folder.uri.fsPath,
       )
       if (!this.dcpIndexPromise) {
-        this.dcpIndexPromise = buildDcpSymbolIndex(roots).then((index) => {
-          output.appendLine(
-            `DCP Add Unit index: ${index.fileCount} files, ${index.symbols.size} symbols.`,
-          )
-          return index
-        })
+        this.dcpIndexPromise = buildDcpSymbolIndex(roots).then(
+          /** Log the DCP candidate index size and forward its completed result. */ (
+            index,
+          ) => {
+            output.appendLine(
+              `DCP Add Unit index: ${index.fileCount} files, ${index.symbols.size} symbols.`,
+            )
+            return index
+          },
+        )
       }
       this.combinedIndexPromise = Promise.all([
         this.sourceIndex(),
         this.dcpIndexPromise,
-      ]).then(([source, dcp]) => {
-        const result: SymbolUnitIndex = new Map()
-        for (const index of [source.symbols, dcp.symbols]) {
-          for (const [symbol, units] of index) {
-            if (!result.has(symbol)) result.set(symbol, new Set())
-            for (const unitName of units) result.get(symbol)!.add(unitName)
+      ]).then(
+        /**
+         * Combine source and DCP symbol candidates while deduplicating each symbol's
+         * owning units.
+         */ ([source, dcp]) => {
+          const result: SymbolUnitIndex = new Map()
+          for (const index of [source.symbols, dcp.symbols]) {
+            for (const [symbol, units] of index) {
+              if (!result.has(symbol)) result.set(symbol, new Set())
+              for (const unitName of units) result.get(symbol)!.add(unitName)
+            }
           }
-        }
-        output.appendLine(`Lightweight Add Unit index: ${result.size} symbols.`)
-        return result
-      })
+          output.appendLine(`Lightweight Add Unit index: ${result.size} symbols.`)
+          return result
+        },
+      )
     }
     return this.combinedIndexPromise
   }
 
+  /**
+   * Merge the lightweight candidate index with complete compiled package unit evidence
+   * when an explicit action needs broader results.
+   */
   async fullCombinedIndex() {
     if (!this.fullCombinedIndexPromise) {
       this.fullCombinedIndexPromise = Promise.all([
         this.combinedIndex(),
         this.compiledSymbolSupport.allUnitCandidates(),
-      ]).then(([lightweight, compiled]) => {
-        const result = new Map(
-          [...lightweight].map(([symbol, units]) => [symbol, new Set(units)]),
-        )
-        for (const [symbol, units] of compiled) {
-          if (!result.has(symbol)) result.set(symbol, new Set())
-          for (const unitName of units) result.get(symbol)!.add(unitName)
-        }
-        output.appendLine(`Full on-demand Add Unit index: ${result.size} symbols.`)
-        return result
-      })
+      ]).then(
+        /** Add compiled candidates to a copy of the lightweight symbol-to-unit index. */ ([
+          lightweight,
+          compiled,
+        ]) => {
+          const result = new Map(
+            [...lightweight].map(
+              /**
+               * Copy each candidate-unit set so extending the full index leaves the
+               * lightweight index unchanged.
+               */ ([symbol, units]) => [symbol, new Set(units)],
+            ),
+          )
+          for (const [symbol, units] of compiled) {
+            if (!result.has(symbol)) result.set(symbol, new Set())
+            for (const unitName of units) result.get(symbol)!.add(unitName)
+          }
+          output.appendLine(`Full on-demand Add Unit index: ${result.size} symbols.`)
+          return result
+        },
+      )
     }
     return this.fullCombinedIndexPromise
   }
 
+  /**
+   * Build the reliable source-type candidate index without classifying ambiguous raw
+   * DCP strings as type declarations.
+   */
   async combinedTypeIndex() {
     if (!this.combinedTypeIndexPromise) {
       // Raw DCP strings do not carry a reliable declaration kind. Treating
@@ -5357,25 +6415,43 @@ class UsesQuickFixSupport {
     return this.combinedTypeIndexPromise
   }
 
+  /**
+   * Merge reliable source and recovered compiled type-unit evidence for broader
+   * type-specific actions.
+   */
   async fullCombinedTypeIndex() {
     if (!this.fullCombinedTypeIndexPromise) {
       this.fullCombinedTypeIndexPromise = Promise.all([
         this.combinedTypeIndex(),
         this.compiledSymbolSupport.allTypeUnitCandidates(),
-      ]).then(([lightweight, compiled]) => {
-        const result = new Map(
-          [...lightweight].map(([symbol, units]) => [symbol, new Set(units)]),
-        )
-        for (const [symbol, units] of compiled) {
-          if (!result.has(symbol)) result.set(symbol, new Set())
-          for (const unitName of units) result.get(symbol)!.add(unitName)
-        }
-        return result
-      })
+      ]).then(
+        /** Add compiled type candidates to a copy of the source-type index. */ ([
+          lightweight,
+          compiled,
+        ]) => {
+          const result = new Map(
+            [...lightweight].map(
+              /** Copy each source-type unit set before adding compiled candidates. */ ([
+                symbol,
+                units,
+              ]) => [symbol, new Set(units)],
+            ),
+          )
+          for (const [symbol, units] of compiled) {
+            if (!result.has(symbol)) result.set(symbol, new Set())
+            for (const unitName of units) result.get(symbol)!.add(unitName)
+          }
+          return result
+        },
+      )
     }
     return this.fullCombinedTypeIndexPromise
   }
 
+  /**
+   * Read the Pascal identifier at a diagnostic range start, returning undefined when
+   * no word is present.
+   */
   wordAtRange(document: vscode.TextDocument, range: vscode.Range) {
     const wordRange = document.getWordRangeAtPosition(
       range.start,
@@ -5384,6 +6460,10 @@ class UsesQuickFixSupport {
     return wordRange ? document.getText(wordRange) : undefined
   }
 
+  /**
+   * Find candidate units for the active unknown symbol, offer any ambiguous choice,
+   * and apply a planned uses insertion when permitted.
+   */
   async addUnitAtCursor() {
     const editor = vscode.window.activeTextEditor
     if (
@@ -5428,12 +6508,14 @@ class UsesQuickFixSupport {
       await this.unitCandidates(document, symbol),
       ownUnit,
     )
-      .map((unitName) => ({
-        unitName,
-        insertion: planUsesInsertion(document.getText(), symbolOffset, unitName),
-      }))
+      .map(
+        /** Plan a uses insertion for each candidate owning unit. */ (unitName) => ({
+          unitName,
+          insertion: planUsesInsertion(document.getText(), symbolOffset, unitName),
+        }),
+      )
       .filter(
-        (
+        /** Keep candidates for which a nonduplicate uses insertion can be planned. */ (
           item,
         ): item is { unitName: string; insertion: { offset: number; text: string } } =>
           Boolean(item.insertion),
@@ -5448,11 +6530,15 @@ class UsesQuickFixSupport {
     let selected = candidates[0]
     if (candidates.length > 1) {
       const choice = await vscode.window.showQuickPick(
-        candidates.map((item) => ({
-          label: item.unitName,
-          description: `Add to uses for ${symbol}`,
-          item,
-        })),
+        candidates.map(
+          /**
+           * Present each unit with its insertion plan as an explicit selection choice.
+           */ (item) => ({
+            label: item.unitName,
+            description: `Add to uses for ${symbol}`,
+            item,
+          }),
+        ),
         { title: `Select Unit for ${symbol}` },
       )
       if (!choice) return
@@ -5471,9 +6557,14 @@ class UsesQuickFixSupport {
     }
   }
 
+  /**
+   * Apply configured known-type coloring only to a current visible editor under
+   * reliable visible-unit metadata.
+   */
   decorateKnownTypes(document: vscode.TextDocument, index: SymbolUnitIndex) {
     const editor = vscode.window.visibleTextEditors.find(
-      (item) => item.document.uri.toString() === document.uri.toString(),
+      /** Find the visible editor displaying the document to be colored. */ (item) =>
+        item.document.uri.toString() === document.uri.toString(),
     )
     if (!editor) return
     const configuration = vscode.workspace.getConfiguration(
@@ -5488,7 +6579,9 @@ class UsesQuickFixSupport {
       return
     }
     const ranges = findKnownUnitReferences(document.getText(), index).map(
-      (reference) =>
+      /** Convert known-symbol source spans into editor decoration ranges. */ (
+        reference,
+      ) =>
         new vscode.Range(
           document.positionAt(reference.offset),
           document.positionAt(reference.offset + reference.length),
@@ -5497,6 +6590,10 @@ class UsesQuickFixSupport {
     editor.setDecorations(this.knownTypeDecoration, ranges)
   }
 
+  /**
+   * Build deduplicated Add Unit actions from compiler/LSP unknown-symbol diagnostics,
+   * avoiding implicit/current/already used units.
+   */
   async provideCodeActions(
     document: vscode.TextDocument,
     context: vscode.CodeActionContext,
@@ -5523,12 +6620,16 @@ class UsesQuickFixSupport {
         await this.unitCandidates(document, symbol),
         ownUnit,
       )
-        .map((unitName) => ({
-          unitName,
-          insertion: planUsesInsertion(text, offset, unitName),
-        }))
+        .map(
+          /** Pair each diagnostic's candidate unit with a planned uses insertion. */ (
+            unitName,
+          ) => ({
+            unitName,
+            insertion: planUsesInsertion(text, offset, unitName),
+          }),
+        )
         .filter(
-          (
+          /** Offer only candidates with a usable, nonduplicate insertion plan. */ (
             item,
           ): item is {
             unitName: string
@@ -5559,6 +6660,10 @@ class UsesQuickFixSupport {
     return actions
   }
 
+  /**
+   * Refresh known-type decorations for a supported visible document without publishing
+   * speculative Problems diagnostics.
+   */
   async refreshDiagnostics(document: vscode.TextDocument) {
     if (
       !inList(document.languageId, [LanguageId.Pascal, LanguageId.ObjectPascal]) ||
@@ -5567,7 +6672,9 @@ class UsesQuickFixSupport {
       return
     if (!this.enabled(document)) {
       const editor = vscode.window.visibleTextEditors.find(
-        (item) => item.document.uri.toString() === document.uri.toString(),
+        /** Find the visible editor whose known-type decorations need refreshing. */ (
+          item,
+        ) => item.document.uri.toString() === document.uri.toString(),
       )
       if (editor) editor.setDecorations(this.knownTypeDecoration, [])
       return
@@ -5578,6 +6685,7 @@ class UsesQuickFixSupport {
     this.decorateKnownTypes(document, index)
   }
 
+  /** Debounce assistance refresh by document URI using its configured delay. */
   scheduleDiagnostics(document: vscode.TextDocument) {
     const key = document.uri.toString()
     clearTimeout(this.refreshTimers.get(key))
@@ -5586,32 +6694,53 @@ class UsesQuickFixSupport {
       .get(SettingKey.MissingUnitsDebounceMs, 350)
     this.refreshTimers.set(
       key,
-      setTimeout(() => {
-        this.refreshTimers.delete(key)
-        this.refreshDiagnostics(document).catch((error) => {
-          output.appendLine(
-            `Unit index refresh failed for ${document.fileName}: ${error.message}`,
+      setTimeout(
+        /** Refresh known-type decorations after the per-document debounce expires. */ () => {
+          this.refreshTimers.delete(key)
+          this.refreshDiagnostics(document).catch(
+            /**
+             * Report a failed candidate-index refresh without creating speculative
+             * diagnostics.
+             */ (error) => {
+              output.appendLine(
+                `Unit index refresh failed for ${document.fileName}: ${error.message}`,
+              )
+            },
           )
-        })
-      }, delay),
+        },
+        delay,
+      ),
     )
   }
 
+  /**
+   * Register Add Unit/code-action support and document/configuration listeners with
+   * the extension lifecycle.
+   */
   register() {
     this.context.subscriptions.push(
-      vscode.commands.registerCommand(CommandId.AddUnit, async () => {
-        await this.addUnitAtCursor()
-      }),
+      vscode.commands.registerCommand(
+        CommandId.AddUnit,
+        /** Run Add Unit for the active cursor when its command is invoked. */ async () => {
+          await this.addUnitAtCursor()
+        },
+      ),
     )
     this.context.subscriptions.push(
-      vscode.workspace.onDidOpenTextDocument((document) => {
-        this.scheduleDiagnostics(document)
-      }),
+      vscode.workspace.onDidOpenTextDocument(
+        /** Schedule known-type decoration refresh for newly opened documents. */ (
+          document,
+        ) => {
+          this.scheduleDiagnostics(document)
+        },
+      ),
     )
     this.context.subscriptions.push(
-      vscode.workspace.onDidChangeTextDocument((event) => {
-        this.scheduleDiagnostics(event.document)
-      }),
+      vscode.workspace.onDidChangeTextDocument(
+        /** Schedule known-type decoration refresh after document edits. */ (event) => {
+          this.scheduleDiagnostics(event.document)
+        },
+      ),
     )
     this.context.subscriptions.push(
       vscode.languages.registerCodeActionsProvider(
@@ -5620,32 +6749,54 @@ class UsesQuickFixSupport {
           { language: LanguageId.ObjectPascal, scheme: UriScheme.File },
         ],
         {
-          provideCodeActions: (document, _range, context) =>
-            this.provideCodeActions(document, context),
+          provideCodeActions:
+            /** Delegate diagnostic-context code actions to the missing-uses resolver. */ (
+              document,
+              _range,
+              context,
+            ) => this.provideCodeActions(document, context),
         },
         { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] },
       ),
     )
     this.context.subscriptions.push(
-      vscode.workspace.onDidChangeConfiguration((event) => {
-        if (
-          !event.affectsConfiguration("pascalAtlas.missingUnits") &&
-          !event.affectsConfiguration("pascalAtlas.enabled")
-        )
-          return
-        for (const document of vscode.workspace.textDocuments)
-          this.scheduleDiagnostics(document)
-      }),
+      vscode.workspace.onDidChangeConfiguration(
+        /**
+         * Refresh open-document assistance when missing-unit or extension enablement
+         * changes.
+         */ (event) => {
+          if (
+            !event.affectsConfiguration("pascalAtlas.missingUnits") &&
+            !event.affectsConfiguration("pascalAtlas.enabled")
+          )
+            return
+          for (const document of vscode.workspace.textDocuments)
+            this.scheduleDiagnostics(document)
+        },
+      ),
     )
     for (const document of vscode.workspace.textDocuments)
       this.scheduleDiagnostics(document)
   }
 }
 
+/**
+ * Filter untrusted array state to string values, returning an empty list for other
+ * shapes.
+ */
 function asStringArray(value: unknown) {
-  return Array.isArray(value) ? value.filter((item) => typeof item === "string") : []
+  return Array.isArray(value)
+    ? value.filter(
+        /** Retain only string entries from untrusted array state. */ (item) =>
+          typeof item === "string",
+      )
+    : []
 }
 
+/**
+ * Deduplicate nonempty path strings by normalized path identity while retaining their
+ * first display spelling.
+ */
 function uniquePaths(values: string[]) {
   const result = []
   const seen = new Set()
@@ -5662,6 +6813,10 @@ function uniquePaths(values: string[]) {
   return result
 }
 
+/**
+ * Resolve existing selected RAD Studio RTL/VCL source directories for focused platform
+ * indexing.
+ */
 function delphiSourceRoots() {
   const installation = vscode.workspace
     .getConfiguration("vallenta.studio")
@@ -5672,45 +6827,77 @@ function delphiSourceRoots() {
     path.join(source, "rtl", "common"),
     path.join(source, "rtl", "win"),
     path.join(source, "vcl"),
-  ]).filter((value) => {
-    try {
-      return fs.statSync(value).isDirectory()
-    } catch {
-      return false
-    }
-  })
-}
-
-function arraysEqual(left: string[], right: string[]) {
-  return (
-    left.length === right.length &&
-    left.every((value: string, index: number) => value === right[index])
-  )
-}
-
-function minimalSourceRoots(values: string[]) {
-  const candidates = uniquePaths(values)
-    .filter((value) => {
+  ]).filter(
+    /** Include only Delphi source roots that currently exist as directories. */ (
+      value,
+    ) => {
       try {
         return fs.statSync(value).isDirectory()
       } catch {
         return false
       }
-    })
-    .sort((left, right) => left.length - right.length)
+    },
+  )
+}
+
+/**
+ * Compare two ordered path arrays without sorting or changing their preserved
+ * spellings.
+ */
+function arraysEqual(left: string[], right: string[]) {
+  return (
+    left.length === right.length &&
+    left.every(
+      /** Compare corresponding path spellings after checking the array lengths. */ (
+        value: string,
+        index: number,
+      ) => value === right[index],
+    )
+  )
+}
+
+/**
+ * Keep existing shortest source directory roots, excluding nested roots already
+ * covered by an earlier parent traversal.
+ */
+function minimalSourceRoots(values: string[]) {
+  const candidates = uniquePaths(values)
+    .filter(
+      /** Retain source roots that exist as directories. */ (value) => {
+        try {
+          return fs.statSync(value).isDirectory()
+        } catch {
+          return false
+        }
+      },
+    )
+    .sort(
+      /** Visit shorter roots first so parent directories can subsume nested roots. */ (
+        left,
+        right,
+      ) => left.length - right.length,
+    )
   const roots: string[] = []
   for (const candidate of candidates) {
-    const nested = roots.some((root) => {
-      const relative = path.relative(root, candidate)
-      return (
-        relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
-      )
-    })
+    const nested = roots.some(
+      /** Detect whether an already retained root contains this candidate directory. */ (
+        root,
+      ) => {
+        const relative = path.relative(root, candidate)
+        return (
+          relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+        )
+      },
+    )
     if (!nested) roots.push(candidate)
   }
   return roots
 }
 
+/**
+ * Restart the active Vallenta language service only when the configured path-sync
+ * policy requests it.
+ */
 async function restartLanguageServices() {
   const shouldRestart = vscode.workspace
     .getConfiguration(ConfigurationSection)
@@ -5724,6 +6911,10 @@ async function restartLanguageServices() {
   await vscode.commands.executeCommand("vallenta.studio.lsp.restart")
 }
 
+/**
+ * Check document/workspace-scoped extension and automatic project-group detection
+ * preferences.
+ */
 function automaticProjectGroupDetectionEnabled(
   resource: vscode.ConfigurationScope | null | undefined,
 ) {
@@ -5737,6 +6928,10 @@ function automaticProjectGroupDetectionEnabled(
   )
 }
 
+/**
+ * Discover/register one workspace's groups under configured activation preferences and
+ * refresh Vallenta only when state changed and refresh is allowed.
+ */
 async function detectWorkspaceProjectGroups(
   workspaceFolder: vscode.WorkspaceFolder,
   options: { force?: boolean; refreshVallenta?: boolean } = {},
@@ -5770,6 +6965,10 @@ async function detectWorkspaceProjectGroups(
   return result
 }
 
+/**
+ * Run configured group discovery for each workspace folder and retain each detection
+ * result.
+ */
 async function detectAllWorkspaceProjectGroups(
   options: Partial<{ refreshVallenta?: boolean; force?: boolean } | undefined> = {},
 ) {
@@ -5780,12 +6979,23 @@ async function detectAllWorkspaceProjectGroups(
   return results
 }
 
+/**
+ * Activate installed Vallenta after detected group state is ready, refreshing an
+ * already active instance only when discovery changed its state.
+ */
 async function activateVallentaForProjectGroups(
   results: Array<Awaited<ReturnType<typeof detectWorkspaceProjectGroups>>>,
 ) {
-  const detected = (results || []).some((result) => result.discoveredGroups?.length > 0)
+  const detected = (results || []).some(
+    /** Check whether any workspace has discovered a Project Group. */ (result) =>
+      result.discoveredGroups?.length > 0,
+  )
   if (!detected) return false
-  const changed = (results || []).some((result) => result.changed)
+  const changed = (results || []).some(
+    /** Check whether discovery changed any workspace's Vallenta project configuration. */ (
+      result,
+    ) => result.changed,
+  )
   const extension = vscode.extensions.getExtension("VallentaStudio.vallenta-studio")
   if (!extension) {
     output.appendLine("Vallenta activation deferred: extension is not installed yet.")
@@ -5813,6 +7023,10 @@ async function activateVallentaForProjectGroups(
   return true
 }
 
+/**
+ * Replace only previously managed paths in the extension-host DCC search-path
+ * environment and log the resulting count.
+ */
 function updateProcessUnitSearchPath(previousManaged: string[], nextManaged: string[]) {
   process.env.DCC_UnitSearchPath = mergeManagedSearchPath(
     process.env.DCC_UnitSearchPath || "",
@@ -5824,6 +7038,10 @@ function updateProcessUnitSearchPath(previousManaged: string[], nextManaged: str
   )
 }
 
+/**
+ * Discover one workspace's loaded projects, reconcile managed navigation/library paths
+ * and environment state, and optionally restart the language service after changes.
+ */
 async function syncWorkspace(
   context: vscode.ExtensionContext,
   workspaceFolder: vscode.WorkspaceFolder,
@@ -5845,6 +7063,7 @@ async function syncWorkspace(
   // Vallenta's global libraryPath where they cause a redundant LSP restart.
   const managedPaths = await collectPascalAtlasPaths(projects, includeNested)
   const stateKey = `${MANAGED_PATHS_KEY}:${workspaceRoot}`
+  // Persisted path state is untrusted; retain strings only before merging it into workspace and process settings.
   const workspaceManaged = asStringArray(context.workspaceState.get(stateKey, []))
   // libraryPath is global, so paths managed by the previously active workspace
   // must be replaced instead of accumulated. Otherwise parallel checkouts of the
@@ -5863,7 +7082,9 @@ async function syncWorkspace(
   const inspected = vallentaConfig.inspect<string[]>("libraryPath")
   const currentGlobalPaths = asStringArray(inspected?.globalValue)
   const unmanagedGlobalPaths = currentGlobalPaths.filter(
-    (item) => !previousKeys.has(normalizeKey(item)),
+    /** Remove only previously managed paths from the user's global library paths. */ (
+      item,
+    ) => !previousKeys.has(normalizeKey(item)),
   )
   const nextGlobalPaths = uniquePaths([...unmanagedGlobalPaths, ...managedPaths])
   const globalChanged = !arraysEqual(currentGlobalPaths, nextGlobalPaths)
@@ -5873,7 +7094,9 @@ async function syncWorkspace(
   // workspace value; remove only its managed entries during migration.
   const currentWorkspacePaths = asStringArray(inspected?.workspaceValue)
   const cleanedWorkspacePaths = currentWorkspacePaths.filter(
-    (item) => !previousKeys.has(normalizeKey(item)),
+    /** Remove only previously managed paths from the user's workspace search paths. */ (
+      item,
+    ) => !previousKeys.has(normalizeKey(item)),
   )
   const workspaceChanged =
     currentWorkspacePaths.length > 0 &&
@@ -5907,6 +7130,10 @@ async function syncWorkspace(
   return { changed, globalChanged, projects, paths: managedPaths }
 }
 
+/**
+ * Synchronize each workspace with one final requested language-service restart when
+ * managed paths changed.
+ */
 async function syncAll(
   context: vscode.ExtensionContext,
   options: Partial<{ restart: boolean }> = {},
@@ -5916,26 +7143,49 @@ async function syncAll(
   for (const folder of folders) {
     results.push(await syncWorkspace(context, folder, { ...options, restart: false }))
   }
-  if (options.restart !== false && results.some((result) => result.globalChanged)) {
+  if (
+    options.restart !== false &&
+    results.some(
+      /** Restart language services only when a workspace changed global library paths. */ (
+        result,
+      ) => result.globalChanged,
+    )
+  ) {
     await restartLanguageServices()
   }
   return results
 }
 
+/**
+ * Serialize workspace synchronization and report failures without preventing a later
+ * synchronization request from running.
+ */
 function enqueueSync(
   context: vscode.ExtensionContext,
   options: { restart?: boolean } = {},
 ) {
   syncPromise = syncPromise
-    .catch(() => undefined)
-    .then(() => syncAll(context, options))
-    .catch((error) => {
-      output.appendLine(`Synchronization failed: ${error.stack || error.message}`)
-      vscode.window.showErrorMessage(`Pascal Atlas: ${error.message}`)
-    })
+    .catch(
+      /** Allow the synchronization queue to continue after a previous request failed. */ () =>
+        undefined,
+    )
+    .then(
+      /** Run this synchronization request after earlier queued work settles. */ () =>
+        syncAll(context, options),
+    )
+    .catch(
+      /**
+       * Report a synchronization failure in the output channel and an error
+       * notification.
+       */ (error) => {
+        output.appendLine(`Synchronization failed: ${error.stack || error.message}`)
+        vscode.window.showErrorMessage(`Pascal Atlas: ${error.message}`)
+      },
+    )
   return syncPromise
 }
 
+/** Require extension and automatic managed-path synchronization enablement. */
 function automaticPathSyncEnabled() {
   const configuration = vscode.workspace.getConfiguration(ConfigurationSection)
   return (
@@ -5944,28 +7194,47 @@ function automaticPathSyncEnabled() {
   )
 }
 
+/** Determine whether any open workspace permits automatic project-group detection. */
 function anyProjectGroupDetectionEnabled() {
-  return (vscode.workspace.workspaceFolders || []).some((folder) =>
-    automaticProjectGroupDetectionEnabled(folder.uri),
+  return (vscode.workspace.workspaceFolders || []).some(
+    /** Check whether Project Group auto-detection is enabled for any workspace. */ (
+      folder,
+    ) => automaticProjectGroupDetectionEnabled(folder.uri),
   )
 }
 
+/**
+ * Debounce workspace path/group synchronization and re-evaluate enabled policies
+ * before running its queued work.
+ */
 function scheduleSync(context: vscode.ExtensionContext) {
   if (!automaticPathSyncEnabled() && !anyProjectGroupDetectionEnabled()) return
   clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => {
-    if (automaticPathSyncEnabled()) {
-      void enqueueSync(context)
-      return
-    }
-    void detectAllWorkspaceProjectGroups().catch((error) => {
-      output.appendLine(
-        `Project Group detection failed: ${error.stack || error.message}`,
+  debounceTimer = setTimeout(
+    /**
+     * Synchronize managed paths, or run discovery alone, after the filesystem-change
+     * debounce.
+     */ () => {
+      if (automaticPathSyncEnabled()) {
+        void enqueueSync(context)
+        return
+      }
+      void detectAllWorkspaceProjectGroups().catch(
+        /** Report failed background Project Group discovery. */ (error) => {
+          output.appendLine(
+            `Project Group detection failed: ${error.stack || error.message}`,
+          )
+        },
       )
-    })
-  }, 750)
+    },
+    750,
+  )
 }
 
+/**
+ * Remove captured managed workspace/global library paths and environment contributions
+ * while preserving unrelated user entries.
+ */
 async function restoreWorkspace(
   context: vscode.ExtensionContext,
   workspaceFolder: vscode.WorkspaceFolder,
@@ -5985,7 +7254,9 @@ async function restoreWorkspace(
   const inspected = vallentaConfig.inspect<string[]>("libraryPath")
   const currentGlobalPaths = asStringArray(inspected?.globalValue)
   const restoredPaths = currentGlobalPaths.filter(
-    (item) => !previousKeys.has(normalizeKey(item)),
+    /** Preserve global library paths that were not managed by Pascal Atlas. */ (
+      item,
+    ) => !previousKeys.has(normalizeKey(item)),
   )
   await vallentaConfig.update(
     "libraryPath",
@@ -5994,7 +7265,9 @@ async function restoreWorkspace(
   )
   const currentWorkspacePaths = asStringArray(inspected?.workspaceValue)
   const cleanedWorkspacePaths = currentWorkspacePaths.filter(
-    (item) => !previousKeys.has(normalizeKey(item)),
+    /** Preserve workspace search paths that were not managed by Pascal Atlas. */ (
+      item,
+    ) => !previousKeys.has(normalizeKey(item)),
   )
   if (!arraysEqual(currentWorkspacePaths, cleanedWorkspacePaths)) {
     await vallentaConfig.update(
@@ -6010,6 +7283,10 @@ async function restoreWorkspace(
   )
 }
 
+/**
+ * Synchronize installed Vallenta's global encoding warning switch with the Pascal
+ * Atlas preference, avoiding redundant writes.
+ */
 async function syncVallentaEncodingWarningSetting() {
   const vallentaExtension = vscode.extensions.getExtension(
     "VallentaStudio.vallenta-studio",
@@ -6041,29 +7318,45 @@ async function syncVallentaEncodingWarningSetting() {
   return true
 }
 
+/**
+ * Initialize required project/typing/diagnostic services first, then register
+ * UI/build/navigation/refactoring features and gated background indexes with preserved
+ * startup ordering.
+ */
 async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(output)
   // Apply this before Vallenta is activated for a detected project group, so
   // its initial document scan cannot briefly publish an unwanted diagnostic.
-  await syncVallentaEncodingWarningSetting().catch((error) => {
-    output.appendLine(
-      `Could not synchronize the UTF-8 conversion warning preference: ${error.message}`,
-    )
-  })
+  await syncVallentaEncodingWarningSetting().catch(
+    /** Report a failed Vallenta encoding-warning preference synchronization. */ (
+      error,
+    ) => {
+      output.appendLine(
+        `Could not synchronize the UTF-8 conversion warning preference: ${error.message}`,
+      )
+    },
+  )
   // The project registration is the first awaited startup operation. It is a
   // small directory walk, and must finish before a visible class navigator can
   // request a model for a multi-megabyte source file.
   const startupProjectDiscoveryResults = await detectAllWorkspaceProjectGroups({
     refreshVallenta: false,
-  }).catch((error) => {
-    output.appendLine(
-      `Automatic groupproj detection failed: ${error.stack || error.message}`,
-    )
-    return []
-  })
+  }).catch(
+    /**
+     * Report startup discovery failure and continue activation with no discovered
+     * groups.
+     */ (error) => {
+      output.appendLine(
+        `Automatic groupproj detection failed: ${error.stack || error.message}`,
+      )
+      return []
+    },
+  )
   const startupProjectDiscoveryPromise = Promise.resolve(startupProjectDiscoveryResults)
   void activateVallentaForProjectGroups(startupProjectDiscoveryResults).catch(
-    (error) => {
+    /** Report a Vallenta activation failure without stopping Pascal Atlas startup. */ (
+      error,
+    ) => {
       output.appendLine(
         `Vallenta startup after groupproj detection failed: ${error.stack || error.message}`,
       )
@@ -6078,16 +7371,22 @@ async function activate(context: vscode.ExtensionContext) {
   registerImmediateSpaceExpansion(context, vscode)
   registerSpaceTriggeredSnippetExpansion(context, vscode)
 
-  void initializeFirstRunSettings(context, output).catch((error) => {
-    output.appendLine(`First-run settings initialization skipped: ${error.message}`)
-  })
+  void initializeFirstRunSettings(context, output).catch(
+    /**
+     * Report skipped first-run setting initialization while keeping startup available.
+     */ (error) => {
+      output.appendLine(`First-run settings initialization skipped: ${error.message}`)
+    },
+  )
   registerDependencySupport(context, output)
   registerEncodingSupport(context, output)
   const controlCenter = new PascalAtlasControlCenterProvider(context, output)
   controlCenter.register()
-  void migrateLegacyFormatterSettings().catch((error) => {
-    output.appendLine(`Formatter setting migration skipped: ${error.message}`)
-  })
+  void migrateLegacyFormatterSettings().catch(
+    /** Report a skipped legacy formatter-setting migration. */ (error) => {
+      output.appendLine(`Formatter setting migration skipped: ${error.message}`)
+    },
+  )
   registerFormatter(context)
   registerExplorerSupport(context, output)
 
@@ -6112,17 +7411,27 @@ async function activate(context: vscode.ExtensionContext) {
 
   const workspaceFolders = vscode.workspace.workspaceFolders || []
   const projectSourceRoots = minimalSourceRoots([
-    ...workspaceFolders.map((folder) => folder.uri.fsPath),
-    ...workspaceFolders.flatMap((folder) =>
-      asStringArray(
-        context.workspaceState.get(`${MANAGED_PATHS_KEY}:${folder.uri.fsPath}`, []),
-      ),
+    ...workspaceFolders.map(
+      /** Use current workspace folders as project source roots. */ (folder) =>
+        folder.uri.fsPath,
+    ),
+    ...workspaceFolders.flatMap(
+      /** Include persisted managed paths when assembling project source roots. */ (
+        folder,
+      ) =>
+        asStringArray(
+          context.workspaceState.get(`${MANAGED_PATHS_KEY}:${folder.uri.fsPath}`, []),
+        ),
     ),
   ])
   const platformSourceRoots = minimalSourceRoots(delphiSourceRoots())
   const persistentSourceCacheEnabled = vscode.workspace
     .getConfiguration(ConfigurationSection)
     .get(SettingKey.SymbolsSourceCacheEnabled, true)
+  /**
+   * Key optional source-index cache files by index role and canonical root identities
+   * under extension storage.
+   */
   const sourceCachePath = (label: string, roots: string[]) => {
     if (!persistentSourceCacheEnabled || roots.length === 0) return undefined
     const identity = roots.map(normalizeKey).sort().join("|")
@@ -6145,18 +7454,22 @@ async function activate(context: vscode.ExtensionContext) {
   const priorityPlatformUnits = activePascalDocument
     ? [...parseUsesUnits(activePascalDocument.getText()), "system"]
     : ["system"]
-  const immediatePlatformUnits = priorityPlatformUnits.filter((unitName) =>
-    /^(?:vcl|fmx)\./.test(unitName),
+  const immediatePlatformUnits = priorityPlatformUnits.filter(
+    /** Prioritize namespaced VCL and FMX units used by the active document. */ (
+      unitName,
+    ) => /^(?:vcl|fmx)\./.test(unitName),
   )
   const secondaryPlatformUnits = priorityPlatformUnits.filter(
-    (unitName) => !immediatePlatformUnits.includes(unitName),
+    /** Defer other used platform units to the secondary index. */ (unitName) =>
+      !immediatePlatformUnits.includes(unitName),
   )
   const indexIdlePromise = waitForPascalEditorIdle(context, 1500)
   const maintenanceIdlePromise = waitForPascalEditorIdle(context, 5000)
   // Keep startup work serial. Multiple parser workers plus Vallenta's first LSP
   // load competed for CPU and made a newly opened editor feel frozen.
-  const priorityPlatformIndexPromise = indexIdlePromise.then(() =>
-    buildSourceUnitIndexForUnits(platformSourceRoots, immediatePlatformUnits),
+  const priorityPlatformIndexPromise = indexIdlePromise.then(
+    /** Start the focused VCL/FMX index after the editor-idle gate. */ () =>
+      buildSourceUnitIndexForUnits(platformSourceRoots, immediatePlatformUnits),
   )
   // Cache validation starts immediately and only waits for the idle gate on a
   // miss. An unchanged workspace can therefore restore its complete symbol
@@ -6164,27 +7477,42 @@ async function activate(context: vscode.ExtensionContext) {
   const projectSourceIndexPromise = buildSourceUnitIndex(projectSourceRoots, {
     cachePath: projectSourceCachePath,
     buildGate: priorityPlatformIndexPromise,
-  }).then((index) => {
-    if (index.cacheHit) {
-      output.appendLine(
-        `Restored project source index cache: ${index.fileCount} files after ${index.cacheElapsedMs}ms.`,
-      )
-    } else if (projectSourceCachePath) {
-      output.appendLine(
-        `Rebuilt project source index cache: ${index.fileCount} files after ${index.cacheElapsedMs}ms.`,
-      )
-    }
-    return index
-  })
+  }).then(
+    /**
+     * Log project-source cache restoration or rebuild timing and forward the completed
+     * index.
+     */ (index) => {
+      if (index.cacheHit) {
+        output.appendLine(
+          `Restored project source index cache: ${index.fileCount} files after ${index.cacheElapsedMs}ms.`,
+        )
+      } else if (projectSourceCachePath) {
+        output.appendLine(
+          `Rebuilt project source index cache: ${index.fileCount} files after ${index.cacheElapsedMs}ms.`,
+        )
+      }
+      return index
+    },
+  )
   // The shared symbol index is later augmented with RAD/VCL sources. Global
   // navigator search must keep a project-only snapshot so "global" means the
   // current workspace/project graph, not the whole Delphi installation.
-  const navigatorSourceIndexPromise = projectSourceIndexPromise.then((index) => ({
-    files: new Set(index.files),
-    definitions: new Map(
-      [...index.definitions].map(([key, definitions]) => [key, [...definitions]]),
-    ),
-  }))
+  const navigatorSourceIndexPromise = projectSourceIndexPromise.then(
+    /**
+     * Snapshot project-only files and declarations before platform indexes augment the
+     * shared index.
+     */ (index) => ({
+      files: new Set(index.files),
+      definitions: new Map(
+        [...index.definitions].map(
+          /**
+           * Copy declaration arrays so the navigator's project-only snapshot remains
+           * isolated.
+           */ ([key, definitions]) => [key, [...definitions]],
+        ),
+      ),
+    }),
+  )
   registerClassNavigator(
     context,
     output,
@@ -6192,23 +7520,30 @@ async function activate(context: vscode.ExtensionContext) {
     buildDebugSupport.projectNavigator,
     navigatorSourceIndexPromise,
   )
-  const secondaryPlatformIndexPromise = projectSourceIndexPromise.then(() =>
-    buildSourceUnitIndexForUnits(platformSourceRoots, secondaryPlatformUnits),
+  const secondaryPlatformIndexPromise = projectSourceIndexPromise.then(
+    /** Build the secondary platform-unit index after the project index is ready. */ () =>
+      buildSourceUnitIndexForUnits(platformSourceRoots, secondaryPlatformUnits),
   )
   const sourceIndexPromise = Promise.all([
     projectSourceIndexPromise,
     priorityPlatformIndexPromise,
-  ]).then(([index, priorityPlatformIndex]) => {
-    mergeSourceUnitIndexes(index, priorityPlatformIndex)
-    output.appendLine(
-      `Current-file-first source index ready: ${index.fileCount} files, ${index.symbols.size} symbols, ` +
-        `${index.definitions.size} definitions (${priorityPlatformIndex.fileCount} priority RAD/VCL files).`,
-    )
-    return index
-  })
+  ]).then(
+    /** Merge priority platform declarations into the initial shared source index. */ ([
+      index,
+      priorityPlatformIndex,
+    ]) => {
+      mergeSourceUnitIndexes(index, priorityPlatformIndex)
+      output.appendLine(
+        `Current-file-first source index ready: ${index.fileCount} files, ${index.symbols.size} symbols, ` +
+          `${index.definitions.size} definitions (${priorityPlatformIndex.fileCount} priority RAD/VCL files).`,
+      )
+      return index
+    },
+  )
   const startupSyncPromise = automaticPathSyncEnabled()
-    ? Promise.all([maintenanceIdlePromise, startupProjectDiscoveryPromise]).then(() =>
-        enqueueSync(context),
+    ? Promise.all([maintenanceIdlePromise, startupProjectDiscoveryPromise]).then(
+        /** Synchronize paths after maintenance-idle and startup discovery gates settle. */ () =>
+          enqueueSync(context),
       )
     : Promise.resolve()
   const platformBuildGate = Promise.all([
@@ -6219,18 +7554,23 @@ async function activate(context: vscode.ExtensionContext) {
   const platformIndexPromise = buildSourceUnitIndex(platformSourceRoots, {
     cachePath: platformSourceCachePath,
     buildGate: platformBuildGate,
-  }).then((index) => {
-    if (index.cacheHit) {
-      output.appendLine(
-        `Restored RAD/VCL source index cache: ${index.fileCount} files after ${index.cacheElapsedMs}ms.`,
-      )
-    } else if (platformSourceCachePath) {
-      output.appendLine(
-        `Rebuilt RAD/VCL source index cache: ${index.fileCount} files after ${index.cacheElapsedMs}ms.`,
-      )
-    }
-    return index
-  })
+  }).then(
+    /**
+     * Log full platform-source cache restoration or rebuild timing and forward the
+     * index.
+     */ (index) => {
+      if (index.cacheHit) {
+        output.appendLine(
+          `Restored RAD/VCL source index cache: ${index.fileCount} files after ${index.cacheElapsedMs}ms.`,
+        )
+      } else if (platformSourceCachePath) {
+        output.appendLine(
+          `Rebuilt RAD/VCL source index cache: ${index.fileCount} files after ${index.cacheElapsedMs}ms.`,
+        )
+      }
+      return index
+    },
+  )
 
   compiledSymbols = new CompiledSymbolSupport(
     context,
@@ -6249,127 +7589,197 @@ async function activate(context: vscode.ExtensionContext) {
   // They must not sit behind the whole-project source scan, otherwise a newly
   // opened editor can remain only partially colored for several seconds.
   void Promise.all([priorityPlatformIndexPromise, secondaryPlatformIndexPromise])
-    .then(([priorityIndex, secondaryIndex]) => {
-      mergeSourceUnitIndexes(priorityIndex, secondaryIndex)
-      compiledSymbols.appendSourceIndex(priorityIndex)
-    })
-    .catch((error) =>
-      output.appendLine(`Active-file platform index failed: ${error.message}`),
+    .then(
+      /** Publish secondary platform declarations into the focused priority index. */ ([
+        priorityIndex,
+        secondaryIndex,
+      ]) => {
+        mergeSourceUnitIndexes(priorityIndex, secondaryIndex)
+        compiledSymbols.appendSourceIndex(priorityIndex)
+      },
     )
-  void indexIdlePromise.then(() => {
-    if (vscode.window.activeTextEditor) {
-      compiledSymbols.scheduleDecorate(vscode.window.activeTextEditor, 0)
-    }
-  })
-  new UsesQuickFixSupport(context, compiledSymbols, sourceIndexPromise).register()
-  void indexIdlePromise
-    .then(() => compiledSymbols.initialize())
-    .then(() => {
-      const activeUri = vscode.window.activeTextEditor?.document.uri.toString()
+    .catch(
+      /**
+       * Report a failed active-file platform index without disabling other navigation.
+       */ (error) =>
+        output.appendLine(`Active-file platform index failed: ${error.message}`),
+    )
+  void indexIdlePromise.then(
+    /** Repaint the active editor when the shared source index becomes available. */ () => {
       if (vscode.window.activeTextEditor) {
-        compiledSymbols.warmCurrentDocument(vscode.window.activeTextEditor.document)
         compiledSymbols.scheduleDecorate(vscode.window.activeTextEditor, 0)
       }
-      for (const editor of vscode.window.visibleTextEditors) {
-        if (editor.document.uri.toString() !== activeUri)
-          compiledSymbols.scheduleDecorate(editor, 350)
-      }
-    })
-    .catch((error) => {
-      output.appendLine(
-        `Compiled symbol initialization failed; source navigation remains active: ${error.stack || error.message}`,
-      )
-    })
-  void sourceIndexPromise.catch((error) => {
-    output.appendLine(
-      `Source symbol index initialization failed; compiled navigation remains active: ${error.stack || error.message}`,
+    },
+  )
+  new UsesQuickFixSupport(context, compiledSymbols, sourceIndexPromise).register()
+  void indexIdlePromise
+    .then(
+      /** Initialize compiled package support after extension activation yields. */ () =>
+        compiledSymbols.initialize(),
     )
-  })
-  void Promise.all([sourceIndexPromise, secondaryPlatformIndexPromise])
-    .then(([index, secondaryIndex]) => {
-      mergeSourceUnitIndexes(index, secondaryIndex)
-      compiledSymbols.sourceIndexExpanded(index)
-      output.appendLine(
-        `Current-file secondary platform index appended: ${secondaryIndex.fileCount} files; ` +
-          `${index.fileCount} current-priority files total.`,
-      )
-    })
-    .catch((error) => {
-      output.appendLine(
-        `Current-file secondary platform index failed: ${error.stack || error.message}`,
-      )
-    })
-  void Promise.all([sourceIndexPromise, platformIndexPromise])
-    .then(async ([index, platformIndex]) => {
-      await mergeSourceUnitIndexesAsync(index, platformIndex)
-      compiledSymbols.sourceIndexExpanded(index)
-      output.appendLine(
-        `RAD/VCL source index appended in background: ${platformIndex.fileCount} files; ` +
-          `${index.fileCount} total files and ${index.definitions.size} definition keys.`,
-      )
-    })
-    .catch((error) => {
-      output.appendLine(
-        `RAD/VCL background source index failed: ${error.stack || error.message}`,
-      )
-    })
-  context.subscriptions.push(
-    vscode.commands.registerCommand(CommandId.Sync, async () => {
-      output.show(true)
-      await enqueueSync(context)
-      vscode.window.showInformationMessage("Pascal Atlas paths synchronized.")
-    }),
-  )
-  context.subscriptions.push(
-    vscode.commands.registerCommand(CommandId.ProjectsDetect, async () => {
-      output.show(true)
-      const results = await detectAllWorkspaceProjectGroups({ force: true })
-      await activateVallentaForProjectGroups(results)
-      await enqueueSync(context)
-      const groups = results.reduce(
-        (total, result) => total + result.discoveredGroups.length,
-        0,
-      )
-      const added = results.reduce(
-        (total, result) => total + result.addedGroups.length,
-        0,
-      )
-      vscode.window.showInformationMessage(
-        `Pascal Atlas: Found ${groups} groupproj file(s); added ${added} to Vallenta.`,
-      )
-    }),
-  )
-  context.subscriptions.push(
-    vscode.commands.registerCommand(CommandId.Restore, async () => {
-      for (const folder of vscode.workspace.workspaceFolders || []) {
-        await restoreWorkspace(context, folder)
-      }
-      await restartLanguageServices()
-      vscode.window.showInformationMessage("Pascal Atlas managed paths removed.")
-    }),
-  )
-  context.subscriptions.push(
-    vscode.commands.registerCommand(CommandId.ShowPaths, async () => {
-      output.show(true)
-      for (const folder of vscode.workspace.workspaceFolders || []) {
-        const stateKey = `${MANAGED_PATHS_KEY}:${folder.uri.fsPath}`
-        const paths = asStringArray(context.workspaceState.get(stateKey, []))
-        output.appendLine(`\n[${folder.name}] Managed paths (${paths.length}):`)
-        for (const item of paths) {
-          output.appendLine(`  ${item}`)
+    .then(
+      /** Warm and repaint visible documents after compiled discovery completes. */ () => {
+        const activeUri = vscode.window.activeTextEditor?.document.uri.toString()
+        if (vscode.window.activeTextEditor) {
+          compiledSymbols.warmCurrentDocument(vscode.window.activeTextEditor.document)
+          compiledSymbols.scheduleDecorate(vscode.window.activeTextEditor, 0)
         }
-      }
-    }),
+        for (const editor of vscode.window.visibleTextEditors) {
+          if (editor.document.uri.toString() !== activeUri)
+            compiledSymbols.scheduleDecorate(editor, 350)
+        }
+      },
+    )
+    .catch(
+      /** Report failed compiled initialization while retaining source navigation. */ (
+        error,
+      ) => {
+        output.appendLine(
+          `Compiled symbol initialization failed; source navigation remains active: ${error.stack || error.message}`,
+        )
+      },
+    )
+  void sourceIndexPromise.catch(
+    /** Report failed source initialization while retaining compiled navigation. */ (
+      error,
+    ) => {
+      output.appendLine(
+        `Source symbol index initialization failed; compiled navigation remains active: ${error.stack || error.message}`,
+      )
+    },
+  )
+  void Promise.all([sourceIndexPromise, secondaryPlatformIndexPromise])
+    .then(
+      /**
+       * Append secondary platform declarations and invalidate source-dependent
+       * navigation caches.
+       */ ([index, secondaryIndex]) => {
+        mergeSourceUnitIndexes(index, secondaryIndex)
+        compiledSymbols.sourceIndexExpanded(index)
+        output.appendLine(
+          `Current-file secondary platform index appended: ${secondaryIndex.fileCount} files; ` +
+            `${index.fileCount} current-priority files total.`,
+        )
+      },
+    )
+    .catch(
+      /**
+       * Report a failed secondary platform index while retaining earlier source
+       * coverage.
+       */ (error) => {
+        output.appendLine(
+          `Current-file secondary platform index failed: ${error.stack || error.message}`,
+        )
+      },
+    )
+  void Promise.all([sourceIndexPromise, platformIndexPromise])
+    .then(
+      /**
+       * Merge the full platform index in yielding batches and refresh source-dependent
+       * lookups.
+       */ async ([index, platformIndex]) => {
+        await mergeSourceUnitIndexesAsync(index, platformIndex)
+        compiledSymbols.sourceIndexExpanded(index)
+        output.appendLine(
+          `RAD/VCL source index appended in background: ${platformIndex.fileCount} files; ` +
+            `${index.fileCount} total files and ${index.definitions.size} definition keys.`,
+        )
+      },
+    )
+    .catch(
+      /**
+       * Report a failed background platform index without discarding existing source
+       * coverage.
+       */ (error) => {
+        output.appendLine(
+          `RAD/VCL background source index failed: ${error.stack || error.message}`,
+        )
+      },
+    )
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      CommandId.Sync,
+      /** Synchronize managed paths and notify the user when the command completes. */ async () => {
+        output.show(true)
+        await enqueueSync(context)
+        vscode.window.showInformationMessage("Pascal Atlas paths synchronized.")
+      },
+    ),
   )
   context.subscriptions.push(
-    vscode.commands.registerCommand(CommandId.GoToDefinition, async () => {
-      await compiledSymbols.navigateToDefinition()
-    }),
+    vscode.commands.registerCommand(
+      CommandId.ProjectsDetect,
+      /**
+       * Force Project Group discovery, activate Vallenta, and synchronize the resulting
+       * paths.
+       */ async () => {
+        output.show(true)
+        const results = await detectAllWorkspaceProjectGroups({ force: true })
+        await activateVallentaForProjectGroups(results)
+        await enqueueSync(context)
+        const groups = results.reduce(
+          /** Count discovered project groups across workspace discovery results. */ (
+            total,
+            result,
+          ) => total + result.discoveredGroups.length,
+          0,
+        )
+        const added = results.reduce(
+          /** Count project groups newly added by workspace discovery. */ (
+            total,
+            result,
+          ) => total + result.addedGroups.length,
+          0,
+        )
+        vscode.window.showInformationMessage(
+          `Pascal Atlas: Found ${groups} groupproj file(s); added ${added} to Vallenta.`,
+        )
+      },
+    ),
   )
   context.subscriptions.push(
-    vscode.commands.registerCommand(CommandId.PeekAllDefinitions, async () => {
-      await compiledSymbols.navigateToAllDefinitions()
-    }),
+    vscode.commands.registerCommand(
+      CommandId.Restore,
+      /** Remove managed paths from every workspace and restart language services. */ async () => {
+        for (const folder of vscode.workspace.workspaceFolders || []) {
+          await restoreWorkspace(context, folder)
+        }
+        await restartLanguageServices()
+        vscode.window.showInformationMessage("Pascal Atlas managed paths removed.")
+      },
+    ),
+  )
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      CommandId.ShowPaths,
+      /** Show persisted managed paths grouped by workspace in the output channel. */ async () => {
+        output.show(true)
+        for (const folder of vscode.workspace.workspaceFolders || []) {
+          const stateKey = `${MANAGED_PATHS_KEY}:${folder.uri.fsPath}`
+          const paths = asStringArray(context.workspaceState.get(stateKey, []))
+          output.appendLine(`\n[${folder.name}] Managed paths (${paths.length}):`)
+          for (const item of paths) {
+            output.appendLine(`  ${item}`)
+          }
+        }
+      },
+    ),
+  )
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      CommandId.GoToDefinition,
+      /** Navigate to the best definition for the active identifier. */ async () => {
+        await compiledSymbols.navigateToDefinition()
+      },
+    ),
+  )
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      CommandId.PeekAllDefinitions,
+      /** Offer all declaration and implementation targets for the active identifier. */ async () => {
+        await compiledSymbols.navigateToAllDefinitions()
+      },
+    ),
   )
 
   for (const folder of vscode.workspace.workspaceFolders || []) {
@@ -6380,43 +7790,71 @@ async function activate(context: vscode.ExtensionContext) {
     ]
     for (const pattern of patterns) {
       const watcher = vscode.workspace.createFileSystemWatcher(pattern)
-      watcher.onDidCreate(() => scheduleSync(context))
-      watcher.onDidChange(() => scheduleSync(context))
-      watcher.onDidDelete(() => scheduleSync(context))
+      watcher.onDidCreate(
+        /** Debounce path synchronization after a watched file is created. */ () =>
+          scheduleSync(context),
+      )
+      watcher.onDidChange(
+        /** Debounce path synchronization after a watched file changes. */ () =>
+          scheduleSync(context),
+      )
+      watcher.onDidDelete(
+        /** Debounce path synchronization after a watched file is deleted. */ () =>
+          scheduleSync(context),
+      )
       context.subscriptions.push(watcher)
     }
   }
 
   context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((event) => {
-      if (
-        !event.affectsConfiguration("pascalAtlas.paths.enabled") &&
-        !event.affectsConfiguration("pascalAtlas.projectGroups.autoDetect") &&
-        !event.affectsConfiguration("pascalAtlas.projectGroups.activateFirstProject") &&
-        !event.affectsConfiguration("pascalAtlas.includeNestedSourceDirectories") &&
-        !event.affectsConfiguration("pascalAtlas.enabled")
-      )
-        return
-      scheduleSync(context)
-    }),
+    vscode.workspace.onDidChangeConfiguration(
+      /** Schedule path or Project Group synchronization when relevant settings change. */ (
+        event,
+      ) => {
+        if (
+          !event.affectsConfiguration("pascalAtlas.paths.enabled") &&
+          !event.affectsConfiguration("pascalAtlas.projectGroups.autoDetect") &&
+          !event.affectsConfiguration(
+            "pascalAtlas.projectGroups.activateFirstProject",
+          ) &&
+          !event.affectsConfiguration("pascalAtlas.includeNestedSourceDirectories") &&
+          !event.affectsConfiguration("pascalAtlas.enabled")
+        )
+          return
+        scheduleSync(context)
+      },
+    ),
   )
   context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((event) => {
-      if (
-        !event.affectsConfiguration(
-          "pascalAtlas.diagnostics.ignoreUtf8ConversionWarning",
+    vscode.workspace.onDidChangeConfiguration(
+      /** Propagate changes to the UTF-8 warning preference into Vallenta settings. */ (
+        event,
+      ) => {
+        if (
+          !event.affectsConfiguration(
+            "pascalAtlas.diagnostics.ignoreUtf8ConversionWarning",
+          )
         )
-      )
-        return
-      void syncVallentaEncodingWarningSetting().catch((error) => {
-        output.appendLine(
-          `Could not synchronize the UTF-8 conversion warning preference: ${error.message}`,
+          return
+        void syncVallentaEncodingWarningSetting().catch(
+          /**
+           * Report a failed Vallenta warning-preference update after a configuration
+           * change.
+           */ (error) => {
+            output.appendLine(
+              `Could not synchronize the UTF-8 conversion warning preference: ${error.message}`,
+            )
+          },
         )
-      })
-    }),
+      },
+    ),
   )
 }
 
+/**
+ * Cancel pending path synchronization and stop background diagnostics when the
+ * extension is deactivated.
+ */
 function deactivate() {
   clearTimeout(debounceTimer)
   backgroundDiagnostics?.dispose()

@@ -394,15 +394,27 @@ const STYLE_RULES: readonly StyleRule[] = Object.freeze([
   },
 ])
 
+/**
+ * Escape a formatter option name so it can be matched literally inside the XML option
+ * replacement regex.
+ */
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+/**
+ * Convert a typed style value to DelphiFormatter XML text, using its capitalized
+ * boolean spellings.
+ */
 function xmlValue(value: StyleValue) {
   if (typeof value === "boolean") return value ? "True" : "False"
   return String(value)
 }
 
+/**
+ * Replace known option values in a copy of the bundled formatter XML; fail when the
+ * configuration lacks an expected option.
+ */
 function applyStyleRules(xml: string, getValue: StyleValueGetter) {
   let result = xml
   for (const rule of STYLE_RULES) {
@@ -418,6 +430,10 @@ function applyStyleRules(xml: string, getValue: StyleValueGetter) {
   return result
 }
 
+/**
+ * Return the bundled XML untouched for the default style, otherwise apply configured
+ * custom rule values.
+ */
 function resolveFormatterConfig(
   xml: string,
   useDefault: boolean,
@@ -426,6 +442,10 @@ function resolveFormatterConfig(
   return useDefault ? xml : applyStyleRules(xml, getValue)
 }
 
+/**
+ * Narrow a profile value according to the rule's boolean, bounded integer, or
+ * enumerated-string contract.
+ */
 function validateStyleRuleValue(rule: StyleRule, value: unknown): value is StyleValue {
   if (rule.type === SettingValueType.Boolean) return typeof value === "boolean"
   if (rule.type === "number") {
@@ -436,19 +456,29 @@ function validateStyleRuleValue(rule: StyleRule, value: unknown): value is Style
   return false
 }
 
+/**
+ * Serialize the complete versioned formatting profile from configured values or the
+ * bundled rule defaults.
+ */
 function createStyleProfile(getValue: StyleValueGetter, useDefault = false) {
   return {
     kind: STYLE_PROFILE_KIND,
     version: 1,
     rules: Object.fromEntries(
-      STYLE_RULES.map((rule) => [
-        rule.key,
-        useDefault ? rule.defaultValue : getValue(rule.key, rule.defaultValue),
-      ]),
+      STYLE_RULES.map(
+        /** Pair each style rule with its default or configured value. */ (rule) => [
+          rule.key,
+          useDefault ? rule.defaultValue : getValue(rule.key, rule.defaultValue),
+        ],
+      ),
     ),
   }
 }
 
+/**
+ * Parse and validate a versioned custom profile, rejecting invalid JSON, missing
+ * rules, or out-of-range values before returning the rule-value Map.
+ */
 function parseStyleProfile(text: string) {
   let profile: unknown
   try {
@@ -468,6 +498,7 @@ function parseStyleProfile(text: string) {
   }
   const result = new Map<string, StyleValue>()
   for (const rule of STYLE_RULES) {
+    // Require a complete profile so loading it cannot silently combine stale or missing rules with unrelated settings.
     if (!Object.prototype.hasOwnProperty.call(profile.rules, rule.key)) {
       throw new Error(`The custom profile is missing ${rule.key}.`)
     }

@@ -11,18 +11,31 @@ const CONTROL_WORDS = new Set<string>([
 ])
 import { normalizeGenericTypeSpacing } from "./generics"
 
+/**
+ * Normalize Pascal code spacing outside comments and strings, optionally tightening
+ * confirmed generic brackets.
+ */
 function formatCodeSegment(
   code: string,
   options: Partial<{ normalizeGenericTypeSpacing: boolean }> = {},
 ) {
   const formatted = code
-    .replace(/\b([A-Za-z_]\w*)[ \t]+\(/g, (match, word) =>
-      CONTROL_WORDS.has(word.toLowerCase()) ? match : `${word}(`,
+    .replace(
+      /\b([A-Za-z_]\w*)[ \t]+\(/g,
+      /**
+       * Remove call-name spacing only for ordinary identifiers, retaining spacing
+       * required by control keywords.
+       */ (match, word) => (CONTROL_WORDS.has(word.toLowerCase()) ? match : `${word}(`),
     )
     .replace(/\([ \t]+/g, "(")
     .replace(/[ \t]+\)/g, ")")
     .replace(/[ \t]*,[ \t]*/g, ", ")
-    .replace(/[ \t]*(?::=|<=|>=|<>|=)[ \t]*/g, (operator) => ` ${operator.trim()} `)
+    .replace(
+      /[ \t]*(?::=|<=|>=|<>|=)[ \t]*/g,
+      /** Normalize matched operator spacing while retaining the operator itself. */ (
+        operator,
+      ) => ` ${operator.trim()} `,
+    )
     .replace(/[ \t]*:(?!=)[ \t]*/g, ": ")
     .replace(/[ \t]*;[ \t]*/g, "; ")
   return options.normalizeGenericTypeSpacing === false
@@ -30,6 +43,10 @@ function formatCodeSegment(
     : normalizeGenericTypeSpacing(formatted)
 }
 
+/**
+ * Scan a line while carrying block-comment state across lines; optionally format only
+ * code segments and retain literal/comment text verbatim.
+ */
 function scanPascalLine(
   line: string,
   initialState: PascalLexerState = LexerState.Code,
@@ -41,6 +58,11 @@ function scanPascalLine(
   let code = ""
   let index = 0
 
+  // Flush only code accumulated outside comments and strings; formatting a whole line would change literal contents.
+  /**
+   * Append the accumulated code segment through the optional spacing formatter before
+   * switching to a literal or comment span.
+   */
   const flushCode = () => {
     result += shouldFormat ? formatCodeSegment(code, options) : code
     code = ""
@@ -96,6 +118,7 @@ function scanPascalLine(
       continue
     }
 
+    // String contents bypass spacing rules, including escaped quotes that would otherwise resemble a closing delimiter.
     if (line[index] === "'") {
       flushCode()
       const start = index
@@ -130,6 +153,10 @@ function scanPascalLine(
   }
 }
 
+/**
+ * Recover the block-comment state entering a line by scanning preceding lines without
+ * modifying their contents.
+ */
 function commentStateBeforeLine(lines: string[], lineNumber: number) {
   let state: PascalLexerState = LexerState.Code
   for (let line = 0; line < lineNumber; line += 1) {
@@ -138,6 +165,10 @@ function commentStateBeforeLine(lines: string[], lineNumber: number) {
   return state
 }
 
+/**
+ * Format one line with its incoming lexical state and configured generic-spacing
+ * behavior.
+ */
 function formatPascalLine(
   line: string,
   initialState: PascalLexerState = LexerState.Code,
@@ -146,6 +177,10 @@ function formatPascalLine(
   return scanPascalLine(line, initialState, true, options).text
 }
 
+/**
+ * Translate an on-type formatting scope into current/previous-line work requests,
+ * marking newline continuations for blank-line alignment.
+ */
 function onTypeLineRequests(lineNumber: number, character: string, scope: string) {
   if (scope === "disabled") return []
   const requests = []

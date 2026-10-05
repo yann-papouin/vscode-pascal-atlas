@@ -5,6 +5,10 @@ import * as vscode from "vscode"
 const PLATFORM_LANGUAGE_ID = LanguageId.Platform
 const MANAGED_ASSOCIATION_VALUE = PLATFORM_LANGUAGE_ID
 
+/**
+ * Build RTL/VCL source globs for the configured RAD Studio version, falling back to
+ * version-independent installation globs.
+ */
 function platformSourceAssociationPatterns(installationPath: string) {
   const normalized = String(installationPath || "")
     .replace(/\\/g, "/")
@@ -22,6 +26,10 @@ function platformSourceAssociationPatterns(installationPath: string) {
   ]
 }
 
+/**
+ * Add or remove only Pascal Atlas-owned platform-source associations, returning a
+ * copied map and whether a settings write is required.
+ */
 function mergedAssociations(
   existing: Record<string, string>,
   patterns: string[],
@@ -34,6 +42,7 @@ function mergedAssociations(
       if (result[pattern] === MANAGED_ASSOCIATION_VALUE) continue
       result[pattern] = MANAGED_ASSOCIATION_VALUE
       changed = true
+      // Disable only associations still owned by Pascal Atlas; a user-replaced language association must survive.
     } else if (result[pattern] === MANAGED_ASSOCIATION_VALUE) {
       delete result[pattern]
       changed = true
@@ -42,6 +51,10 @@ function mergedAssociations(
   return { associations: result, changed }
 }
 
+/**
+ * Reconcile global file associations with platform-isolation settings and the selected
+ * installation, writing only when managed entries differ.
+ */
 async function synchronizePlatformSourceIsolation(output: {
   appendLine: (arg0: string) => void
 }) {
@@ -69,24 +82,41 @@ async function synchronizePlatformSourceIsolation(output: {
   return true
 }
 
+/**
+ * Refresh managed platform associations at startup and when isolation or installation
+ * settings change, logging asynchronous failures.
+ */
 function registerPlatformSourceIsolation(
   context: { subscriptions: vscode.Disposable[] },
   output: vscode.OutputChannel,
 ) {
-  void synchronizePlatformSourceIsolation(output).catch((error) => {
-    output.appendLine(`Platform source isolation setup failed: ${error.message}`)
-  })
+  void synchronizePlatformSourceIsolation(output).catch(
+    /** Log a failed initial platform-source isolation setup. */ (error) => {
+      output.appendLine(`Platform source isolation setup failed: ${error.message}`)
+    },
+  )
   context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((event) => {
-      if (
-        !event.affectsConfiguration("pascalAtlas.navigation.isolatePlatformSources") &&
-        !event.affectsConfiguration("vallenta.studio.installationPath")
-      )
-        return
-      void synchronizePlatformSourceIsolation(output).catch((error) => {
-        output.appendLine(`Platform source isolation refresh failed: ${error.message}`)
-      })
-    }),
+    vscode.workspace.onDidChangeConfiguration(
+      /**
+       * Resynchronize platform-source isolation when its policy or Delphi installation
+       * path changes.
+       */ (event) => {
+        if (
+          !event.affectsConfiguration(
+            "pascalAtlas.navigation.isolatePlatformSources",
+          ) &&
+          !event.affectsConfiguration("vallenta.studio.installationPath")
+        )
+          return
+        void synchronizePlatformSourceIsolation(output).catch(
+          /** Log a failed platform-source isolation refresh. */ (error) => {
+            output.appendLine(
+              `Platform source isolation refresh failed: ${error.message}`,
+            )
+          },
+        )
+      },
+    ),
   )
 }
 

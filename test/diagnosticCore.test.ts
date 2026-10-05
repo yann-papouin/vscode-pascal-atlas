@@ -60,7 +60,7 @@ test("background diagnostics decodes compiler bytes before parsing Problems", ()
     sourcePath("backgroundDiagnostics.js"),
     "utf8",
   )
-  assert.match(source, /encoding: 'buffer'/)
+  assert.match(source, /encoding:\s*["']buffer["']/)
   assert.match(source, /decodeProcessOutput\(result\.stdout\)/)
   assert.match(source, /decodeProcessOutput\(result\.stderr\)/)
 })

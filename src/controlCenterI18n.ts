@@ -36,20 +36,40 @@ const PAGE_GROUPS = Object.freeze([
   { id: "diagnostics", title: "Diagnostics", sections: ["Background diagnostics"] },
 ])
 
+/**
+ * Return the supported English UI language; the optional language argument is retained
+ * for caller compatibility.
+ */
 function languageCode(_language?: string) {
   return "en"
 }
 
+/**
+ * Attach a consolidated settings-page ID by section title while preserving each
+ * section's original fields.
+ */
 function sectionsWithPages<T extends { title: string }>(
   sections: readonly T[],
   _language?: string,
 ) {
-  return sections.map((section) => ({
-    ...section,
-    pageId: PAGE_GROUPS.find((page) => page.sections.includes(section.title))?.id,
-  }))
+  // Page grouping is metadata only: spread the original section so descriptions, settings, and actions remain intact.
+  return sections.map(
+    /**
+     * Preserve the section fields and add the settings page that contains its title.
+     */ (section) => ({
+      ...section,
+      pageId: PAGE_GROUPS.find(
+        /** Find the page whose section list contains this title. */ (page) =>
+          page.sections.includes(section.title),
+      )?.id,
+    }),
+  )
 }
 
+/**
+ * Return English settings sections with their page assignments through the
+ * compatibility localization entrypoint.
+ */
 function localizeSections<T extends { title: string }>(
   sections: readonly T[],
   _language?: string,
@@ -57,8 +77,16 @@ function localizeSections<T extends { title: string }>(
   return sectionsWithPages(sections)
 }
 
+/**
+ * Return fresh page descriptors with the English display label expected by the
+ * settings renderer.
+ */
 function localizedPages(_language?: string) {
-  return PAGE_GROUPS.map((page) => ({ ...page, en: page.title }))
+  return PAGE_GROUPS.map(
+    /** Copy each page with the English label used by the settings renderer. */ (
+      page,
+    ) => ({ ...page, en: page.title }),
+  )
 }
 
 export {

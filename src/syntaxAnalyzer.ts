@@ -17,6 +17,10 @@ export interface SyntaxOptions {
   defines?: readonly string[]
 }
 import { CompilerDirective, PascalIntrinsic, PascalKeyword } from "./shared/pascal"
+/**
+ * Create an offset-based lexical diagnostic with a minimum highlight width of one
+ * UTF-16 code unit.
+ */
 function diagnostic(
   offset: number,
   length: number,
@@ -27,22 +31,43 @@ function diagnostic(
   return { offset, length: Math.max(1, length), code, message, severity }
 }
 
+/**
+ * Parse a compiler-directive name and argument, normalizing the name while leaving
+ * argument evaluation to the conditional handler.
+ */
 function directiveParts(value: string) {
   const match = /^\s*\$\s*([A-Za-z]+)\b([\s\S]*?)\s*$/.exec(value)
   return match ? { name: match[1].toUpperCase(), argument: match[2].trim() } : undefined
 }
 
+/**
+ * Canonicalize active compiler symbols as trimmed uppercase names, discarding empty
+ * entries.
+ */
 function normalizeDefines(defines: readonly unknown[] | undefined) {
   return new Set(
-    (defines || []).map((value) => String(value).trim().toUpperCase()).filter(Boolean),
+    (defines || [])
+      .map(
+        /** Normalize compiler symbols for case-insensitive conditional evaluation. */ (
+          value,
+        ) => String(value).trim().toUpperCase(),
+      )
+      .filter(Boolean),
   )
 }
 
+/**
+ * Evaluate the supported boolean conditional-compilation subset; assume unsupported
+ * expressions are active so uncertain preprocessing does not hide real syntax errors.
+ */
 function evaluateIfExpression(expression: string, defines: ReadonlySet<string>) {
   let source = expression.trim()
   source = source.replace(
     /\bDEFINED\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/gi,
-    (_, name) => (defines.has(name.toUpperCase()) ? " true " : " false "),
+    /**
+     * Substitute the active compiler-symbol truth value before evaluating the
+     * conditional expression.
+     */ (_, name) => (defines.has(name.toUpperCase()) ? " true " : " false "),
   )
   source = source
     .replace(/\bNOT\b/gi, "!")
@@ -57,6 +82,10 @@ function evaluateIfExpression(expression: string, defines: ReadonlySet<string>) 
   }
 }
 
+/**
+ * Tokenize active Pascal code and collect deterministic lexical/directive errors,
+ * excluding inactive conditional branches while preserving original UTF-16 offsets.
+ */
 function tokenizePascal(text: string, options: SyntaxOptions = {}) {
   const tokens: PascalToken[] = []
   const diagnostics = []
@@ -70,14 +99,29 @@ function tokenizePascal(text: string, options: SyntaxOptions = {}) {
   }[] = []
   let active = true
 
+  /**
+   * Recompute whether tokens may be emitted after the conditional stack changes; every
+   * enclosing branch must remain active.
+   */
   const updateActive = () => {
-    active = conditionals.every((item) => item.currentActive)
+    active = conditionals.every(
+      /** Test whether every enclosing conditional branch is active. */ (item) =>
+        item.currentActive,
+    )
   }
 
+  /**
+   * Advance conditional-compilation frames and report orphan, duplicate, or
+   * unterminated branch directives at their original offsets.
+   */
   const handleDirective = (raw: string, offset: number, length: number) => {
     const directive = directiveParts(raw)
     if (!directive) return
-    const parentActive = conditionals.every((item) => item.currentActive)
+    // Branch selection and enclosing-branch activity are separate: an ELSE must never reactivate code inside an inactive parent.
+    const parentActive = conditionals.every(
+      /** Test whether every enclosing conditional branch is active. */ (item) =>
+        item.currentActive,
+    )
     if (
       directive.name === CompilerDirective.IFDEF ||
       directive.name === CompilerDirective.IFNDEF ||
@@ -177,6 +221,10 @@ function tokenizePascal(text: string, options: SyntaxOptions = {}) {
     }
   }
 
+  /**
+   * Append an original-text token and its lowercase comparison key only when all
+   * enclosing conditional branches are active.
+   */
   const pushToken = (
     type: PascalToken["type"],
     value: string,
@@ -244,6 +292,7 @@ function tokenizePascal(text: string, options: SyntaxOptions = {}) {
           index += 2
           continue
         }
+        // A doubled quote belongs to the string literal; it must not end the lexer span or shift following token offsets.
         if (text[index] === "'") {
           index += 1
           closed = true
@@ -301,14 +350,23 @@ function tokenizePascal(text: string, options: SyntaxOptions = {}) {
   return { tokens, diagnostics }
 }
 
+/**
+ * Read the preceding token, returning undefined at the start of the already
+ * whitespace-free stream.
+ */
 function previousSignificant(tokens: readonly PascalToken[], index: number) {
   return index > 0 ? tokens[index - 1] : undefined
 }
 
+/** Read the following token, returning undefined at the end of the token stream. */
 function nextSignificant(tokens: readonly PascalToken[], index: number) {
   return index + 1 < tokens.length ? tokens[index + 1] : undefined
 }
 
+/**
+ * Apply the conservative generic-angle heuristic using the existing nesting depth and
+ * adjacent word tokens.
+ */
 function isGenericOpen(
   tokens: readonly PascalToken[],
   index: number,
@@ -334,6 +392,10 @@ function isGenericOpen(
   return false
 }
 
+/**
+ * Report unambiguous missing assignment values or declaration types without attempting
+ * full Delphi grammar validation.
+ */
 function addObviousIncompleteDiagnostics(
   tokens: readonly PascalToken[],
   diagnostics: SyntaxDiagnostic[],
@@ -424,9 +486,14 @@ function addObviousIncompleteDiagnostics(
   }
 }
 
+/**
+ * Combine lexical, conditional-directive, delimiter, and obvious incomplete-expression
+ * diagnostics, sorted by source offset; leave block grammar to the Delphi compiler.
+ */
 function analyzePascalSyntax(text: string, options: SyntaxOptions = {}) {
   const tokenized = tokenizePascal(text, options)
   const diagnostics = [...tokenized.diagnostics]
+  // Check only deterministic parentheses/brackets here; Delphi begin/end and type-block grammar belongs to compiler diagnostics.
   const delimiterStack: PascalToken[] = []
 
   for (let index = 0; index < tokenized.tokens.length; index += 1) {
@@ -468,7 +535,10 @@ function analyzePascalSyntax(text: string, options: SyntaxOptions = {}) {
   addObviousIncompleteDiagnostics(tokenized.tokens, diagnostics)
 
   diagnostics.sort(
-    (left, right) => left.offset - right.offset || left.code.localeCompare(right.code),
+    /** Order diagnostics by source offset, breaking ties by diagnostic code. */ (
+      left,
+      right,
+    ) => left.offset - right.offset || left.code.localeCompare(right.code),
   )
   return diagnostics
 }

@@ -820,11 +820,16 @@ const SECTIONS: SettingSection[] = [
         label: "Apply bundled default syntax standard",
         type: SettingValueType.Boolean,
       },
-      ...STYLE_RULES.map((rule) => ({
-        ...rule,
-        key: `formatter.${rule.key}`,
-        styleRule: true,
-      })),
+      ...STYLE_RULES.map(
+        /**
+         * Expose each formatter rule with its full configuration key and custom-style
+         * marker.
+         */ (rule) => ({
+          ...rule,
+          key: `formatter.${rule.key}`,
+          styleRule: true,
+        }),
+      ),
     ],
     actions: [
       { command: CommandId.FormatterStyleSave, label: "Save custom style", icon: "⇩" },
@@ -1144,13 +1149,25 @@ const SECTIONS: SettingSection[] = [
 ]
 
 const COMMANDS = new Set(
-  SECTIONS.flatMap((section) => section.actions || []).map((action) => action.command),
+  SECTIONS.flatMap(
+    /** Collect settings-page actions for the browser command allowlist. */ (section) =>
+      section.actions || [],
+  ).map(
+    /** Allow the host command declared by this settings action. */ (action) =>
+      action.command,
+  ),
 )
 
+/**
+ * Escape text and attribute values used in generated settings markup so configuration
+ * or labels cannot inject HTML.
+ */
 function escapeHtml(value: unknown) {
   return String(value).replace(
     /[&<>"']/g,
-    (character) =>
+    /** Replace markup delimiters with entities before inserting text into HTML. */ (
+      character,
+    ) =>
       ({
         "&": "&amp;",
         "<": "&lt;",
@@ -1167,40 +1184,76 @@ class PascalAtlasControlCenterProvider {
   view: vscode.WebviewView | undefined
   panel: vscode.WebviewPanel | undefined
 
+  /**
+   * Create the settings webview provider with extension resource context, output
+   * logging, and editor-panel tracking.
+   */
   constructor(context: vscode.ExtensionContext, output: vscode.OutputChannel) {
     this.context = context
     this.output = output
     this.view = undefined
   }
 
+  /**
+   * Register settings views and commands, and refresh affected UI state when
+   * configuration changes.
+   */
   register() {
     this.context.subscriptions.push(
       vscode.window.registerWebviewViewProvider("pascalAtlas.controlCenter", this, {
         webviewOptions: { retainContextWhenHidden: true },
       }),
-      vscode.commands.registerCommand(CommandId.OpenSettings, () =>
-        this.openMainSettings(),
+      vscode.commands.registerCommand(
+        CommandId.OpenSettings,
+        /**
+         * Execute the CommandId.OpenSettings action against the current extension state.
+         */ () => this.openMainSettings(),
       ),
-      vscode.commands.registerCommand(CommandId.OpenNativeSettings, () => {
-        return vscode.commands.executeCommand(
-          "workbench.action.openSettings",
-          "@ext:yannpapouin.pascal-atlas",
-        )
-      }),
-      vscode.commands.registerCommand(CommandId.ControlCenterRefresh, () =>
-        this.refresh(),
+      vscode.commands.registerCommand(
+        CommandId.OpenNativeSettings,
+        /**
+         * Execute the CommandId.OpenNativeSettings action against the current extension
+         * state.
+         */ () => {
+          return vscode.commands.executeCommand(
+            "workbench.action.openSettings",
+            "@ext:yannpapouin.pascal-atlas",
+          )
+        },
       ),
-      vscode.commands.registerCommand(CommandId.ColoringColorsReset, async () => {
-        await resetSymbolColors(this.output)
-        this.postState()
-      }),
-      vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration("pascalAtlas.ui.language")) this.refresh()
-        else if (event.affectsConfiguration(ConfigurationSection)) this.postState()
-      }),
+      vscode.commands.registerCommand(
+        CommandId.ControlCenterRefresh,
+        /**
+         * Execute the CommandId.ControlCenterRefresh action against the current
+         * extension state.
+         */ () => this.refresh(),
+      ),
+      vscode.commands.registerCommand(
+        CommandId.ColoringColorsReset,
+        /**
+         * Execute the CommandId.ColoringColorsReset action against the current extension
+         * state.
+         */ async () => {
+          await resetSymbolColors(this.output)
+          this.postState()
+        },
+      ),
+      vscode.workspace.onDidChangeConfiguration(
+        /**
+         * Rebuild markup for language changes; send current values for other settings
+         * changes.
+         */ (event) => {
+          if (event.affectsConfiguration("pascalAtlas.ui.language")) this.refresh()
+          else if (event.affectsConfiguration(ConfigurationSection)) this.postState()
+        },
+      ),
     )
   }
 
+  /**
+   * Resolve the sidebar settings webview with local browser resources, message
+   * handling, and view disposal tracking.
+   */
   resolveWebviewView(view: vscode.WebviewView) {
     this.view = view
     view.webview.options = {
@@ -1211,32 +1264,52 @@ class PascalAtlasControlCenterProvider {
     }
     view.webview.html = this.html(view.webview, false)
     view.webview.onDidReceiveMessage(
-      (message: unknown) => this.receive(message),
+      /** Validate and handle requests from the sidebar settings browser. */ (
+        message: unknown,
+      ) => this.receive(message),
       undefined,
       this.context.subscriptions,
     )
-    view.onDidDispose(() => {
-      if (this.view === view) this.view = undefined
-    })
+    view.onDidDispose(
+      /** Forget this sidebar view when it is disposed. */ () => {
+        if (this.view === view) this.view = undefined
+      },
+    )
   }
 
+  /** Read the Pascal Atlas configuration for settings rendering and updates. */
   configuration() {
     return vscode.workspace.getConfiguration(ConfigurationSection)
   }
 
+  /**
+   * Select the supported control-center display language from the configured
+   * preference.
+   */
   language() {
     return languageCode(this.configuration().get(SettingKey.UiLanguage, "en"))
   }
 
+  /**
+   * Collect displayed setting values, projecting bundled style defaults when the
+   * default formatter profile is active.
+   */
   values(): ControlCenterState["values"] {
     const configuration = this.configuration()
     const values: ControlCenterState["values"] = Object.fromEntries(
-      SECTIONS.flatMap((section) => section.settings).map((setting) => [
-        setting.key,
-        setting.defaultValue === undefined
-          ? configuration.get<SettingValue>(setting.key)
-          : configuration.get<SettingValue>(setting.key, setting.defaultValue),
-      ]),
+      SECTIONS.flatMap(
+        /** Collect every settings definition for the state payload. */ (section) =>
+          section.settings,
+      ).map(
+        /** Read the current value with the definition fallback when one is provided. */ (
+          setting,
+        ) => [
+          setting.key,
+          setting.defaultValue === undefined
+            ? configuration.get<SettingValue>(setting.key)
+            : configuration.get<SettingValue>(setting.key, setting.defaultValue),
+        ],
+      ),
     )
     if (values["formatter.style.useDefault"]) {
       for (const rule of STYLE_RULES) {
@@ -1246,30 +1319,58 @@ class PascalAtlasControlCenterProvider {
     return values
   }
 
+  /**
+   * Count open workspaces, unique loaded projects, and managed navigation paths for
+   * the control-center overview.
+   */
   status() {
     const folders = vscode.workspace.workspaceFolders || []
-    const projects = folders.flatMap((folder) =>
-      discoverLoadedProjects(folder.uri.fsPath),
+    const projects = folders.flatMap(
+      /** Discover loaded projects across all workspace folders. */ (folder) =>
+        discoverLoadedProjects(folder.uri.fsPath),
     )
-    const managedPaths = folders.flatMap((folder) =>
-      this.context.workspaceState.get<string[]>(
-        `pascalAtlas.managedPaths:${folder.uri.fsPath}`,
-        [],
-      ),
+    const managedPaths = folders.flatMap(
+      /** Read the managed search paths saved for each workspace folder. */ (folder) =>
+        this.context.workspaceState.get<string[]>(
+          `pascalAtlas.managedPaths:${folder.uri.fsPath}`,
+          [],
+        ),
     )
     return {
       workspaces: folders.length,
-      projects: new Set(projects.map((item) => item.toLowerCase())).size,
-      paths: new Set(managedPaths.map((item) => String(item).toLowerCase())).size,
+      projects: new Set(
+        projects.map(
+          /** Normalize project identities before counting distinct loaded projects. */ (
+            item,
+          ) => item.toLowerCase(),
+        ),
+      ).size,
+      paths: new Set(
+        managedPaths.map(
+          /**
+           * Normalize path identities before counting distinct managed search paths.
+           */ (item) => String(item).toLowerCase(),
+        ),
+      ).size,
     }
   }
 
+  /**
+   * Validate browser commands/setting updates, normalize supported values, choose the
+   * allowed configuration scope, and refresh state after changes.
+   */
   async receive(value: unknown) {
     if (!isControlCenterClientMessage(value)) return
     const message = value
     if (message.type === WebviewMessageKind.Update) {
-      const setting = SECTIONS.flatMap((section) => section.settings).find(
-        (item) => item.key === message.key,
+      const setting = SECTIONS.flatMap(
+        /** Search all settings definitions before accepting a browser update. */ (
+          section,
+        ) => section.settings,
+      ).find(
+        /**
+         * Find the declared setting corresponding to the requested configuration key.
+         */ (item) => item.key === message.key,
       )
       if (!setting) return
       if (
@@ -1301,7 +1402,12 @@ class PascalAtlasControlCenterProvider {
         if (
           value.length < 1 ||
           value.length > 12 ||
-          value.some((color: string) => !/^#[0-9a-f]{6}$/i.test(color))
+          value.some(
+            /**
+             * Reject a palette containing a value outside the supported hexadecimal
+             * color format.
+             */ (color: string) => !/^#[0-9a-f]{6}$/i.test(color),
+          )
         )
           return
       } else if (
@@ -1338,6 +1444,10 @@ class PascalAtlasControlCenterProvider {
     }
   }
 
+  /**
+   * Open or reveal the full settings editor panel with safe local resources and the
+   * same typed state/message protocol as the sidebar.
+   */
   openMainSettings() {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.One)
@@ -1361,15 +1471,22 @@ class PascalAtlasControlCenterProvider {
     this.panel = panel
     panel.webview.html = this.html(panel.webview, true)
     panel.webview.onDidReceiveMessage(
-      (message) => this.receive(message),
+      /** Validate and handle requests from the editor settings browser. */ (message) =>
+        this.receive(message),
       undefined,
       this.context.subscriptions,
     )
-    panel.onDidDispose(() => {
-      if (this.panel === panel) this.panel = undefined
-    })
+    panel.onDidDispose(
+      /** Forget this settings panel when it is disposed. */ () => {
+        if (this.panel === panel) this.panel = undefined
+      },
+    )
   }
 
+  /**
+   * Regenerate active control-center markup after changes that affect section layout
+   * or language.
+   */
   refresh() {
     if (this.view) this.view.webview.html = this.html(this.view.webview, false)
     if (this.panel) {
@@ -1378,6 +1495,10 @@ class PascalAtlasControlCenterProvider {
     }
   }
 
+  /**
+   * Publish current setting values and overview counts to all active settings
+   * webviews.
+   */
   postState() {
     void this.view?.webview.postMessage({
       type: WebviewMessageKind.State,
@@ -1391,6 +1512,10 @@ class PascalAtlasControlCenterProvider {
     })
   }
 
+  /**
+   * Render sidebar or full-page settings markup with escaped controls,
+   * nonce-restricted local scripts, and serialized bootstrap state.
+   */
   html(webview: vscode.Webview, fullPage: boolean) {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(
@@ -1409,21 +1534,33 @@ class PascalAtlasControlCenterProvider {
     const pages = localizedPages(language)
     const cards = pages
       .map(
-        (page, index) => `
+        /** Render each page container, showing the first page initially. */ (
+          page,
+          index,
+        ) => `
       <div class="page${index === 0 ? " active" : ""}" data-page="${index}">
         ${sections
-          .filter((section) => section.pageId === page.id)
+          .filter(
+            /** Include only sections assigned to the current settings page. */ (
+              section,
+            ) => section.pageId === page.id,
+          )
           .map(
-            (section) => `
+            /** Render the section heading, controls, and permitted action buttons. */ (
+              section,
+            ) => `
           <section class="card">
             <h2>${escapeHtml(section.title)}</h2>
             <p class="description">${escapeHtml(section.description)}</p>
-            ${section.settings.map((setting) => this.settingHtml(setting)).join("")}
+            ${section.settings.map(/** Render the control appropriate to each setting definition. */ (setting) => this.settingHtml(setting)).join("")}
             ${
               (section.actions || []).length
                 ? `<div class="actions">${(section.actions || [])
                     .map(
-                      (action) => `
+                      /**
+                       * Render a settings action with its escaped command, icon, and
+                       * label.
+                       */ (action) => `
               <button type="button" data-command="${escapeHtml(action.command)}"><span>${escapeHtml(action.icon)}</span>${escapeHtml(action.label)}</button>
             `,
                     )
@@ -1440,7 +1577,7 @@ class PascalAtlasControlCenterProvider {
       .join("")
     const tabs = pages
       .map(
-        (page, index) => `
+        /** Render the tab button for each settings page. */ (page, index) => `
       <button type="button" class="tab${index === 0 ? " active" : ""}" data-tab="${index}">${escapeHtml(page.title)}</button>
     `,
       )
@@ -1513,6 +1650,10 @@ class PascalAtlasControlCenterProvider {
 </html>`
   }
 
+  /**
+   * Render a setting control for its supported value kind, including defaults, labels,
+   * model choices, and style/color rule metadata.
+   */
   settingHtml(setting: SettingDefinition) {
     const ruleAttributes =
       `${setting.styleRule ? ' data-style-rule="true"' : ""}` +
@@ -1525,7 +1666,10 @@ class PascalAtlasControlCenterProvider {
         setting.options || []
       )
         .map(
-          (option, index) => `
+          /** Render a supported option using its display label when available. */ (
+            option,
+            index,
+          ) => `
         <option value="${escapeHtml(option)}">${escapeHtml(setting.optionLabels?.[index] || option)}</option>`,
         )
         .join("")}</select>`
@@ -1543,8 +1687,15 @@ class PascalAtlasControlCenterProvider {
         this.configuration().get(setting.key, "") || "",
       ).trim()
       const discoveredModelIds = models
-        .map((model) => String(model?.id || "").trim())
-        .filter((id) => id && !id.startsWith("__provider__"))
+        .map(
+          /** Read usable model IDs from the configured provider models. */ (model) =>
+            String(model?.id || "").trim(),
+        )
+        .filter(
+          /**
+           * Exclude empty IDs and provider placeholder entries from the model picker.
+           */ (id) => id && !id.startsWith("__provider__"),
+        )
       // Keep useful choices available if OAI Compatible Copilot has not
       // activated yet or its configuration cannot be read in this window.
       const modelIds = [
@@ -1552,10 +1703,13 @@ class PascalAtlasControlCenterProvider {
           ...discoveredModelIds,
           ...["deepseek-v4-pro", "glm-5.2", currentModelId].filter(Boolean),
         ]),
-      ].sort((left, right) => left.localeCompare(right))
+      ].sort(
+        /** Order model IDs alphabetically for a stable picker. */ (left, right) =>
+          left.localeCompare(right),
+      )
       input = `<select data-key="${escapeHtml(setting.key)}"${ruleAttributes}>
         <option value="">${"Automatic (first available model)"}</option>
-        ${modelIds.map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(id)}</option>`).join("")}
+        ${modelIds.map(/** Render an escaped model ID as a selectable option. */ (id) => `<option value="${escapeHtml(id)}">${escapeHtml(id)}</option>`).join("")}
       </select>`
     } else {
       const inputClass =

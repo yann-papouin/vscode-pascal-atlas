@@ -1,6 +1,10 @@
 import { PascalKeyword } from "../shared/pascal"
 const GENERIC_TYPE = /\b[TIEP][A-Za-z_]\w*\s*</gi
 
+/**
+ * Collect complete conventional Delphi generic-type spans, requiring type-like
+ * arguments and a plausible suffix to avoid ordinary comparison expressions.
+ */
 function findGenericTypeSpans(code: string) {
   const spans = []
   let match
@@ -28,6 +32,7 @@ function findGenericTypeSpans(code: string) {
 
     const body = code.slice(open + 1, close)
     const suffix = code.slice(close + 1)
+    // Matching angle brackets alone is insufficient: comparisons can also balance, so validate both argument syntax and the following token.
     const hasTypeOnlyBody = /^[\sA-Za-z0-9_.,<>^]+$/.test(body)
     const hasGenericSuffix = new RegExp(
       String.raw`^\s*(?:$|[.()[\],;]|:=|=|\b(?:${PascalKeyword.And}|${PascalKeyword.Do}|${PascalKeyword.Or}|${PascalKeyword.Then})\b)`,
@@ -44,6 +49,10 @@ function findGenericTypeSpans(code: string) {
   return spans
 }
 
+/**
+ * Identify removable spaces around confirmed generic brackets and their following
+ * punctuation using offsets in the supplied code.
+ */
 function genericWhitespaceRanges(code: string) {
   const ranges = []
 
@@ -71,18 +80,36 @@ function genericWhitespaceRanges(code: string) {
   return ranges
 }
 
+/**
+ * Delete formatting ranges from right to left so earlier source offsets stay valid
+ * after each replacement.
+ */
 function removeRanges(text: string, ranges: readonly { start: number; end: number }[]) {
   let result = text
-  for (const range of [...ranges].sort((left, right) => right.start - left.start)) {
+  // Right-to-left edits avoid rebasing ranges after shortening the line.
+  for (const range of [...ranges].sort(
+    /** Apply replacement ranges from right to left so earlier offsets stay valid. */ (
+      left,
+      right,
+    ) => right.start - left.start,
+  )) {
     result = `${result.slice(0, range.start)}${result.slice(range.end)}`
   }
   return result
 }
 
+/**
+ * Remove redundant generic-bracket whitespace from code whose comments and strings
+ * have already been excluded.
+ */
 function normalizeGenericTypeSpacing(code: string) {
   return removeRanges(code, genericWhitespaceRanges(code))
 }
 
+/**
+ * Apply whitespace ranges discovered in aligned masked code to the original line,
+ * preserving comment and string contents.
+ */
 function normalizeGenericTypeSpacingOnMaskedLine(line: string, maskedCodeLine: string) {
   return removeRanges(line, genericWhitespaceRanges(maskedCodeLine))
 }

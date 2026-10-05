@@ -15,7 +15,9 @@ const keywordSnippetData: unknown = JSON.parse(
 )
 const PASCAL_KEYWORD_SNIPPETS = isRecord(keywordSnippetData)
   ? Object.values(keywordSnippetData).filter(
-      (value): value is Record<string, unknown> & { prefix: string } =>
+      /** Keep snippet records with a string prefix before interpreting their bodies. */ (
+        value,
+      ): value is Record<string, unknown> & { prefix: string } =>
         isRecord(value) && typeof value.prefix === "string",
     )
   : []
@@ -127,19 +129,25 @@ ${PascalKeyword.End};`,
 ])
 
 const SPACE_TRIGGER_SNIPPETS = new Map<string, string>([
-  ...BASIC_SNIPPETS.filter((snippet) =>
-    [
-      PascalKeyword.Begin,
-      PascalKeyword.If,
-      "ifelse",
-      PascalKeyword.For,
-      "forin",
-      PascalKeyword.While,
-      "tryexcept",
-      "tryfinally",
-      PascalKeyword.Case,
-    ].includes(snippet.prefix),
-  ).map((snippet) => [snippet.prefix, snippet.body] as const),
+  ...BASIC_SNIPPETS.filter(
+    /**
+     * Select the Pascal control-flow snippets supported by automatic prefix expansion.
+     */ (snippet) =>
+      [
+        PascalKeyword.Begin,
+        PascalKeyword.If,
+        "ifelse",
+        PascalKeyword.For,
+        "forin",
+        PascalKeyword.While,
+        "tryexcept",
+        "tryfinally",
+        PascalKeyword.Case,
+      ].includes(snippet.prefix),
+  ).map(
+    /** Pair snippet prefixes with their reusable body templates. */ (snippet) =>
+      [snippet.prefix, snippet.body] as const,
+  ),
   [
     PascalKeyword.Repeat,
     `${PascalKeyword.Repeat}
@@ -163,25 +171,47 @@ ${PascalKeyword.End};`,
   ],
 ])
 const PASCAL_KEYWORD_PREFIXES = Object.freeze(
-  Object.values(PASCAL_KEYWORD_SNIPPETS).map((snippet) =>
-    String(snippet.prefix).toLowerCase(),
+  Object.values(PASCAL_KEYWORD_SNIPPETS).map(
+    /** Normalize snippet prefixes for case-insensitive duplicate detection. */ (
+      snippet,
+    ) => String(snippet.prefix).toLowerCase(),
   ),
 )
 
+/**
+ * Return built-in control/routine snippets whose prefixes start with the
+ * case-insensitive completion prefix.
+ */
 function matchingBasicSnippets(prefix: string) {
   const normalized = String(prefix || "").toLowerCase()
-  return BASIC_SNIPPETS.filter((snippet) => snippet.prefix.startsWith(normalized))
+  return BASIC_SNIPPETS.filter(
+    /** Keep basic snippets entries whose prefix matches the current lookup. */ (
+      snippet,
+    ) => snippet.prefix.startsWith(normalized),
+  )
 }
 
+/**
+ * Determine whether a nonempty prefix already has a built-in snippet or keyword
+ * completion, avoiding duplicate symbol suggestions.
+ */
 function hasNativePascalCompletion(prefix: unknown) {
   const normalized = String(prefix || "").toLowerCase()
   if (!normalized) return false
   return (
     matchingBasicSnippets(normalized).length > 0 ||
-    PASCAL_KEYWORD_PREFIXES.some((keyword) => keyword.startsWith(normalized))
+    PASCAL_KEYWORD_PREFIXES.some(
+      /**
+       * Check whether the typed prefix could still become a supported Pascal keyword.
+       */ (keyword) => keyword.startsWith(normalized),
+    )
   )
 }
 
+/**
+ * Recognize a lone indented control prefix followed by a space and return the snippet
+ * body and replacement span.
+ */
 function spaceTriggeredSnippet(linePrefix: string) {
   const match = /^(\s*)([A-Za-z_][A-Za-z0-9_]*) $/i.exec(String(linePrefix || ""))
   if (!match) return undefined
@@ -197,6 +227,10 @@ function spaceTriggeredSnippet(linePrefix: string) {
     : undefined
 }
 
+/**
+ * Recognize a control prefix before the space keystroke, translating the
+ * synthetic-space match back to the original line span.
+ */
 function inlineTriggeredSnippet(linePrefix: unknown) {
   const expansion = spaceTriggeredSnippet(`${String(linePrefix || "")} `)
   return (
@@ -207,6 +241,9 @@ function inlineTriggeredSnippet(linePrefix: unknown) {
   )
 }
 
+/**
+ * Render snippet defaults without tab-stop markers for plain-text completion previews.
+ */
 function plainSnippetPreview(body: unknown) {
   return String(body || "")
     .replace(/\$\{\d+:([^}]*)\}/g, "$1")
@@ -214,6 +251,10 @@ function plainSnippetPreview(body: unknown) {
     .replace(/\$\d+/g, "")
 }
 
+/**
+ * Expand a control snippet using editor indentation and compute the first placeholder
+ * selection in the resulting plain text.
+ */
 function plainControlExpansion(
   prefix: unknown,
   baseIndent: string,
@@ -229,12 +270,17 @@ function plainControlExpansion(
   if (!body) return undefined
   const indentedBody = body
     .split("\n")
-    .map((line, index) => {
-      const leadingTabs = /^\t*/.exec(line)?.[0].length || 0
-      const content = line.slice(leadingTabs)
-      if (index === 0) return content
-      return `${baseIndent}${indentUnit.repeat(leadingTabs)}${content}`
-    })
+    .map(
+      /**
+       * Render relative snippet tabs using the current editor indentation, without
+       * indenting the first line twice.
+       */ (line, index) => {
+        const leadingTabs = /^\t*/.exec(line)?.[0].length || 0
+        const content = line.slice(leadingTabs)
+        if (index === 0) return content
+        return `${baseIndent}${indentUnit.repeat(leadingTabs)}${content}`
+      },
+    )
     .join("\n")
   const placeholders = []
   let text = ""
@@ -252,11 +298,17 @@ function plainControlExpansion(
     cursor = match.index + match[0].length
   }
   text += indentedBody.slice(cursor)
-  const selection = placeholders.sort((left, right) => {
-    const leftRank = left.id === 0 ? Number.MAX_SAFE_INTEGER : left.id
-    const rightRank = right.id === 0 ? Number.MAX_SAFE_INTEGER : right.id
-    return leftRank - rightRank
-  })[0] || { offset: text.length, length: 0 }
+  const selection = placeholders.sort(
+    /** Order numbered snippet tab stops first and place the final caret stop last. */ (
+      left,
+      right,
+    ) => {
+      // Tab stop zero is the final caret position, so numbered placeholders take precedence even when zero occurs earlier in the body.
+      const leftRank = left.id === 0 ? Number.MAX_SAFE_INTEGER : left.id
+      const rightRank = right.id === 0 ? Number.MAX_SAFE_INTEGER : right.id
+      return leftRank - rightRank
+    },
+  )[0] || { offset: text.length, length: 0 }
   const beforeSelection = text.slice(0, selection.offset).split("\n")
   const selectionLineDelta = beforeSelection.length - 1
   const selectionColumn = (beforeSelection.at(-1) || "").length
@@ -269,6 +321,10 @@ function plainControlExpansion(
   }
 }
 
+/**
+ * Require both the extension and completion feature to be enabled for the
+ * document-specific configuration scope.
+ */
 function completionEnabled(
   vscode: Pick<typeof import("vscode"), "workspace">,
   document: Pick<TextDocument, "uri">,
@@ -283,6 +339,10 @@ function completionEnabled(
   )
 }
 
+/**
+ * Replace a control prefix in one undoable edit and select its first placeholder;
+ * return false when no rendering or edit is accepted.
+ */
 async function applyPlainControlExpansion(
   editor: TextEditor,
   vscode: Pick<typeof import("vscode"), "Range" | "Position" | "Selection">,
@@ -302,7 +362,10 @@ async function applyPlainControlExpansion(
     endCharacter,
   )
   const changed = await editor.edit(
-    (editBuilder) => editBuilder.replace(range, rendered.text),
+    /**
+     * Replace the typed control prefix with the rendered snippet in one editor
+     * transaction.
+     */ (editBuilder) => editBuilder.replace(range, rendered.text),
     { undoStopBefore: true, undoStopAfter: true },
   )
   if (!changed) return false
@@ -315,10 +378,18 @@ async function applyPlainControlExpansion(
   return true
 }
 
+/**
+ * Register the space command that expands eligible control prefixes and otherwise
+ * delegates to the normal typing command.
+ */
 function registerImmediateSpaceExpansion(
   context: { subscriptions: Disposable[] },
   vscode: typeof import("vscode"),
 ) {
+  /**
+   * Handle the space keystroke only for one empty Pascal selection with completion
+   * enabled; use default typing when expansion is unavailable.
+   */
   const typeSpace = async () => {
     const editor = vscode.window.activeTextEditor
     const document = editor?.document
@@ -359,41 +430,51 @@ function registerImmediateSpaceExpansion(
   return disposable
 }
 
+/**
+ * Expand an eligible control prefix after a single space insertion while ignoring
+ * undo/redo, multiline edits, and inactive documents.
+ */
 function registerSpaceTriggeredSnippetExpansion(
   context: { subscriptions: Disposable[] },
   vscode: typeof import("vscode"),
 ) {
-  const disposable = vscode.workspace.onDidChangeTextDocument((event) => {
-    if (event.reason !== undefined || event.contentChanges.length !== 1) return
-    const change = event.contentChanges[0]
-    if (!change.text.endsWith(" ") || /[\r\n]/.test(change.text)) return
-    const document = event.document
-    if (
-      !([LanguageId.Pascal, LanguageId.ObjectPascal] as readonly string[]).includes(
-        document.languageId,
+  const disposable = vscode.workspace.onDidChangeTextDocument(
+    /**
+     * Expand an enabled control-flow prefix only after one ordinary space edit in the
+     * active Pascal editor.
+     */ (event) => {
+      // Undo/redo and compound edits must not trigger a second expansion that changes the operation the user requested.
+      if (event.reason !== undefined || event.contentChanges.length !== 1) return
+      const change = event.contentChanges[0]
+      if (!change.text.endsWith(" ") || /[\r\n]/.test(change.text)) return
+      const document = event.document
+      if (
+        !([LanguageId.Pascal, LanguageId.ObjectPascal] as readonly string[]).includes(
+          document.languageId,
+        )
       )
-    )
-      return
+        return
 
-    const editor = vscode.window.activeTextEditor
-    if (!editor || editor.document.uri.toString() !== document.uri.toString()) return
-    if (!completionEnabled(vscode, document)) return
+      const editor = vscode.window.activeTextEditor
+      if (!editor || editor.document.uri.toString() !== document.uri.toString()) return
+      if (!completionEnabled(vscode, document)) return
 
-    const lineNumber = change.range.start.line
-    const endCharacter = change.range.start.character + change.text.length
-    const expansion = spaceTriggeredSnippet(
-      document.lineAt(lineNumber).text.slice(0, endCharacter),
-    )
-    if (!expansion) return
+      const lineNumber = change.range.start.line
+      const endCharacter = change.range.start.character + change.text.length
+      const expansion = spaceTriggeredSnippet(
+        document.lineAt(lineNumber).text.slice(0, endCharacter),
+      )
+      if (!expansion) return
 
-    void applyPlainControlExpansion(
-      editor,
-      vscode,
-      expansion,
-      lineNumber,
-      expansion.endCharacter,
-    )
-  })
+      void applyPlainControlExpansion(
+        editor,
+        vscode,
+        expansion,
+        lineNumber,
+        expansion.endCharacter,
+      )
+    },
+  )
   context.subscriptions.push(disposable)
   return disposable
 }

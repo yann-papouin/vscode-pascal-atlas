@@ -162,8 +162,8 @@ test("foreground build suppresses internal runner command echo and Run uses Debu
   const runner = fs.readFileSync(resourcePath("pascal-atlas-build-runner.ps1"), "utf8")
   assert.match(source, /task\.presentationOptions\s*=\s*\{[\s\S]*?echo:\s*false/)
   assert.match(source, /showReuseMessage:\s*false/)
-  assert.match(source, /'-File', runnerPath/)
-  assert.doesNotMatch(source, /'-Command', BUILD_RUNNER_SCRIPT/)
+  assert.match(source, /["']-File["'],\s*runnerPath/)
+  assert.doesNotMatch(source, /["']-Command["'],\s*BUILD_RUNNER_SCRIPT/)
   assert.doesNotMatch(runner, /Compiling target/)
   assert.match(runner, /\[ERROR\]/)
   assert.match(runner, /\[WARN\]  /)
@@ -176,8 +176,8 @@ test("foreground build suppresses internal runner command echo and Run uses Debu
   assert.match(runner, /PASCAL_ATLAS_BUILD_RESULT/)
   assert.match(runner, /exit 0/)
   assert.match(source, /DebugAdapterInlineImplementation/)
-  assert.match(source, /category:\s*'stdout'/)
-  assert.match(source, /category:\s*'stderr'/)
+  assert.match(source, /category:\s*["']stdout["']/)
+  assert.match(source, /category:\s*["']stderr["']/)
   assert.match(source, /noDebug:\s*true/)
   assert.doesNotMatch(source, /suppressDebugStatusbar:\s*true/)
   assert.match(source, /workbench\.debug\.action\.focusRepl/)
@@ -443,14 +443,17 @@ test("manifest keeps project commands out of the native Explorer and exposes the
     navigatorWebviewSource,
     /Always live[\s\S]*?Current file only[\s\S]*?On confirmation/,
   )
-  assert.match(navigatorWebviewSource, /event\.key === 'Escape'[\s\S]*?hideSearch\(\)/)
+  assert.match(
+    navigatorWebviewSource,
+    /event\.key === ["']Escape["'][\s\S]*?hideSearch\(\)/,
+  )
   assert.match(
     navigatorWebviewSource,
     /id="sort-panel"[\s\S]*?id="member-order"[\s\S]*?id="type-order"/,
   )
   assert.match(
     navigatorWebviewSource,
-    /type:WebviewMessageKind\.SortUpdate, key, value/,
+    /type:\s*WebviewMessageKind\.SortUpdate,\s*key,\s*value/,
   )
   assert.match(
     navigatorSource,
@@ -478,7 +481,7 @@ test("manifest keeps project commands out of the native Explorer and exposes the
   )
   assert.match(
     navigatorSource,
-    /onSearchClosed:\s*\(?restoreState(?:[^=]*)=> closeNavigatorSearch\(true, restoreState\)/,
+    /onSearchClosed:[\s\S]*?\(\s*restoreState,?\s*\)\s*=>\s*closeNavigatorSearch\(true,\s*restoreState\)/,
   )
   assert.match(
     navigatorSource,
@@ -598,7 +601,7 @@ test("manifest keeps project commands out of the native Explorer and exposes the
   )
   assert.match(
     source,
-    /this\.statusItems\.stop\.command\s*=\s*this\.runInProgress[\s\S]*?CommandId\.RunStop[\s\S]*?'workbench\.action\.debug\.stop'/,
+    /this\.statusItems\.stop\.command\s*=\s*this\.runInProgress[\s\S]*?CommandId\.RunStop[\s\S]*?["']workbench\.action\.debug\.stop["']/,
   )
   assert.match(
     source,

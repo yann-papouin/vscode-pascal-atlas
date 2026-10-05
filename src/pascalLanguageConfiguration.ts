@@ -38,6 +38,10 @@ const SINGLE_STATEMENT_PATTERN = new RegExp(
   "i",
 )
 
+/**
+ * Build Pascal comment, bracket, auto-close, indentation, and Enter rules while
+ * leaving ambiguous angle brackets to the Pascal-aware collector.
+ */
 function languageConfiguration(vscode: {
   IndentAction: Pick<typeof import("vscode").IndentAction, "Indent" | "IndentOutdent">
   SyntaxTokenType?: typeof import("vscode").SyntaxTokenType
@@ -96,6 +100,10 @@ function languageConfiguration(vscode: {
   }
 }
 
+/**
+ * Read the identifier immediately before a candidate generic opening angle and retain
+ * its original start offset.
+ */
 function previousIdentifier(code: string, offset: number) {
   let cursor = offset - 1
   if (cursor < 0 || !/[A-Za-z0-9_]/.test(code[cursor])) return undefined
@@ -104,12 +112,17 @@ function previousIdentifier(code: string, offset: number) {
   return { name: code.slice(cursor + 1, end), start: cursor + 1 }
 }
 
+/** Find the next non-whitespace code offset without interpreting surrounding syntax. */
 function nextNonWhitespace(code: string, offset: number) {
   let cursor = offset
   while (cursor < code.length && /\s/.test(code[cursor])) cursor += 1
   return cursor
 }
 
+/**
+ * Balance generic-angle candidates until their closing angle, rejecting unmatched
+ * spans that run into the next statement.
+ */
 function genericCloseOffset(code: string, openOffset: number) {
   let depth = 0
   for (let cursor = openOffset; cursor < code.length; cursor += 1) {
@@ -126,6 +139,10 @@ function genericCloseOffset(code: string, openOffset: number) {
   return -1
 }
 
+/**
+ * Require plausible type arguments and surrounding type/call syntax before treating a
+ * balanced angle span as generic rather than relational.
+ */
 function looksLikePascalGeneric(
   code: string,
   openOffset: number,
@@ -190,22 +207,46 @@ function collectPascalGenericAngleBrackets(text: string, preparedCode?: string) 
     }
     openOffset = closeOffset
   }
-  return result.sort((left, right) => left.offset - right.offset)
+  return result.sort(
+    /** Order generic-angle delimiters by their source offsets. */ (left, right) =>
+      left.offset - right.offset,
+  )
 }
 
+/**
+ * Register independently nested generic-angle decorations and debounced
+ * editor/configuration listeners, retaining every resource for disposal.
+ */
 function registerPascalGenericBracketColoring(
   context: { subscriptions: Disposable[] },
   vscode: typeof import("vscode"),
 ) {
-  const decorations = Array.from({ length: BRACKET_COLOR_COUNT }, (_, index) =>
-    vscode.window.createTextEditorDecorationType({
-      color: new vscode.ThemeColor(`editorBracketHighlight.foreground${index + 1}`),
-    }),
+  const decorations = Array.from(
+    { length: BRACKET_COLOR_COUNT },
+    /**
+     * Create the next initialized entry used by register pascal generic bracket
+     * coloring.
+     */ (_, index) =>
+      vscode.window.createTextEditorDecorationType({
+        color: new vscode.ThemeColor(`editorBracketHighlight.foreground${index + 1}`),
+      }),
   )
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
+  /**
+   * Clear all generic-angle decoration buckets for a visible editor when either
+   * coloring feature is disabled.
+   */
   const clear = (editor: TextEditor) =>
-    decorations.forEach((decoration) => editor.setDecorations(decoration, []))
+    decorations.forEach(
+      /** Clear all generic-angle nesting decorations from the editor. */ (
+        decoration,
+      ) => editor.setDecorations(decoration, []),
+    )
+  /**
+   * Recompute confirmed generic-angle ranges for a live Pascal editor and distribute
+   * them through the independent depth palette.
+   */
   const refresh = (editor: TextEditor | undefined) => {
     if (!editor || !PASCAL_LANGUAGE_IDS.has(editor.document.languageId)) return
     const bracketColoringEnabled = vscode.workspace
@@ -218,7 +259,10 @@ function registerPascalGenericBracketColoring(
       clear(editor)
       return
     }
-    const buckets = Array.from({ length: BRACKET_COLOR_COUNT }, (): Range[] => [])
+    const buckets = Array.from(
+      { length: BRACKET_COLOR_COUNT },
+      /** Create the next initialized entry used by refresh. */ (): Range[] => [],
+    )
     for (const bracket of collectPascalGenericAngleBrackets(
       editor.document.getText(),
     )) {
@@ -227,56 +271,104 @@ function registerPascalGenericBracketColoring(
         new vscode.Range(start, start.translate(0, 1)),
       )
     }
-    decorations.forEach((decoration, index) =>
-      editor.setDecorations(decoration, buckets[index]),
+    decorations.forEach(
+      /** Apply generic-angle pairs using the decoration for their nesting depth. */ (
+        decoration,
+        index,
+      ) => editor.setDecorations(decoration, buckets[index]),
     )
   }
+  /**
+   * Debounce generic-bracket coloring by document URI, then rebind to the current
+   * visible editor before applying decorations.
+   */
   const schedule = (editor: TextEditor | undefined, delay = 30) => {
     if (!editor || !PASCAL_LANGUAGE_IDS.has(editor.document.languageId)) return
     const key = editor.document.uri.toString()
     clearTimeout(timers.get(key))
     timers.set(
       key,
-      setTimeout(() => {
-        timers.delete(key)
-        const live = vscode.window.visibleTextEditors.find(
-          (candidate) => candidate.document.uri.toString() === key,
-        )
-        if (live) refresh(live)
-      }, delay),
+      setTimeout(
+        /**
+         * Refresh the still-visible document when its generic-angle debounce expires.
+         */ () => {
+          timers.delete(key)
+          const live = vscode.window.visibleTextEditors.find(
+            /** Find the visible editor whose document owns this scheduled refresh. */ (
+              candidate,
+            ) => candidate.document.uri.toString() === key,
+          )
+          if (live) refresh(live)
+        },
+        delay,
+      ),
     )
   }
 
   context.subscriptions.push(
     ...decorations,
-    vscode.window.onDidChangeVisibleTextEditors((editors) =>
-      editors.forEach((editor) => schedule(editor, 0)),
+    vscode.window.onDidChangeVisibleTextEditors(
+      /** Refresh generic-angle colors for newly visible editors. */ (editors) =>
+        editors.forEach(
+          /** Schedule immediate generic-angle refreshes for all candidate editors. */ (
+            editor,
+          ) => schedule(editor, 0),
+        ),
     ),
-    vscode.window.onDidChangeActiveTextEditor((editor) => schedule(editor, 0)),
-    vscode.workspace.onDidChangeTextDocument((event) => {
-      const editor = vscode.window.visibleTextEditors.find(
-        (candidate) => candidate.document === event.document,
-      )
-      if (editor) schedule(editor)
-    }),
-    vscode.workspace.onDidChangeConfiguration((event) => {
-      if (
-        !event.affectsConfiguration("editor.bracketPairColorization") &&
-        !event.affectsConfiguration("pascalAtlas.enabled")
-      )
-        return
-      vscode.window.visibleTextEditors.forEach((editor) => schedule(editor, 0))
-    }),
+    vscode.window.onDidChangeActiveTextEditor(
+      /** Refresh generic-angle colors for the newly active editor. */ (editor) =>
+        schedule(editor, 0),
+    ),
+    vscode.workspace.onDidChangeTextDocument(
+      /** Debounce generic-angle colors for a changed document that is still visible. */ (
+        event,
+      ) => {
+        const editor = vscode.window.visibleTextEditors.find(
+          /** Find the visible editor for the changed document. */ (candidate) =>
+            candidate.document === event.document,
+        )
+        if (editor) schedule(editor)
+      },
+    ),
+    vscode.workspace.onDidChangeConfiguration(
+      /**
+       * Refresh visible generic-angle colors when enablement or bracket colorization
+       * changes.
+       */ (event) => {
+        if (
+          !event.affectsConfiguration("editor.bracketPairColorization") &&
+          !event.affectsConfiguration("pascalAtlas.enabled")
+        )
+          return
+        vscode.window.visibleTextEditors.forEach(
+          /** Refresh generic-angle decorations immediately in every visible editor. */ (
+            editor,
+          ) => schedule(editor, 0),
+        )
+      },
+    ),
     {
+      /**
+       * Cancel pending generic-coloring timers and release all bracket decoration
+       * types.
+       */
       dispose() {
         for (const timer of timers.values()) clearTimeout(timer)
         timers.clear()
       },
     },
   )
-  vscode.window.visibleTextEditors.forEach((editor) => schedule(editor, 0))
+  vscode.window.visibleTextEditors.forEach(
+    /** Refresh visible generic-angle decorations after configuration changes. */ (
+      editor,
+    ) => schedule(editor, 0),
+  )
 }
 
+/**
+ * Install Pascal editing rules for each supported language ID and register the
+ * independent generic-angle coloring lifecycle.
+ */
 function registerPascalLanguageConfiguration(
   context: { subscriptions: Disposable[] },
   vscode: typeof import("vscode"),

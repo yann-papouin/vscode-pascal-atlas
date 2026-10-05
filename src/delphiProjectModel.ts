@@ -17,26 +17,38 @@ import { evaluateProjectProperties, readProjectInfo } from "./diagnosticCore"
 const CACHE_VERSION = 1
 const CACHE_KEY = "pascalAtlas.delphiProjectModel.v1"
 
+/**
+ * Read and decode a named Delphi project XML value, using an empty string when no
+ * element is present.
+ */
 function xmlValue(xml: string, name: string) {
   const match = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, "i").exec(xml)
   return match ? decodeXml(match[1]).trim() : ""
 }
 
+/**
+ * Expand project/environment macros case-insensitively for up to ten passes, stopping
+ * at a stable value and retaining unresolved references.
+ */
 function expandProperties(
   value: unknown,
   properties: Record<string, string | undefined>,
 ) {
   let result = String(value || "")
   const lookup = new Map(
-    Object.entries(properties || {}).map(([key, item]) => [
-      key.toLowerCase(),
-      String(item || ""),
-    ]),
+    Object.entries(properties || {}).map(
+      /** Normalize environment variable names while retaining their string values. */ ([
+        key,
+        item,
+      ]) => [key.toLowerCase(), String(item || "")],
+    ),
   )
   for (let pass = 0; pass < 10; pass += 1) {
     const next = result.replace(
       /\$\(([^)]+)\)/g,
-      (whole, name) => lookup.get(name.toLowerCase()) ?? whole,
+      /**
+       * Expand known project properties while retaining unknown placeholders verbatim.
+       */ (whole, name) => lookup.get(name.toLowerCase()) ?? whole,
     )
     if (next === result) break
     result = next
@@ -44,6 +56,10 @@ function expandProperties(
   return result
 }
 
+/**
+ * Expand and resolve a project-relative path, returning an empty value when macros
+ * remain unresolved.
+ */
 function resolveProjectPath(
   projectDir: string,
   value: unknown,
@@ -54,6 +70,10 @@ function resolveProjectPath(
   return path.resolve(projectDir, expanded)
 }
 
+/**
+ * Classify a DPK as a package or a DPR as a library/application, reading only its
+ * prefix and returning unknown for other source kinds.
+ */
 function mainKind(mainSource: string | undefined) {
   const extension = path.extname(mainSource || "").toLowerCase()
   if (extension === FileExtension.Package) return PascalKeyword.Package
@@ -70,10 +90,18 @@ function mainKind(mainSource: string | undefined) {
   return "unknown"
 }
 
+/**
+ * Derive the output artifact base name from a main source or project filename without
+ * its extension.
+ */
 function artifactBase(mainSource: string) {
   return path.basename(mainSource || "", path.extname(mainSource || ""))
 }
 
+/**
+ * Evaluate a project's effective build properties and environment to derive artifact,
+ * debugger, search-path, and platform metadata.
+ */
 function projectDescriptor(
   projectPath: string,
   overrides: ProjectOverrides = {},
@@ -141,6 +169,10 @@ function projectDescriptor(
   }
 }
 
+/**
+ * Read only the project identity, main source, kind, name, and targeted platforms
+ * needed for lightweight tree rendering.
+ */
 function minimalProjectDescriptor(projectPath: string) {
   const xml = fs.readFileSync(projectPath, "utf8")
   const projectDir = path.dirname(projectPath)
@@ -156,6 +188,10 @@ function minimalProjectDescriptor(projectPath: string) {
   }
 }
 
+/**
+ * Resolve group project includes and their declared dependencies into a stable group
+ * descriptor.
+ */
 function groupDescriptor(groupPath: string) {
   const xml = fs.readFileSync(groupPath, "utf8")
   const projectPaths = projectsFromGroup(groupPath)
@@ -182,6 +218,10 @@ function groupDescriptor(groupPath: string) {
   }
 }
 
+/**
+ * Return a size/mtime cache signature for a file, using an empty signature when it
+ * cannot be inspected.
+ */
 function statSignature(filePath: string) {
   try {
     const stat = fs.statSync(filePath)
@@ -191,6 +231,10 @@ function statSignature(filePath: string) {
   }
 }
 
+/**
+ * Discover project files below a workspace up to the configured cap, excluding
+ * generated/hidden directories and symbolic links.
+ */
 async function findDprojFiles(workspaceRoot: string, maximum = 4096) {
   const results: string[] = []
   const skipped = new Set<string>([
@@ -204,6 +248,10 @@ async function findDprojFiles(workspaceRoot: string, maximum = 4096) {
     "__history",
     "__recovery",
   ])
+  /**
+   * Traverse eligible project-search directories until the result cap is reached,
+   * skipping unreadable folders and symlink cycles.
+   */
   async function visit(directory: string) {
     if (results.length >= maximum) return
     let entries
@@ -240,16 +288,26 @@ interface ProjectModelCache {
   projects: { projectPath: string; signature: string; descriptor: ProjectDescriptor }[]
   groups: { groupPath: string; signature: string }[]
 }
+/**
+ * Validate the basic persisted project identity and source-kind metadata before
+ * restoring a cached descriptor.
+ */
 function isProjectDescriptor(value: unknown): value is ProjectDescriptor {
   return (
     isRecord(value) &&
     ["projectPath", "projectDir", "mainSource", "name"].every(
-      (key) => typeof value[key] === "string",
+      /**
+       * Require the core project identity and source fields in a restored descriptor.
+       */ (key) => typeof value[key] === "string",
     ) &&
     typeof value.targetedPlatforms === "number" &&
     ["package", "library", "application", "unknown"].includes(String(value.kind))
   )
 }
+/**
+ * Validate the versioned project/group cache envelope and descriptor/signature fields
+ * before inspecting its entries.
+ */
 function isProjectModelCache(value: unknown): value is ProjectModelCache {
   return (
     isRecord(value) &&
@@ -257,14 +315,18 @@ function isProjectModelCache(value: unknown): value is ProjectModelCache {
     Array.isArray(value.projects) &&
     Array.isArray(value.groups) &&
     value.projects.every(
-      (item: unknown) =>
+      /** Validate each cached project path, file signature, and descriptor. */ (
+        item: unknown,
+      ) =>
         isRecord(item) &&
         typeof item.projectPath === "string" &&
         typeof item.signature === "string" &&
         isProjectDescriptor(item.descriptor),
     ) &&
     value.groups.every(
-      (item: unknown) =>
+      /** Validate each cached project group path and file signature. */ (
+        item: unknown,
+      ) =>
         isRecord(item) &&
         typeof item.groupPath === "string" &&
         typeof item.signature === "string",
@@ -281,6 +343,10 @@ class DelphiProjectModel {
   changeListeners: Set<() => void>
   workspaceRoots
 
+  /**
+   * Initialize workspace project/group indexes, cache restoration, and change
+   * listeners for later discovery refreshes.
+   */
   constructor(
     context: { workspaceState: Memento },
     output: Pick<OutputChannel, "appendLine">,
@@ -293,18 +359,34 @@ class DelphiProjectModel {
     this.packageRoots = new Map()
     this.groupRoots = new Map()
     this.changeListeners = new Set()
-    this.workspaceRoots = workspaceRoots.map((item) => path.resolve(item))
+    this.workspaceRoots = workspaceRoots.map(
+      /** Resolve configured workspace roots to absolute paths. */ (item) =>
+        path.resolve(item),
+    )
   }
 
+  /**
+   * Subscribe to project-model changes and return a disposable that removes the
+   * listener.
+   */
   onDidChange(listener: () => void) {
     this.changeListeners.add(listener)
-    return { dispose: () => this.changeListeners.delete(listener) }
+    return {
+      dispose:
+        /** Remove this project-model listener when its subscription is disposed. */ () =>
+          this.changeListeners.delete(listener),
+    }
   }
 
+  /** Notify all current listeners after project/group indexes have changed. */
   emitChange() {
     for (const listener of this.changeListeners) listener()
   }
 
+  /**
+   * Restore validated project descriptors whose file signatures still match, and
+   * rebuild cached group/root indexes from available state.
+   */
   restore() {
     const cached = this.context.workspaceState.get<unknown>(CACHE_KEY)
     if (!isProjectModelCache(cached) || cached.version !== CACHE_VERSION) return false
@@ -328,6 +410,10 @@ class DelphiProjectModel {
     }
   }
 
+  /**
+   * Append a project or group descriptor to the supplied canonical directory bucket
+   * without replacing its siblings.
+   */
   addTo<T>(map: Map<string, T[]>, directory: string, descriptor: T) {
     const key = normalizeKey(directory)
     const values = map.get(key) || []
@@ -335,6 +421,9 @@ class DelphiProjectModel {
     map.set(key, values)
   }
 
+  /**
+   * Reset every project/group/root index before publishing a fresh discovery result.
+   */
   clear() {
     this.projects.clear()
     this.groups.clear()
@@ -342,6 +431,10 @@ class DelphiProjectModel {
     this.groupRoots.clear()
   }
 
+  /**
+   * Discover workspace groups and projects, build fresh descriptors/root indexes,
+   * persist cache signatures, and publish the refreshed model.
+   */
   async refresh() {
     const projects = new Map<string, ProjectDescriptor>()
     const groups = new Map<string, GroupDescriptor>()
@@ -382,15 +475,24 @@ class DelphiProjectModel {
     this.groupRoots = groupRoots
     await this.context.workspaceState.update(CACHE_KEY, {
       version: CACHE_VERSION,
-      projects: [...projects.values()].map((descriptor) => ({
-        descriptor,
-        projectPath: descriptor.projectPath,
-        signature: statSignature(descriptor.projectPath),
-      })),
-      groups: [...groups.values()].map((descriptor) => ({
-        groupPath: descriptor.groupPath,
-        signature: statSignature(descriptor.groupPath),
-      })),
+      projects: [...projects.values()].map(
+        /**
+         * Capture each project descriptor with its current file signature for cache
+         * validation.
+         */ (descriptor) => ({
+          descriptor,
+          projectPath: descriptor.projectPath,
+          signature: statSignature(descriptor.projectPath),
+        }),
+      ),
+      groups: [...groups.values()].map(
+        /** Capture each project group path and file signature for cache validation. */ (
+          descriptor,
+        ) => ({
+          groupPath: descriptor.groupPath,
+          signature: statSignature(descriptor.groupPath),
+        }),
+      ),
     })
     this.output.appendLine(
       `Delphi project model ready: ${projects.size} project(s), ${groups.size} group(s), ${packageRoots.size} package root(s).`,
@@ -398,6 +500,10 @@ class DelphiProjectModel {
     this.emitChange()
   }
 
+  /**
+   * Append a descriptor under its canonical directory key without replacing other
+   * projects sharing that root.
+   */
   addLocal<T>(map: Map<string, T[]>, directory: string, descriptor: T) {
     const key = normalizeKey(directory)
     const values = map.get(key) || []
@@ -405,31 +511,49 @@ class DelphiProjectModel {
     map.set(key, values)
   }
 
+  /** Return the workspace root paths used by project discovery. */
   workspaceFolders() {
     return this.workspaceRoots
   }
 
+  /**
+   * Return packages indexed under a canonical directory, or an empty list when that
+   * root is unknown.
+   */
   packageProjects(directory: string) {
     return this.packageRoots.get(normalizeKey(directory)) || []
   }
 
+  /**
+   * Return project groups indexed under a canonical directory, or an empty list when
+   * that root is unknown.
+   */
   groupsAt(directory: string) {
     return this.groupRoots.get(normalizeKey(directory)) || []
   }
 
+  /** Look up a project descriptor using the canonical absolute project path. */
   project(projectPath: string) {
     return this.projects.get(normalizeKey(projectPath))
   }
 
+  /** Return one original-spelling directory path for each indexed package root. */
   packageRootPaths() {
-    return [...this.packageRoots.values()].flatMap((values) =>
-      values.length ? [values[0].projectDir] : [],
+    return [...this.packageRoots.values()].flatMap(
+      /** Collect the first project directory for each indexed project bucket. */ (
+        values,
+      ) => (values.length ? [values[0].projectDir] : []),
     )
   }
 
+  /**
+   * Return one original-spelling directory path for each indexed project-group root.
+   */
   groupRootPaths() {
-    return [...this.groupRoots.values()].flatMap((values) =>
-      values.length ? [values[0].groupDir] : [],
+    return [...this.groupRoots.values()].flatMap(
+      /** Collect the first group directory for each indexed group bucket. */ (
+        values,
+      ) => (values.length ? [values[0].groupDir] : []),
     )
   }
 }
